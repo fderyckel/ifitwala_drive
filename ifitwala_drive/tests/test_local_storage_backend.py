@@ -51,10 +51,21 @@ def test_local_storage_backend_round_trip():
 
 	artifact = backend.finalize_temporary_object(
 		object_key=target["object_key"],
-		final_key="files/DUS-0001/essay.docx",
+		final_key="files/ab/cd/abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890.docx",
 	)
-	assert artifact["file_url"] == "/private/files/ifitwala_drive/files/DUS-0001/essay.docx"
-	assert os.path.exists(os.path.join(root, "files", "DUS-0001", "essay.docx"))
+	assert (
+		artifact["file_url"]
+		== "/private/files/ifitwala_drive/files/ab/cd/abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890.docx"
+	)
+	assert os.path.exists(
+		os.path.join(
+			root,
+			"files",
+			"ab",
+			"cd",
+			"abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890.docx",
+		)
+	)
 
 
 def test_local_storage_backend_abort_deletes_tmp_file():

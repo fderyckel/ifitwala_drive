@@ -307,6 +307,7 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 	session_doc = FakeDoc(
 		{
 			"name": "DUS-0001",
+			"session_key": "sess-0001",
 			"status": "created",
 			"expires_on": now + timedelta(hours=2),
 			"tmp_object_key": "tmp/DUS-0001/essay.docx",
@@ -367,7 +368,9 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 
 		def finalize_temporary_object(self, *, object_key: str, final_key: str):
 			assert object_key == "tmp/DUS-0001/essay.docx"
-			assert final_key == "files/DUS-0001/essay.docx"
+			assert final_key.startswith("files/")
+			assert final_key.endswith(".docx")
+			assert len(final_key.split("/")[-1].split(".")[0]) == 64
 			return {
 				"object_key": final_key,
 				"file_url": f"https://storage.ifitwala.invalid/object/{final_key}",

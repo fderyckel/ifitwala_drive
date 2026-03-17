@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import os
 from datetime import datetime
 from typing import Any
 
@@ -64,7 +66,21 @@ def _get_secondary_subjects(doc) -> list[dict[str, Any]]:
 
 def _build_final_object_key(doc) -> str:
 	filename = (doc.filename_original or "upload.bin").strip() or "upload.bin"
-	return f"files/{doc.name}/{filename}"
+	_, extension = os.path.splitext(filename)
+	seed = "|".join(
+		[
+			(getattr(doc, "session_key", None) or getattr(doc, "name", None) or "").strip(),
+			(getattr(doc, "owner_doctype", None) or "").strip(),
+			(getattr(doc, "owner_name", None) or "").strip(),
+			(getattr(doc, "attached_doctype", None) or "").strip(),
+			(getattr(doc, "attached_name", None) or "").strip(),
+			(getattr(doc, "intended_slot", None) or "").strip(),
+			filename,
+		]
+	)
+	digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()
+	normalized_extension = extension.lower()[:16]
+	return f"files/{digest[:2]}/{digest[2:4]}/{digest}{normalized_extension}"
 
 
 def _build_file_kwargs(doc, storage_artifact: dict[str, Any]) -> dict[str, Any]:
