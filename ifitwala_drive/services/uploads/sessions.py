@@ -8,16 +8,28 @@ import frappe
 from frappe import _
 from frappe.utils import now_datetime
 
+from ifitwala_drive.services.storage.base import get_storage_backend
 from ifitwala_drive.services.uploads.validation import validate_create_session_payload
-from ifitwala_drive.services.storage.gcs import GCSStorageBackend
+
+
+def _build_secondary_subject_rows(payload: Dict[str, Any]) -> list[Dict[str, Any]]:
+	return [
+		{
+			"subject_type": row["subject_type"],
+			"subject_id": row["subject_id"],
+			"role": row.get("role", "referenced"),
+		}
+		for row in (payload.get("secondary_subjects") or [])
+	]
 
 
 def create_upload_session_service(payload: Dict[str, Any]) -> Dict[str, Any]:
 	validate_create_session_payload(payload)
 
-	storage = GCSStorageBackend()
+	session_key = frappe.generate_hash(length=24)
+	storage = get_storage_backend()
 	target = storage.create_temporary_upload_target(
-		session_key=frappe.generate_hash(length=24),
+		session_key=session_key,
 		filename=payload["filename_original"],
 		mime_type=payload.get("mime_type_hint"),
 	)
@@ -25,7 +37,7 @@ def create_upload_session_service(payload: Dict[str, Any]) -> Dict[str, Any]:
 	doc = frappe.get_doc(
 		{
 			"doctype": "Drive Upload Session",
-			"session_key": frappe.generate_hash(length=24),
+			"session_key": session_key,
 			"status": "created",
 			"upload_source": payload.get("upload_source") or "API",
 			"created_by_user": frappe.session.user,
@@ -43,11 +55,12 @@ def create_upload_session_service(payload: Dict[str, Any]) -> Dict[str, Any]:
 			"intended_purpose": payload["purpose"],
 			"intended_retention_policy": payload["retention_policy"],
 			"intended_slot": payload["slot"],
+			"secondary_subjects": _build_secondary_subject_rows(payload),
 			"filename_original": payload["filename_original"],
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"is_private": payload.get("is_private", 1),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
-			"storage_backend": "gcs",
+			"storage_backend": storage.backend_name,
 			"tmp_object_key": target["object_key"],
 		}
 	)
@@ -76,7 +89,7 @@ def abort_upload_session_service(payload: Dict[str, Any]) -> Dict[str, Any]:
 			"status": doc.status,
 		}
 
-	storage = GCSStorageBackend()
+	storage = get_storage_backend(getattr(doc, "storage_backend", None))
 	if doc.tmp_object_key:
 		storage.abort_temporary_object(object_key=doc.tmp_object_key)
 

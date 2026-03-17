@@ -21,6 +21,8 @@ _ALLOWED_STATUSES = {
 	"failed",
 }
 
+_OPTIONAL_SCHOOL_SUBJECT_TYPES = {"Employee", "Organization"}
+
 
 class DriveUploadSession(Document):
 	"""Authoritative upload-session record for governed Drive uploads.
@@ -40,6 +42,7 @@ class DriveUploadSession(Document):
 		self._validate_required_context()
 		self._validate_governance_intent()
 		self._validate_owner_contract()
+		self._validate_school_requirement()
 
 	def validate(self) -> None:
 		self._set_defaults()
@@ -47,6 +50,7 @@ class DriveUploadSession(Document):
 		self._validate_required_context()
 		self._validate_governance_intent()
 		self._validate_owner_contract()
+		self._validate_school_requirement()
 		self._validate_size_fields()
 		self._validate_terminal_state_fields()
 		self._validate_links()
@@ -120,6 +124,13 @@ class DriveUploadSession(Document):
 			# Defensive check. A user string matching owner_name is almost always a modeling bug.
 			frappe.throw(_("Owner Name appears to be the current user. Owner must be a business document, not a human uploader."))
 
+	def _validate_school_requirement(self) -> None:
+		if not self._is_school_required():
+			return
+
+		if not self.school:
+			frappe.throw(_("School is required for this upload context."))
+
 	def _validate_size_fields(self) -> None:
 		if (self.expected_size_bytes or 0) < 0:
 			frappe.throw(_("Expected Size (Bytes) cannot be negative."))
@@ -152,3 +163,13 @@ class DriveUploadSession(Document):
 			value = self.get(fieldname)
 			if value and not frappe.db.exists(doctype, value):
 				frappe.throw(_("{0} does not exist: {1}").format(doctype, value))
+
+	def _is_school_required(self) -> bool:
+		try:
+			from ifitwala_ed.utilities.file_classification_contract import (
+				is_school_required_for_subject_type,
+			)
+		except ImportError:
+			return (self.intended_primary_subject_type or "").strip() not in _OPTIONAL_SCHOOL_SUBJECT_TYPES
+
+		return is_school_required_for_subject_type(self.intended_primary_subject_type)

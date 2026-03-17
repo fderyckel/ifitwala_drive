@@ -2,17 +2,118 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict
 
 import frappe
 from frappe import _
-from frappe.utils import now_datetime
+from frappe.utils import get_datetime, now_datetime
 
+from ifitwala_drive.services.integration.ifitwala_ed_tasks import (
+	get_task_submission_context_override,
+)
+from ifitwala_drive.services.storage.base import get_storage_backend
 from ifitwala_drive.services.uploads.validation import validate_finalize_session_payload
-from ifitwala_drive.services.storage.gcs import GCSStorageBackend
 
-# Transitional compatibility bridge.
-from ifitwala_ed.utilities.file_dispatcher import create_and_classify_file
+
+def _call_authoritative_create_and_classify_file(
+	*,
+	file_kwargs: Dict[str, Any],
+	classification: Dict[str, Any],
+	secondary_subjects: list[Dict[str, Any]] | None = None,
+	context_override: Dict[str, Any] | None = None,
+):
+	try:
+		from ifitwala_ed.utilities.file_dispatcher import create_and_classify_file
+	except ImportError as exc:
+		frappe.throw(
+			_("Authoritative Ifitwala_Ed dispatcher is unavailable for governed finalization: {0}").format(
+				exc
+			)
+		)
+
+	return create_and_classify_file(
+		file_kwargs=file_kwargs,
+		classification=classification,
+		secondary_subjects=secondary_subjects,
+		context_override=context_override,
+	)
+
+
+def _get_secondary_subjects(doc) -> list[Dict[str, Any]]:
+	return [
+		{
+			"subject_type": row.subject_type,
+			"subject_id": row.subject_id,
+			"role": getattr(row, "role", None) or "referenced",
+		}
+		for row in (doc.secondary_subjects or [])
+	]
+
+
+def _build_final_object_key(doc) -> str:
+	filename = (doc.filename_original or "upload.bin").strip() or "upload.bin"
+	return f"files/{doc.name}/{filename}"
+
+
+def _build_file_kwargs(doc, storage_artifact: Dict[str, Any]) -> Dict[str, Any]:
+	file_url = storage_artifact.get("file_url") or storage_artifact.get("object_key")
+
+	return {
+		"attached_to_doctype": doc.attached_doctype,
+		"attached_to_name": doc.attached_name,
+		"is_private": doc.is_private,
+		"file_name": doc.filename_original,
+		"file_url": file_url,
+	}
+
+
+def _build_classification(doc) -> Dict[str, Any]:
+	return {
+		"primary_subject_type": doc.intended_primary_subject_type,
+		"primary_subject_id": doc.intended_primary_subject_id,
+		"data_class": doc.intended_data_class,
+		"purpose": doc.intended_purpose,
+		"retention_policy": doc.intended_retention_policy,
+		"slot": doc.intended_slot,
+		"organization": doc.organization,
+		"school": doc.school,
+		"upload_source": doc.upload_source,
+	}
+
+
+def _get_context_override(doc) -> Dict[str, Any] | None:
+	if doc.owner_doctype == "Task Submission":
+		return get_task_submission_context_override(doc.owner_name)
+
+	return None
+
+
+def _coerce_datetime(value: Any) -> datetime | None:
+	if not value:
+		return None
+
+	if isinstance(value, datetime):
+		return value
+
+	return get_datetime(value)
+
+
+def _mark_session_failed(doc, exc: Exception) -> None:
+	doc.status = "failed"
+	doc.error_log = str(exc)
+	doc.save(ignore_permissions=True)
+
+
+def _completed_response(doc) -> Dict[str, Any]:
+	return {
+		"drive_file_id": getattr(doc, "drive_file", None),
+		"drive_file_version_id": None,
+		"file_id": getattr(doc, "file", None),
+		"canonical_ref": None,
+		"status": doc.status,
+		"preview_status": "pending" if doc.status == "completed" else None,
+	}
 
 
 def finalize_upload_session_service(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -20,19 +121,18 @@ def finalize_upload_session_service(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 	doc = frappe.get_doc("Drive Upload Session", payload["upload_session_id"])
 
+	expires_on = _coerce_datetime(getattr(doc, "expires_on", None))
+	if doc.status not in {"completed", "aborted", "expired", "failed"} and expires_on and expires_on < now_datetime():
+		doc.status = "expired"
+		doc.save(ignore_permissions=True)
+
 	if doc.status in {"aborted", "expired", "failed"}:
 		frappe.throw(_("This upload session cannot be finalized from its current status: {0}").format(doc.status))
 
 	if doc.status == "completed":
-		return {
-			"drive_file_id": doc.drive_file,
-			"file_id": doc.file,
-			"canonical_ref": None,
-			"status": doc.status,
-			"preview_status": None,
-		}
+		return _completed_response(doc)
 
-	storage = GCSStorageBackend()
+	storage = get_storage_backend(getattr(doc, "storage_backend", None))
 	if not doc.tmp_object_key or not storage.temporary_object_exists(object_key=doc.tmp_object_key):
 		frappe.throw(_("Temporary uploaded object was not found for this upload session."))
 
@@ -41,47 +141,25 @@ def finalize_upload_session_service(payload: Dict[str, Any]) -> Dict[str, Any]:
 	doc.content_hash = payload.get("content_hash") or doc.content_hash
 	doc.save(ignore_permissions=True)
 
-	# Transitional path:
-	# still call the authoritative governed creation path from Ifitwala_Ed.
-	created = create_and_classify_file(
-		file_kwargs={
-			"attached_to_doctype": doc.attached_doctype,
-			"attached_to_name": doc.attached_name,
-			"is_private": doc.is_private,
-			"file_name": doc.filename_original,
-			# Replace this later with storage-aware final file binding.
-			"file_url": doc.tmp_object_key,
-		},
-		classification={
-			"primary_subject_type": doc.intended_primary_subject_type,
-			"primary_subject_id": doc.intended_primary_subject_id,
-			"data_class": doc.intended_data_class,
-			"purpose": doc.intended_purpose,
-			"retention_policy": doc.intended_retention_policy,
-			"slot": doc.intended_slot,
-			"organization": doc.organization,
-			"school": doc.school,
-		},
-		secondary_subjects=[
-			{
-				"subject_type": row.subject_type,
-				"subject_id": row.subject_id,
-				"role": row.role,
-			}
-			for row in (doc.secondary_subjects or [])
-		],
-	)
+	try:
+		storage_artifact = storage.finalize_temporary_object(
+			object_key=doc.tmp_object_key,
+			final_key=_build_final_object_key(doc),
+		)
+		created = _call_authoritative_create_and_classify_file(
+			file_kwargs=_build_file_kwargs(doc, storage_artifact),
+			classification=_build_classification(doc),
+			secondary_subjects=_get_secondary_subjects(doc),
+			context_override=_get_context_override(doc),
+		)
+	except Exception as exc:
+		_mark_session_failed(doc, exc)
+		raise
 
 	doc.file = created.name
 	doc.status = "completed"
 	doc.completed_on = now_datetime()
+	doc.error_log = None
 	doc.save(ignore_permissions=True)
 
-	return {
-		"drive_file_id": None,  # Fill when Drive File is introduced as canonical record.
-		"drive_file_version_id": None,
-		"file_id": doc.file,
-		"canonical_ref": None,
-		"status": doc.status,
-		"preview_status": "pending",
-	}
+	return _completed_response(doc)
