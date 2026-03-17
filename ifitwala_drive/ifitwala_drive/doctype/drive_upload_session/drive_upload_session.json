@@ -1,0 +1,350 @@
+{
+ "actions": [],
+ "allow_copy": 0,
+ "allow_events_in_timeline": 0,
+ "allow_guest_to_view": 0,
+ "allow_import": 0,
+ "allow_rename": 0,
+ "autoname": "hash",
+ "beta": 0,
+ "creation": "2026-03-16 00:00:00.000000",
+ "custom": 0,
+ "default_view": "List",
+ "doctype": "DocType",
+ "document_type": "Document",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "session_key",
+  "status",
+  "upload_source",
+  "created_by_user",
+  "request_ip",
+  "section_context",
+  "attached_doctype",
+  "attached_name",
+  "owner_doctype",
+  "owner_name",
+  "organization",
+  "school",
+  "folder",
+  "section_governance_intent",
+  "intended_primary_subject_type",
+  "intended_primary_subject_id",
+  "intended_data_class",
+  "intended_purpose",
+  "intended_retention_policy",
+  "intended_slot",
+  "secondary_subjects",
+  "section_file_intent",
+  "filename_original",
+  "mime_type_hint",
+  "is_private",
+  "expected_size_bytes",
+  "received_size_bytes",
+  "content_hash",
+  "section_storage",
+  "storage_backend",
+  "tmp_object_key",
+  "upload_token",
+  "expires_on",
+  "completed_on",
+  "aborted_on",
+  "drive_file",
+  "file",
+  "error_log"
+ ],
+ "fields": [
+  {
+   "fieldname": "session_key",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Session Key",
+   "read_only": 1,
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "created",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "created\nuploading\nuploaded\nfinalizing\ncompleted\naborted\nexpired\nfailed",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "default": "API",
+   "fieldname": "upload_source",
+   "fieldtype": "Select",
+   "label": "Upload Source",
+   "options": "Desk\nSPA\nAPI\nJob",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "created_by_user",
+   "fieldtype": "Link",
+   "label": "Created By User",
+   "options": "User",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "request_ip",
+   "fieldtype": "Data",
+   "label": "Request IP",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_context",
+   "fieldtype": "Section Break",
+   "label": "Context"
+  },
+  {
+   "fieldname": "attached_doctype",
+   "fieldtype": "Data",
+   "label": "Attached Doctype",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "attached_name",
+   "fieldtype": "Data",
+   "label": "Attached Name",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "description": "Authoritative business-document owner doctype. Usually the same as Attached Doctype, but stored explicitly so ownership stays clear.",
+   "fieldname": "owner_doctype",
+   "fieldtype": "Data",
+   "label": "Owner Doctype",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "description": "Authoritative business-document owner name. Never a human uploader.",
+   "fieldname": "owner_name",
+   "fieldtype": "Data",
+   "label": "Owner Name",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "organization",
+   "fieldtype": "Link",
+   "label": "Organization",
+   "options": "Organization",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "school",
+   "fieldtype": "Link",
+   "label": "School",
+   "options": "School",
+   "read_only": 1
+  },
+  {
+   "fieldname": "folder",
+   "fieldtype": "Link",
+   "label": "Folder",
+   "options": "Drive Folder",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_governance_intent",
+   "fieldtype": "Section Break",
+   "label": "Governance Intent"
+  },
+  {
+   "fieldname": "intended_primary_subject_type",
+   "fieldtype": "Data",
+   "label": "Intended Primary Subject Type",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "intended_primary_subject_id",
+   "fieldtype": "Data",
+   "label": "Intended Primary Subject ID",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "intended_data_class",
+   "fieldtype": "Data",
+   "label": "Intended Data Class",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "intended_purpose",
+   "fieldtype": "Data",
+   "label": "Intended Purpose",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "intended_retention_policy",
+   "fieldtype": "Data",
+   "label": "Intended Retention Policy",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "intended_slot",
+   "fieldtype": "Data",
+   "label": "Intended Slot",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "secondary_subjects",
+   "fieldtype": "Table",
+   "label": "Secondary Subjects",
+   "options": "File Classification Subject",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_file_intent",
+   "fieldtype": "Section Break",
+   "label": "File Intent"
+  },
+  {
+   "fieldname": "filename_original",
+   "fieldtype": "Data",
+   "label": "Original Filename",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "mime_type_hint",
+   "fieldtype": "Data",
+   "label": "MIME Type Hint",
+   "read_only": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "is_private",
+   "fieldtype": "Check",
+   "label": "Is Private",
+   "read_only": 1
+  },
+  {
+   "fieldname": "expected_size_bytes",
+   "fieldtype": "Int",
+   "label": "Expected Size (Bytes)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "received_size_bytes",
+   "fieldtype": "Int",
+   "label": "Received Size (Bytes)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "content_hash",
+   "fieldtype": "Data",
+   "label": "Content Hash",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_storage",
+   "fieldtype": "Section Break",
+   "label": "Storage"
+  },
+  {
+   "fieldname": "storage_backend",
+   "fieldtype": "Data",
+   "label": "Storage Backend",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tmp_object_key",
+   "fieldtype": "Data",
+   "label": "Temporary Object Key",
+   "read_only": 1
+  },
+  {
+   "fieldname": "upload_token",
+   "fieldtype": "Password",
+   "label": "Upload Token",
+   "read_only": 1
+  },
+  {
+   "fieldname": "expires_on",
+   "fieldtype": "Datetime",
+   "label": "Expires On",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "completed_on",
+   "fieldtype": "Datetime",
+   "label": "Completed On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "aborted_on",
+   "fieldtype": "Datetime",
+   "label": "Aborted On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "drive_file",
+   "fieldtype": "Link",
+   "label": "Drive File",
+   "options": "Drive File",
+   "read_only": 1
+  },
+  {
+   "fieldname": "file",
+   "fieldtype": "Link",
+   "label": "File",
+   "options": "File",
+   "read_only": 1
+  },
+  {
+   "fieldname": "error_log",
+   "fieldtype": "Small Text",
+   "label": "Error Log",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "hide_toolbar": 0,
+ "index_web_pages_for_search": 0,
+ "is_submittable": 0,
+ "issingle": 0,
+ "links": [],
+ "modified": "2026-03-16 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Ifitwala Drive",
+ "name": "Drive Upload Session",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "read_only": 0,
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1,
+ "track_seen": 0
+}

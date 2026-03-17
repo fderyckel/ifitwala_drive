@@ -1,0 +1,164 @@
+{
+ "actions": [],
+ "allow_copy": 0,
+ "allow_events_in_timeline": 0,
+ "allow_guest_to_view": 0,
+ "allow_import": 0,
+ "allow_rename": 0,
+ "autoname": "hash",
+ "beta": 0,
+ "creation": "2026-03-16 00:00:00.000000",
+ "custom": 0,
+ "default_view": "List",
+ "doctype": "DocType",
+ "document_type": "Document",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "drive_file",
+  "file",
+  "status",
+  "section_binding_target",
+  "binding_doctype",
+  "binding_name",
+  "binding_role",
+  "slot",
+  "is_primary",
+  "sort_order",
+  "section_context",
+  "organization",
+  "school",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "drive_file",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Drive File",
+   "options": "Drive File",
+   "reqd": 1
+  },
+  {
+   "fieldname": "file",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "File",
+   "options": "File",
+   "reqd": 1
+  },
+  {
+   "default": "active",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "active\ninactive\nsuperseded",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_binding_target",
+   "fieldtype": "Section Break",
+   "label": "Binding Target"
+  },
+  {
+   "fieldname": "binding_doctype",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Binding Doctype",
+   "reqd": 1
+  },
+  {
+   "fieldname": "binding_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Binding Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "binding_role",
+   "fieldtype": "Select",
+   "label": "Binding Role",
+   "options": "task_resource\nsubmission_artifact\nfeedback_attachment\napplicant_document\nportfolio_evidence\norganization_media\nemployee_image\nstudent_image\nlesson_resource\nlesson_activity_resource\ngeneral_reference",
+   "reqd": 1
+  },
+  {
+   "description": "Semantic slot under which this file is referenced in the binding context. This does not override the authoritative slot on the governed file/classification.",
+   "fieldname": "slot",
+   "fieldtype": "Data",
+   "label": "Slot",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "description": "Primary means preferred/default reference within this binding context only. It does not create co-ownership.",
+   "fieldname": "is_primary",
+   "fieldtype": "Check",
+   "label": "Is Primary"
+  },
+  {
+   "default": "0",
+   "fieldname": "sort_order",
+   "fieldtype": "Int",
+   "label": "Sort Order"
+  },
+  {
+   "fieldname": "section_context",
+   "fieldtype": "Section Break",
+   "label": "Context"
+  },
+  {
+   "fieldname": "organization",
+   "fieldtype": "Link",
+   "label": "Organization",
+   "options": "Organization",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "school",
+   "fieldtype": "Link",
+   "label": "School",
+   "options": "School",
+   "read_only": 1
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  }
+ ],
+ "grid_page_length": 50,
+ "hide_toolbar": 0,
+ "index_web_pages_for_search": 0,
+ "is_submittable": 0,
+ "issingle": 0,
+ "links": [],
+ "modified": "2026-03-16 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Ifitwala Drive",
+ "name": "Drive Binding",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "read_only": 0,
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1,
+ "track_seen": 0
+}

@@ -1,0 +1,215 @@
+{
+ "actions": [],
+ "allow_copy": 0,
+ "allow_events_in_timeline": 0,
+ "allow_guest_to_view": 0,
+ "allow_import": 0,
+ "allow_rename": 1,
+ "autoname": "field:title",
+ "beta": 0,
+ "creation": "2026-03-16 00:00:00.000000",
+ "custom": 0,
+ "default_view": "List",
+ "doctype": "DocType",
+ "document_type": "Document",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "title",
+  "slug",
+  "status",
+  "is_system_managed",
+  "section_hierarchy",
+  "parent_drive_folder",
+  "path_cache",
+  "depth",
+  "sort_order",
+  "section_context",
+  "owner_doctype",
+  "owner_name",
+  "organization",
+  "school",
+  "folder_kind",
+  "context_doctype",
+  "context_name",
+  "section_visibility",
+  "is_private",
+  "allow_descendant_reuse",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Title",
+   "reqd": 1
+  },
+  {
+   "fieldname": "slug",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Slug",
+   "read_only": 1,
+   "unique": 0
+  },
+  {
+   "default": "active",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "active\narchived\ndisabled",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "is_system_managed",
+   "fieldtype": "Check",
+   "label": "Is System Managed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_hierarchy",
+   "fieldtype": "Section Break",
+   "label": "Hierarchy"
+  },
+  {
+   "fieldname": "parent_drive_folder",
+   "fieldtype": "Link",
+   "label": "Parent Drive Folder",
+   "options": "Drive Folder"
+  },
+  {
+   "description": "Cached logical path for browse UX only. Never use this as governance truth.",
+   "fieldname": "path_cache",
+   "fieldtype": "Data",
+   "label": "Path Cache",
+   "read_only": 1
+  },
+  {
+   "fieldname": "depth",
+   "fieldtype": "Int",
+   "label": "Depth",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "sort_order",
+   "fieldtype": "Int",
+   "label": "Sort Order"
+  },
+  {
+   "fieldname": "section_context",
+   "fieldtype": "Section Break",
+   "label": "Context"
+  },
+  {
+   "description": "Authoritative business-document owner doctype for this folder context. Never a human uploader.",
+   "fieldname": "owner_doctype",
+   "fieldtype": "Data",
+   "label": "Owner Doctype",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "description": "Authoritative business-document owner name for this folder context.",
+   "fieldname": "owner_name",
+   "fieldtype": "Data",
+   "label": "Owner Name",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "organization",
+   "fieldtype": "Link",
+   "label": "Organization",
+   "options": "Organization",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "school",
+   "fieldtype": "Link",
+   "label": "School",
+   "options": "School",
+   "read_only": 1
+  },
+  {
+   "fieldname": "folder_kind",
+   "fieldtype": "Select",
+   "label": "Folder Kind",
+   "options": "teacher_private\ncourse_shared\norganization_media\nsystem_bound\nstudent_workspace\napplicant_documents\nstaff_documents\ngeneral_resource",
+   "reqd": 1
+  },
+  {
+   "fieldname": "context_doctype",
+   "fieldtype": "Data",
+   "label": "Context Doctype",
+   "read_only": 1
+  },
+  {
+   "fieldname": "context_name",
+   "fieldtype": "Data",
+   "label": "Context Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_visibility",
+   "fieldtype": "Section Break",
+   "label": "Visibility"
+  },
+  {
+   "default": "1",
+   "fieldname": "is_private",
+   "fieldtype": "Check",
+   "label": "Is Private",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Folder reuse/navigation visibility helper only. Does not create a parallel ACL system.",
+   "fieldname": "allow_descendant_reuse",
+   "fieldtype": "Check",
+   "label": "Allow Descendant Reuse"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  }
+ ],
+ "grid_page_length": 50,
+ "hide_toolbar": 0,
+ "index_web_pages_for_search": 0,
+ "is_submittable": 0,
+ "issingle": 0,
+ "links": [],
+ "modified": "2026-03-16 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Ifitwala Drive",
+ "name": "Drive Folder",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "read_only": 0,
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1,
+ "track_seen": 0
+}

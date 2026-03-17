@@ -1,0 +1,223 @@
+{
+ "actions": [],
+ "allow_copy": 0,
+ "allow_events_in_timeline": 0,
+ "allow_guest_to_view": 0,
+ "allow_import": 0,
+ "allow_rename": 0,
+ "autoname": "hash",
+ "beta": 0,
+ "creation": "2026-03-16 00:00:00.000000",
+ "custom": 0,
+ "default_view": "List",
+ "doctype": "DocType",
+ "document_type": "Document",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "job_type",
+  "status",
+  "queue_name",
+  "priority",
+  "section_targets",
+  "drive_file",
+  "file",
+  "owner_doctype",
+  "owner_name",
+  "organization",
+  "school",
+  "section_timing",
+  "requested_by",
+  "scheduled_on",
+  "started_on",
+  "finished_on",
+  "attempt_count",
+  "max_attempts",
+  "section_payload",
+  "payload_json",
+  "result_json",
+  "error_log"
+ ],
+ "fields": [
+  {
+   "fieldname": "job_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Job Type",
+   "options": "preview\nderivative\nscan\nindex\nreconcile\nerasure",
+   "reqd": 1
+  },
+  {
+   "default": "queued",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "queued\nrunning\ncompleted\nfailed\nblocked\ncancelled",
+   "reqd": 1
+  },
+  {
+   "default": "drive_default",
+   "fieldname": "queue_name",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Queue Name",
+   "options": "drive_short\ndrive_default\ndrive_heavy",
+   "reqd": 1
+  },
+  {
+   "default": "normal",
+   "fieldname": "priority",
+   "fieldtype": "Select",
+   "label": "Priority",
+   "options": "low\nnormal\nhigh",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_targets",
+   "fieldtype": "Section Break",
+   "label": "Targets"
+  },
+  {
+   "fieldname": "drive_file",
+   "fieldtype": "Link",
+   "label": "Drive File",
+   "options": "Drive File"
+  },
+  {
+   "fieldname": "file",
+   "fieldtype": "Link",
+   "label": "File",
+   "options": "File"
+  },
+  {
+   "description": "Authoritative business-document owner doctype tied to the governed file context.",
+   "fieldname": "owner_doctype",
+   "fieldtype": "Data",
+   "label": "Owner Doctype",
+   "read_only": 1
+  },
+  {
+   "description": "Authoritative business-document owner name tied to the governed file context.",
+   "fieldname": "owner_name",
+   "fieldtype": "Data",
+   "label": "Owner Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "organization",
+   "fieldtype": "Link",
+   "label": "Organization",
+   "options": "Organization",
+   "read_only": 1
+  },
+  {
+   "fieldname": "school",
+   "fieldtype": "Link",
+   "label": "School",
+   "options": "School",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_timing",
+   "fieldtype": "Section Break",
+   "label": "Timing"
+  },
+  {
+   "fieldname": "requested_by",
+   "fieldtype": "Link",
+   "label": "Requested By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "scheduled_on",
+   "fieldtype": "Datetime",
+   "label": "Scheduled On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "started_on",
+   "fieldtype": "Datetime",
+   "label": "Started On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "finished_on",
+   "fieldtype": "Datetime",
+   "label": "Finished On",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "attempt_count",
+   "fieldtype": "Int",
+   "label": "Attempt Count",
+   "read_only": 1
+  },
+  {
+   "default": "3",
+   "fieldname": "max_attempts",
+   "fieldtype": "Int",
+   "label": "Max Attempts",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_payload",
+   "fieldtype": "Section Break",
+   "label": "Payload"
+  },
+  {
+   "fieldname": "payload_json",
+   "fieldtype": "Code",
+   "label": "Payload JSON",
+   "options": "JSON"
+  },
+  {
+   "fieldname": "result_json",
+   "fieldtype": "Code",
+   "label": "Result JSON",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "fieldname": "error_log",
+   "fieldtype": "Small Text",
+   "label": "Error Log",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "hide_toolbar": 0,
+ "index_web_pages_for_search": 0,
+ "is_submittable": 0,
+ "issingle": 0,
+ "links": [],
+ "modified": "2026-03-16 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Ifitwala Drive",
+ "name": "Drive Processing Job",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "read_only": 0,
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1,
+ "track_seen": 0
+}
