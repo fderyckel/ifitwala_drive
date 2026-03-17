@@ -6,6 +6,27 @@ import frappe
 from frappe import _
 
 
+_HEALTH_VACCINATION_SLOT_PREFIX = "health_vaccination_proof_"
+_ADMISSIONS_HEALTH_DATA_CLASS = "safeguarding"
+_ADMISSIONS_HEALTH_PURPOSE = "medical_record"
+_ADMISSIONS_HEALTH_RETENTION_POLICY = "until_school_exit_plus_6m"
+
+
+def _build_health_vaccination_slot(
+	*,
+	vaccine_name: str | None,
+	date_value: str | None,
+	row_index: int | None = None,
+) -> str:
+	base = "_".join(
+		part for part in [(vaccine_name or "").strip(), (date_value or "").strip()] if part
+	).strip()
+	if not base:
+		index = int(row_index or 0)
+		base = f"row_{index + 1}"
+	return f"{_HEALTH_VACCINATION_SLOT_PREFIX}{frappe.scrub(base)[:80]}"
+
+
 def _get_applicant_document_context(payload: dict[str, Any]) -> dict[str, Any]:
 	from ifitwala_ed.admission import admissions_portal as admission_api
 	from ifitwala_ed.admission.admission_utils import get_applicant_document_slot_spec
@@ -78,6 +99,67 @@ def _get_applicant_document_context(payload: dict[str, Any]) -> dict[str, Any]:
 	}
 
 
+def _get_applicant_health_vaccination_context(payload: dict[str, Any]) -> dict[str, Any]:
+	student_applicant = payload.get("student_applicant")
+	applicant_health_profile = payload.get("applicant_health_profile")
+
+	if not student_applicant:
+		frappe.throw(_("Missing required field: student_applicant"))
+	if not applicant_health_profile:
+		frappe.throw(_("Missing required field: applicant_health_profile"))
+
+	health_row = (
+		frappe.db.get_value(
+			"Applicant Health Profile",
+			applicant_health_profile,
+			["name", "student_applicant"],
+			as_dict=True,
+		)
+		or {}
+	)
+	if not health_row.get("name"):
+		frappe.throw(
+			_("Applicant Health Profile does not exist: {0}").format(applicant_health_profile)
+		)
+	if health_row.get("student_applicant") != student_applicant:
+		frappe.throw(
+			_("Applicant Health Profile '{0}' does not belong to Student Applicant '{1}'.").format(
+				applicant_health_profile, student_applicant
+			)
+		)
+
+	applicant_row = (
+		frappe.db.get_value(
+			"Student Applicant",
+			student_applicant,
+			["organization", "school"],
+			as_dict=True,
+		)
+		or {}
+	)
+	if not applicant_row.get("organization") or not applicant_row.get("school"):
+		frappe.throw(_("Student Applicant must have organization and school."))
+
+	return {
+		"owner_doctype": "Student Applicant",
+		"owner_name": student_applicant,
+		"attached_doctype": "Applicant Health Profile",
+		"attached_name": applicant_health_profile,
+		"organization": applicant_row.get("organization"),
+		"school": applicant_row.get("school"),
+		"primary_subject_type": "Student Applicant",
+		"primary_subject_id": student_applicant,
+		"data_class": _ADMISSIONS_HEALTH_DATA_CLASS,
+		"purpose": _ADMISSIONS_HEALTH_PURPOSE,
+		"retention_policy": _ADMISSIONS_HEALTH_RETENTION_POLICY,
+		"slot": _build_health_vaccination_slot(
+			vaccine_name=payload.get("vaccine_name"),
+			date_value=payload.get("date"),
+			row_index=payload.get("row_index"),
+		),
+	}
+
+
 def upload_applicant_document_service(payload: dict[str, Any]) -> dict[str, Any]:
 	from ifitwala_drive.services.uploads.sessions import create_upload_session_service
 
@@ -113,6 +195,34 @@ def upload_applicant_document_service(payload: dict[str, Any]) -> dict[str, Any]
 			"applicant_document_item": context["applicant_document_item"],
 			"item_key": context["item_key"],
 			"item_label": context["item_label"],
+		}
+	)
+	return response
+
+
+def upload_applicant_health_vaccination_proof_service(payload: dict[str, Any]) -> dict[str, Any]:
+	from ifitwala_drive.services.uploads.sessions import create_upload_session_service
+
+	filename_original = payload.get("filename_original")
+	if not filename_original:
+		frappe.throw(_("Missing required field: filename_original"))
+
+	context = _get_applicant_health_vaccination_context(payload)
+	response = create_upload_session_service(
+		{
+			**context,
+			"filename_original": filename_original,
+			"mime_type_hint": payload.get("mime_type_hint"),
+			"expected_size_bytes": payload.get("expected_size_bytes"),
+			"is_private": 1,
+			"upload_source": payload.get("upload_source") or "SPA",
+		}
+	)
+	response.update(
+		{
+			"student_applicant": context["owner_name"],
+			"applicant_health_profile": context["attached_name"],
+			"slot": context["slot"],
 		}
 	)
 	return response
@@ -155,12 +265,88 @@ def validate_applicant_document_finalize_context(upload_session_doc) -> dict[str
 	return context
 
 
+def get_admissions_attached_field_override(upload_session_doc) -> str | None:
+	if (
+		getattr(upload_session_doc, "owner_doctype", None) == "Student Applicant"
+		and getattr(upload_session_doc, "attached_doctype", None) == "Applicant Health Profile"
+		and (getattr(upload_session_doc, "intended_slot", None) or "").startswith(
+			_HEALTH_VACCINATION_SLOT_PREFIX
+		)
+	):
+		return "vaccinations"
+	return None
+
+
+def validate_applicant_health_finalize_context(upload_session_doc) -> dict[str, Any] | None:
+	if (
+		getattr(upload_session_doc, "owner_doctype", None) != "Student Applicant"
+		or getattr(upload_session_doc, "attached_doctype", None) != "Applicant Health Profile"
+	):
+		return None
+
+	if not (getattr(upload_session_doc, "intended_slot", None) or "").startswith(
+		_HEALTH_VACCINATION_SLOT_PREFIX
+	):
+		frappe.throw(
+			_("Upload session no longer matches the authoritative admissions health slot contract.")
+		)
+
+	context = _get_applicant_health_vaccination_context(
+		{
+			"student_applicant": upload_session_doc.owner_name,
+			"applicant_health_profile": upload_session_doc.attached_name,
+			"vaccine_name": None,
+			"date": None,
+			"row_index": 0,
+		}
+	)
+	field_map = {
+		"owner_doctype": "owner_doctype",
+		"owner_name": "owner_name",
+		"attached_doctype": "attached_doctype",
+		"attached_name": "attached_name",
+		"organization": "organization",
+		"school": "school",
+		"intended_primary_subject_type": "primary_subject_type",
+		"intended_primary_subject_id": "primary_subject_id",
+		"intended_data_class": "data_class",
+		"intended_purpose": "purpose",
+		"intended_retention_policy": "retention_policy",
+	}
+	for session_field, context_field in field_map.items():
+		if getattr(upload_session_doc, session_field, None) != context.get(context_field):
+			frappe.throw(
+				_(
+					"Upload session no longer matches the authoritative admissions health context for field '{0}'."
+				).format(session_field)
+			)
+
+	return context
+
+
 def run_admissions_post_finalize(upload_session_doc, created_file) -> dict[str, Any]:
 	if (
 		getattr(upload_session_doc, "owner_doctype", None) != "Student Applicant"
-		or getattr(upload_session_doc, "attached_doctype", None) != "Applicant Document Item"
+		or getattr(upload_session_doc, "attached_doctype", None)
+		not in {"Applicant Document Item", "Applicant Health Profile"}
 	):
 		return {}
+
+	classification_name = frappe.db.get_value(
+		"File Classification", {"file": created_file.name}, "name"
+	)
+	file_url = getattr(created_file, "file_url", None) or frappe.db.get_value(
+		"File", created_file.name, "file_url"
+	)
+
+	if getattr(upload_session_doc, "attached_doctype", None) == "Applicant Health Profile":
+		return {
+			"classification": classification_name,
+			"file_url": file_url,
+			"student_applicant": upload_session_doc.owner_name,
+			"applicant_health_profile": upload_session_doc.attached_name,
+			"slot": getattr(upload_session_doc, "intended_slot", None),
+		}
 
 	from ifitwala_ed.admission import admissions_portal as admission_api
 	from ifitwala_ed.admission.applicant_review_workflow import materialize_document_item_review_assignments
@@ -188,9 +374,6 @@ def run_admissions_post_finalize(upload_session_doc, created_file) -> dict[str, 
 	document_type = frappe.db.get_value("Applicant Document", applicant_document, "document_type")
 	document_type_code = (
 		frappe.db.get_value("Applicant Document Type", document_type, "code") or document_type
-	)
-	file_url = getattr(created_file, "file_url", None) or frappe.db.get_value(
-		"File", created_file.name, "file_url"
 	)
 
 	frappe.db.set_value(
@@ -224,7 +407,7 @@ def run_admissions_post_finalize(upload_session_doc, created_file) -> dict[str, 
 
 	return {
 		"file_url": file_url,
-		"classification": frappe.db.get_value("File Classification", {"file": created_file.name}, "name"),
+		"classification": classification_name,
 		"applicant_document": applicant_document,
 		"applicant_document_item": upload_session_doc.attached_name,
 		"item_key": item_row.get("item_key"),

@@ -12,7 +12,9 @@ from frappe import _
 from frappe.utils import get_datetime, now_datetime
 
 from ifitwala_drive.services.integration.ifitwala_ed_admissions import (
+	get_admissions_attached_field_override,
 	run_admissions_post_finalize,
+	validate_applicant_health_finalize_context,
 	validate_applicant_document_finalize_context,
 )
 from ifitwala_drive.services.integration.ifitwala_ed_media import (
@@ -85,7 +87,7 @@ def _build_final_object_key(doc) -> str:
 
 def _build_file_kwargs(doc, storage_artifact: dict[str, Any]) -> dict[str, Any]:
 	file_url = storage_artifact.get("file_url") or storage_artifact.get("object_key")
-	attached_field = get_attached_field_override(doc)
+	attached_field = get_admissions_attached_field_override(doc) or get_attached_field_override(doc)
 
 	file_kwargs = {
 		"attached_to_doctype": doc.attached_doctype,
@@ -185,6 +187,7 @@ def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 	validate_task_submission_finalize_context(doc)
 	validate_media_finalize_context(doc)
 	validate_applicant_document_finalize_context(doc)
+	validate_applicant_health_finalize_context(doc)
 
 	storage = get_storage_backend(getattr(doc, "storage_backend", None))
 	if not doc.tmp_object_key or not storage.temporary_object_exists(object_key=doc.tmp_object_key):

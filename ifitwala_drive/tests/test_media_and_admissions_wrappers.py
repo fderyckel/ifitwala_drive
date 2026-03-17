@@ -267,6 +267,72 @@ def test_upload_applicant_document_builds_item_scoped_session():
 	assert recorder["payload"]["slot"] == "identity_passport_passport_copy"
 
 
+def test_upload_applicant_health_vaccination_proof_builds_profile_scoped_session():
+	_purge_modules(
+		"frappe",
+		"ifitwala_ed",
+		"ifitwala_drive.services.integration.ifitwala_ed_admissions",
+		"ifitwala_drive.services.uploads.sessions",
+	)
+	_install_fake_frappe(
+		value_map={
+			(
+				"Applicant Health Profile",
+				"AHP-0001",
+				("name", "student_applicant"),
+				True,
+			): {
+				"name": "AHP-0001",
+				"student_applicant": "APP-0001",
+			},
+			(
+				"Student Applicant",
+				"APP-0001",
+				("organization", "school"),
+				True,
+			): {"organization": "ORG-0001", "school": "SCH-0001"},
+		},
+	)
+	recorder = {}
+	_install_fake_sessions(recorder)
+
+	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_admissions")
+	response = module.upload_applicant_health_vaccination_proof_service(
+		{
+			"student_applicant": "APP-0001",
+			"applicant_health_profile": "AHP-0001",
+			"vaccine_name": "MMR",
+			"date": "2020-03-04",
+			"row_index": 0,
+			"filename_original": "mmr-proof.png",
+		}
+	)
+
+	assert response["applicant_health_profile"] == "AHP-0001"
+	assert recorder["payload"]["owner_doctype"] == "Student Applicant"
+	assert recorder["payload"]["owner_name"] == "APP-0001"
+	assert recorder["payload"]["attached_doctype"] == "Applicant Health Profile"
+	assert recorder["payload"]["attached_name"] == "AHP-0001"
+	assert recorder["payload"]["slot"] == "health_vaccination_proof_mmr_2020-03-04"
+	assert recorder["payload"]["is_private"] == 1
+
+
+def test_get_admissions_attached_field_override_returns_vaccinations_for_health_uploads():
+	_purge_modules("frappe", "ifitwala_drive.services.integration.ifitwala_ed_admissions")
+	_install_fake_frappe()
+	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_admissions")
+
+	fieldname = module.get_admissions_attached_field_override(
+		types.SimpleNamespace(
+			owner_doctype="Student Applicant",
+			attached_doctype="Applicant Health Profile",
+			intended_slot="health_vaccination_proof_mmr_2020-03-04",
+		)
+	)
+
+	assert fieldname == "vaccinations"
+
+
 def test_run_media_post_finalize_updates_student_image():
 	_purge_modules("frappe", "ifitwala_drive.services.integration.ifitwala_ed_media")
 	student = FakeDoc({"name": "STU-0001", "anchor_school": "SCH-0001", "student_image": None})
@@ -345,3 +411,32 @@ def test_run_admissions_post_finalize_resets_review_state():
 	assert response["classification"] == "FC-0001"
 	assert response["applicant_document_item"] == "ADI-0001"
 	assert db_set_calls[0][0] == "Applicant Document Item"
+
+
+def test_run_admissions_post_finalize_returns_health_upload_metadata():
+	_purge_modules("frappe", "ifitwala_drive.services.integration.ifitwala_ed_admissions")
+	_install_fake_frappe(
+		value_map={
+			("File Classification", (("file", "FILE-0001"),), "name"): "FC-0002",
+		}
+	)
+	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_admissions")
+
+	class CreatedFile:
+		name = "FILE-0001"
+		file_url = "/private/files/mmr-proof.png"
+
+	response = module.run_admissions_post_finalize(
+		types.SimpleNamespace(
+			owner_doctype="Student Applicant",
+			owner_name="APP-0001",
+			attached_doctype="Applicant Health Profile",
+			attached_name="AHP-0001",
+			intended_slot="health_vaccination_proof_mmr_2020-03-04",
+		),
+		CreatedFile(),
+	)
+
+	assert response["classification"] == "FC-0002"
+	assert response["file_url"] == "/private/files/mmr-proof.png"
+	assert response["applicant_health_profile"] == "AHP-0001"
