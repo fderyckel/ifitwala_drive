@@ -109,6 +109,76 @@ This is the current working inventory for the first four flows.
 
 ---
 
+## Locked Execution Invariants
+
+These rules are now locked for implementation:
+
+1. **Drive-only new writes** apply to the first four governed flows.
+2. **Canonical source of truth in Ed** must be a Drive identifier/reference or an explicitly documented governed binding, never a raw path.
+3. **Finalize is server-authoritative**. The client may upload bytes, but the client must not define governance truth.
+4. **Legacy rows remain compatibility-readable** during transition, but they are not the target write model.
+5. **Missing slot, invalid owner, invalid scope, invalid session state, or invalid binding must fail closed.**
+6. **No consumer surface may construct storage URLs manually.**
+7. **Every finalize/bind path must emit structured logs.**
+
+---
+
+## Pre-Implementation Contract Locks
+
+These items must be locked before coding each flow, otherwise implementation drift is likely.
+
+### 1. Canonical persistence contract in Ed
+
+For each of the first four flows, implementation must explicitly define:
+
+* which Ed field or binding stores the canonical Drive identifier/reference
+* which legacy fields remain derived-only or transitional-only
+* whether any existing `file_url` field remains a compatibility read field only
+
+Locked rule:
+
+* raw `file_url` must never become the source of truth in Ed for governed integrations
+
+This mapping must be written before each flow is wired.
+
+### 2. Legacy coexistence policy
+
+The migration policy for the first four flows is:
+
+* **compatibility reads for legacy rows**
+* **Drive-only new writes**
+* **selective backfill later**
+
+Do not attempt a full legacy migration before the first four flows are proven end to end.
+
+### 3. Finalization authority
+
+Preferred model:
+
+1. client uploads bytes to the Drive session target
+2. a server-side Ed action requests finalization from Drive
+3. Drive re-verifies session state, classification, owner, slot, and integration context server-side
+
+Allowed fallback during transition:
+
+* a direct Drive finalize API may exist, but it must still be treated as server-authoritative and must not trust frontend-supplied governance truth
+
+### 4. Observability requirement
+
+Each finalize/bind flow must emit structured events for at least:
+
+* upload session created
+* upload session finalized
+* governed creation succeeded
+* governed creation failed
+* binding created
+* binding updated
+* owner mismatch rejected
+* slot mismatch rejected
+* invalid scope rejected
+
+---
+
 ## Canonical Plan
 
 ## Phase 1.1 — Lock the Ed -> Drive integration contract
@@ -137,6 +207,7 @@ Make Ifitwala_Ed stop thinking in raw `File`, generic attachment widgets, or gue
 * every one of the first four flows has an identified Ed entry point
 * every one has a target Drive wrapper or an explicitly named refactor blocker
 * no new governed path is allowed to bypass the Drive boundary
+* each flow has an explicit canonical persistence mapping before implementation starts
 
 ---
 
@@ -164,7 +235,7 @@ The Drive side should remain centered on:
 
 1. Ed asks Drive to create a task-submission upload session.
 2. Client uploads blob content to the temporary storage target returned by Drive.
-3. Ed or client finalizes through Drive.
+3. A server-side Ed action requests finalization from Drive.
 4. Drive calls the authoritative governed creation path as the compatibility bridge.
 5. Ed stores returned Drive identifiers and canonical refs, not guessed storage paths.
 6. Drive creates or confirms a `Drive Binding` with a submission-artifact role.
@@ -189,6 +260,20 @@ Move task resource uploads off generic attachment behavior and into the Drive bo
 ### Current reality
 
 The live Ed schema still exposes `Task.attachments` as a generic `Attached Document` table. This means task resources should be treated as the first refactor-heavy flow, not a wrapper-only flow.
+
+### Required schema decision before coding
+
+Do not begin this phase until the canonical Task-side representation of a resource is explicitly locked.
+
+Allowed options to evaluate:
+
+* a new Task resource child table with Drive refs/metadata
+* a dedicated Task resource DocType
+* a narrowly defined compatibility wrapper around the existing attachment shape
+
+Locked constraint:
+
+* do not let `Attached Document` remain the long-term governance truth by accident
 
 ### Implementation approach
 
@@ -215,6 +300,7 @@ not full browsing/search UX.
 * Ed stores canonical Drive references
 * slots are explicit and stable
 * this flow is ready for later reuse-first UX
+* the Task-side canonical persistence model is explicit before rollout
 
 ---
 
@@ -244,6 +330,15 @@ Cut this flow over in this order:
 * they are not owned by `Guardian`
 * slot must be derived deterministically from the applicant document contract
 
+### Additional invariants to lock before implementation
+
+Implementation must explicitly define:
+
+* whether one applicant may keep multiple files within the same admissions slot
+* whether replacement preserves version history
+* whether review/approval points to a slot, a bound file, or a bound file version
+* what happens when a reviewed required document is replaced
+
 ### Implementation approach
 
 * keep Ed responsible for applicant workflow decisions
@@ -256,6 +351,7 @@ Cut this flow over in this order:
 * missing or unmapped slot fails closed
 * applicant review workflow still works after upload finalization
 * no direct legacy Desk attachment path becomes canonical
+* replacement/review behavior is explicitly defined, not inferred
 
 ---
 
@@ -302,6 +398,21 @@ Reuse/selection surfaces already present in Ed:
 * move blob-session execution into Drive
 * keep reuse-first picker semantics
 * ensure rendering continues to use canonical refs / canonical returned URLs only
+
+### Selection and read contract
+
+This phase must define the read side, not only uploads.
+
+For organization media consumers, implementation must explicitly define:
+
+* how media is queried
+* which scope filters apply
+* whether the consumer stores a Drive ref, governed media binding, canonical URL, or another documented governed reference
+* whether rendering reads through a resolver/helper service
+
+Locked rule:
+
+* upload governance alone is not sufficient; consumer read behavior must also be canonical and path-safe
 
 ### Additional requirement for program and website imagery
 
@@ -384,12 +495,15 @@ Do not make folders or browse state the governance truth.
 Recommended execution order:
 
 1. lock the Ed -> Drive mapping contract for the first four flows
-2. fully integrate task submission upload
-3. refactor and integrate task resources
-4. integrate applicant documents
-5. integrate organization media consumers and uploaders
-6. run a stabilization pass
-7. only then build broader Drive browsing/reuse UX
+2. lock canonical persistence fields/bindings in Ed for each flow before coding starts
+3. fully integrate task submission upload
+4. lock the Task resource target schema
+5. refactor and integrate task resources
+6. integrate applicant documents
+7. integrate organization media upload/manage surfaces
+8. integrate organization media consumer surfaces
+9. run a stabilization pass
+10. only then build broader Drive browsing/reuse UX
 
 This preserves the locked first-four target list while still using **task submission** as the safest first execution slice.
 
