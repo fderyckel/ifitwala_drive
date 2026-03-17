@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 import frappe
 from frappe import _
@@ -28,7 +28,7 @@ def _get_organization_from_school(school: str | None) -> str:
 	return organization
 
 
-def get_task_submission_context_override(owner_name: str | None) -> Dict[str, Any] | None:
+def get_task_submission_context_override(owner_name: str | None) -> dict[str, Any] | None:
 	if not owner_name or not frappe.db.exists("Task Submission", owner_name):
 		return None
 
@@ -51,7 +51,7 @@ def get_task_submission_context_override(owner_name: str | None) -> Dict[str, An
 	)
 
 
-def upload_task_submission_artifact_service(payload: Dict[str, Any]) -> Dict[str, Any]:
+def upload_task_submission_artifact_service(payload: dict[str, Any]) -> dict[str, Any]:
 	task_submission = payload.get("task_submission")
 	student = payload.get("student")
 	filename_original = payload.get("filename_original")

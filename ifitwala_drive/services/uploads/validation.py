@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 import frappe
 from frappe import _
-
 
 REQUIRED_CREATE_SESSION_FIELDS: tuple[str, ...] = (
 	"owner_doctype",
@@ -23,9 +23,7 @@ REQUIRED_CREATE_SESSION_FIELDS: tuple[str, ...] = (
 	"filename_original",
 )
 
-REQUIRED_FINALIZE_FIELDS: tuple[str, ...] = (
-	"upload_session_id",
-)
+REQUIRED_FINALIZE_FIELDS: tuple[str, ...] = ("upload_session_id",)
 
 
 _OPTIONAL_SCHOOL_SUBJECT_TYPES = {"Employee", "Organization"}
@@ -41,7 +39,7 @@ def _has_value(value: Any) -> bool:
 	return True
 
 
-def require_fields(payload: Dict[str, Any], fields: Iterable[str]) -> None:
+def require_fields(payload: dict[str, Any], fields: Iterable[str]) -> None:
 	for fieldname in fields:
 		if not _has_value(payload.get(fieldname)):
 			frappe.throw(_("Missing required field: {0}").format(fieldname))
@@ -58,7 +56,7 @@ def _is_school_required(primary_subject_type: str | None) -> bool:
 	return is_school_required_for_subject_type(primary_subject_type)
 
 
-def _parse_optional_non_negative_int(payload: Dict[str, Any], fieldname: str, label: str) -> None:
+def _parse_optional_non_negative_int(payload: dict[str, Any], fieldname: str, label: str) -> None:
 	value = payload.get(fieldname)
 	if value in (None, ""):
 		return
@@ -90,7 +88,7 @@ def _validate_secondary_subjects(secondary_subjects: Any) -> None:
 			frappe.throw(_("Secondary subject rows must include subject_id."))
 
 
-def validate_create_session_payload(payload: Dict[str, Any]) -> None:
+def validate_create_session_payload(payload: dict[str, Any]) -> None:
 	require_fields(payload, REQUIRED_CREATE_SESSION_FIELDS)
 
 	if payload.get("owner_doctype") == "User":
@@ -130,6 +128,6 @@ def validate_create_session_payload(payload: Dict[str, Any]) -> None:
 		)
 
 
-def validate_finalize_session_payload(payload: Dict[str, Any]) -> None:
+def validate_finalize_session_payload(payload: dict[str, Any]) -> None:
 	require_fields(payload, REQUIRED_FINALIZE_FIELDS)
 	_parse_optional_non_negative_int(payload, "received_size_bytes", _("Received Size (Bytes)"))

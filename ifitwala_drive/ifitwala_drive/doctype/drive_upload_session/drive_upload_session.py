@@ -5,10 +5,9 @@ from __future__ import annotations
 import secrets
 
 import frappe
+from frappe import _
 from frappe.model.document import Document
 from frappe.utils import add_to_date, now_datetime
-from frappe import _
-
 
 _ALLOWED_STATUSES = {
 	"created",
@@ -122,7 +121,11 @@ class DriveUploadSession(Document):
 
 		if self.owner_name == frappe.session.user:
 			# Defensive check. A user string matching owner_name is almost always a modeling bug.
-			frappe.throw(_("Owner Name appears to be the current user. Owner must be a business document, not a human uploader."))
+			frappe.throw(
+				_(
+					"Owner Name appears to be the current user. Owner must be a business document, not a human uploader."
+				)
+			)
 
 	def _validate_school_requirement(self) -> None:
 		if not self._is_school_required():

@@ -6,7 +6,6 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
-
 _ALLOWED_STATUSES = {"active", "inactive", "superseded"}
 _ALLOWED_BINDING_ROLES = {
 	"task_resource",
@@ -94,9 +93,7 @@ class DriveBinding(Document):
 	def _validate_binding_target_exists(self) -> None:
 		if not frappe.db.exists(self.binding_doctype, self.binding_name):
 			frappe.throw(
-				_("Binding target does not exist: {0} {1}").format(
-					self.binding_doctype, self.binding_name
-				)
+				_("Binding target does not exist: {0} {1}").format(self.binding_doctype, self.binding_name)
 			)
 
 	def _validate_primary_uniqueness(self) -> None:

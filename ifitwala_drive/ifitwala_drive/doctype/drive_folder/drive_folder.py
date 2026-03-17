@@ -8,7 +8,6 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
-
 _ALLOWED_STATUSES = {"active", "archived", "disabled"}
 _ALLOWED_FOLDER_KINDS = {
 	"teacher_private",
@@ -108,7 +107,9 @@ class DriveFolder(Document):
 			frappe.throw(_("Owner Doctype cannot be User. Folder ownership must be a business document."))
 
 		if self.owner_name == frappe.session.user:
-			frappe.throw(_("Owner Name appears to be the current user. Use the owning business document instead."))
+			frappe.throw(
+				_("Owner Name appears to be the current user. Use the owning business document instead.")
+			)
 
 	def _validate_links(self) -> None:
 		link_checks = (

@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Protocol
-
+from typing import Any, Protocol
 
 DEFAULT_STORAGE_BACKEND = "gcs"
 
@@ -11,17 +10,15 @@ DEFAULT_STORAGE_BACKEND = "gcs"
 class StorageBackend(Protocol):
 	backend_name: str
 
-	def create_temporary_upload_target(self, *, session_key: str, filename: str, mime_type: str | None = None) -> Dict[str, Any]:
-		...
+	def create_temporary_upload_target(
+		self, *, session_key: str, filename: str, mime_type: str | None = None
+	) -> dict[str, Any]: ...
 
-	def temporary_object_exists(self, *, object_key: str) -> bool:
-		...
+	def temporary_object_exists(self, *, object_key: str) -> bool: ...
 
-	def finalize_temporary_object(self, *, object_key: str, final_key: str) -> Dict[str, Any]:
-		...
+	def finalize_temporary_object(self, *, object_key: str, final_key: str) -> dict[str, Any]: ...
 
-	def abort_temporary_object(self, *, object_key: str) -> None:
-		...
+	def abort_temporary_object(self, *, object_key: str) -> None: ...
 
 
 def get_storage_backend(backend_name: str | None = None) -> StorageBackend:

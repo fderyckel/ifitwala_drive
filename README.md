@@ -28,6 +28,22 @@ Pre-commit is configured to use the following tools for checking and formatting 
 - prettier
 - pyupgrade
 
+### Local Checks
+
+Run the minimum local gate before pushing:
+
+```bash
+./scripts/run_local_checks.sh
+```
+
+This runs:
+
+- `ruff check`
+- `ruff format --check`
+- the local pytest suite for the current Phase 1 upload/session tests
+
+GitHub Actions runs the same script for pull requests targeting `main` and for pushes to `main`.
+
 ### License
 
 mit

@@ -41,7 +41,7 @@ def _install_fake_frappe(*, exists_map: dict[tuple[str, object], object] | None 
 	frappe.session = types.SimpleNamespace(user="student@example.com")
 	frappe.local = types.SimpleNamespace(request_ip="127.0.0.1")
 	frappe.generate_hash = lambda length=24: "x" * length
-	frappe.whitelist = lambda *args, **kwargs: (lambda fn: fn)
+	frappe.whitelist = lambda *args, **kwargs: lambda fn: fn
 	frappe.get_doc = lambda *args, **kwargs: None
 	frappe.get_cached_doc = lambda *args, **kwargs: None
 	frappe.log_error = lambda *args, **kwargs: None

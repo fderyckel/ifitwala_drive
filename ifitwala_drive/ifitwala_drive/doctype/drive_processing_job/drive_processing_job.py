@@ -9,7 +9,6 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import now_datetime
 
-
 _ALLOWED_JOB_TYPES = {
 	"preview",
 	"derivative",

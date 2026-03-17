@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any
 
 import frappe
 from frappe import _
@@ -18,10 +18,10 @@ from ifitwala_drive.services.uploads.validation import validate_finalize_session
 
 def _call_authoritative_create_and_classify_file(
 	*,
-	file_kwargs: Dict[str, Any],
-	classification: Dict[str, Any],
-	secondary_subjects: list[Dict[str, Any]] | None = None,
-	context_override: Dict[str, Any] | None = None,
+	file_kwargs: dict[str, Any],
+	classification: dict[str, Any],
+	secondary_subjects: list[dict[str, Any]] | None = None,
+	context_override: dict[str, Any] | None = None,
 ):
 	try:
 		from ifitwala_ed.utilities.file_dispatcher import create_and_classify_file
@@ -40,7 +40,7 @@ def _call_authoritative_create_and_classify_file(
 	)
 
 
-def _get_secondary_subjects(doc) -> list[Dict[str, Any]]:
+def _get_secondary_subjects(doc) -> list[dict[str, Any]]:
 	return [
 		{
 			"subject_type": row.subject_type,
@@ -56,7 +56,7 @@ def _build_final_object_key(doc) -> str:
 	return f"files/{doc.name}/{filename}"
 
 
-def _build_file_kwargs(doc, storage_artifact: Dict[str, Any]) -> Dict[str, Any]:
+def _build_file_kwargs(doc, storage_artifact: dict[str, Any]) -> dict[str, Any]:
 	file_url = storage_artifact.get("file_url") or storage_artifact.get("object_key")
 
 	return {
@@ -68,7 +68,7 @@ def _build_file_kwargs(doc, storage_artifact: Dict[str, Any]) -> Dict[str, Any]:
 	}
 
 
-def _build_classification(doc) -> Dict[str, Any]:
+def _build_classification(doc) -> dict[str, Any]:
 	return {
 		"primary_subject_type": doc.intended_primary_subject_type,
 		"primary_subject_id": doc.intended_primary_subject_id,
@@ -82,7 +82,7 @@ def _build_classification(doc) -> Dict[str, Any]:
 	}
 
 
-def _get_context_override(doc) -> Dict[str, Any] | None:
+def _get_context_override(doc) -> dict[str, Any] | None:
 	if doc.owner_doctype == "Task Submission":
 		return get_task_submission_context_override(doc.owner_name)
 
@@ -105,7 +105,7 @@ def _mark_session_failed(doc, exc: Exception) -> None:
 	doc.save(ignore_permissions=True)
 
 
-def _completed_response(doc) -> Dict[str, Any]:
+def _completed_response(doc) -> dict[str, Any]:
 	return {
 		"drive_file_id": getattr(doc, "drive_file", None),
 		"drive_file_version_id": None,
@@ -116,18 +116,24 @@ def _completed_response(doc) -> Dict[str, Any]:
 	}
 
 
-def finalize_upload_session_service(payload: Dict[str, Any]) -> Dict[str, Any]:
+def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 	validate_finalize_session_payload(payload)
 
 	doc = frappe.get_doc("Drive Upload Session", payload["upload_session_id"])
 
 	expires_on = _coerce_datetime(getattr(doc, "expires_on", None))
-	if doc.status not in {"completed", "aborted", "expired", "failed"} and expires_on and expires_on < now_datetime():
+	if (
+		doc.status not in {"completed", "aborted", "expired", "failed"}
+		and expires_on
+		and expires_on < now_datetime()
+	):
 		doc.status = "expired"
 		doc.save(ignore_permissions=True)
 
 	if doc.status in {"aborted", "expired", "failed"}:
-		frappe.throw(_("This upload session cannot be finalized from its current status: {0}").format(doc.status))
+		frappe.throw(
+			_("This upload session cannot be finalized from its current status: {0}").format(doc.status)
+		)
 
 	if doc.status == "completed":
 		return _completed_response(doc)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 from urllib.parse import quote
 
 
@@ -14,7 +14,9 @@ class GCSStorageBackend:
 
 	backend_name = "gcs"
 
-	def create_temporary_upload_target(self, *, session_key: str, filename: str, mime_type: str | None = None) -> Dict[str, Any]:
+	def create_temporary_upload_target(
+		self, *, session_key: str, filename: str, mime_type: str | None = None
+	) -> dict[str, Any]:
 		object_key = f"tmp/{session_key}/{self._normalize_filename(filename)}"
 		return {
 			"object_key": object_key,
@@ -30,7 +32,7 @@ class GCSStorageBackend:
 		# Replace with real GCS object existence check.
 		return True
 
-	def finalize_temporary_object(self, *, object_key: str, final_key: str) -> Dict[str, Any]:
+	def finalize_temporary_object(self, *, object_key: str, final_key: str) -> dict[str, Any]:
 		# Replace with move/copy + finalization logic.
 		return {
 			"object_key": final_key,
@@ -42,7 +44,7 @@ class GCSStorageBackend:
 		# Replace with delete temp object if present.
 		return
 
-	def _build_upload_headers(self, mime_type: str | None) -> Dict[str, Any]:
+	def _build_upload_headers(self, mime_type: str | None) -> dict[str, Any]:
 		if not mime_type:
 			return {}
 

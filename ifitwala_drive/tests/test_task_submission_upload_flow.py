@@ -97,7 +97,7 @@ def _install_fake_frappe(
 	frappe.session = types.SimpleNamespace(user="student@example.com")
 	frappe.local = types.SimpleNamespace(request_ip="127.0.0.1")
 	frappe.generate_hash = lambda length=24: "x" * length
-	frappe.whitelist = lambda *args, **kwargs: (lambda fn: fn)
+	frappe.whitelist = lambda *args, **kwargs: lambda fn: fn
 	frappe.get_doc = _get_doc
 	frappe.get_cached_doc = lambda doctype, name: docs_map[(doctype, name)]
 	frappe.log_error = lambda *args, **kwargs: None
@@ -107,7 +107,9 @@ def _install_fake_frappe(
 
 	utils = types.ModuleType("frappe.utils")
 	utils.now_datetime = lambda: now
-	utils.get_datetime = lambda value: value if isinstance(value, datetime) else datetime.fromisoformat(str(value))
+	utils.get_datetime = lambda value: (
+		value if isinstance(value, datetime) else datetime.fromisoformat(str(value))
+	)
 	utils.add_to_date = lambda value, hours=0, as_datetime=False: value + timedelta(hours=hours)
 
 	model = types.ModuleType("frappe.model")

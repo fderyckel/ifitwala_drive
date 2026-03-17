@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 import frappe
 from frappe import _
@@ -12,7 +12,7 @@ from ifitwala_drive.services.storage.base import get_storage_backend
 from ifitwala_drive.services.uploads.validation import validate_create_session_payload
 
 
-def _build_secondary_subject_rows(payload: Dict[str, Any]) -> list[Dict[str, Any]]:
+def _build_secondary_subject_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
 	return [
 		{
 			"subject_type": row["subject_type"],
@@ -23,7 +23,7 @@ def _build_secondary_subject_rows(payload: Dict[str, Any]) -> list[Dict[str, Any
 	]
 
 
-def create_upload_session_service(payload: Dict[str, Any]) -> Dict[str, Any]:
+def create_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 	validate_create_session_payload(payload)
 
 	session_key = frappe.generate_hash(length=24)
@@ -76,7 +76,7 @@ def create_upload_session_service(payload: Dict[str, Any]) -> Dict[str, Any]:
 	}
 
 
-def abort_upload_session_service(payload: Dict[str, Any]) -> Dict[str, Any]:
+def abort_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 	upload_session_id = payload.get("upload_session_id")
 	if not upload_session_id:
 		frappe.throw(_("Missing required field: upload_session_id"))
