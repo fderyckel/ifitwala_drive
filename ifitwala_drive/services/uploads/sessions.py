@@ -8,6 +8,10 @@ import frappe
 from frappe import _
 from frappe.utils import now_datetime
 
+from ifitwala_drive.services.integration.ifitwala_ed_tasks import (
+	reconcile_task_submission_session_payload,
+)
+from ifitwala_drive.services.logging import log_drive_event
 from ifitwala_drive.services.storage.base import get_storage_backend
 from ifitwala_drive.services.uploads.validation import validate_create_session_payload
 
@@ -24,14 +28,17 @@ def _build_secondary_subject_rows(payload: dict[str, Any]) -> list[dict[str, Any
 
 
 def create_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
+	payload = reconcile_task_submission_session_payload(payload)
 	validate_create_session_payload(payload)
 
 	session_key = frappe.generate_hash(length=24)
+	upload_token = frappe.generate_hash(length=32)
 	storage = get_storage_backend()
 	target = storage.create_temporary_upload_target(
 		session_key=session_key,
 		filename=payload["filename_original"],
 		mime_type=payload.get("mime_type_hint"),
+		upload_token=upload_token,
 	)
 
 	doc = frappe.get_doc(
@@ -62,9 +69,20 @@ def create_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 			"expected_size_bytes": payload.get("expected_size_bytes"),
 			"storage_backend": storage.backend_name,
 			"tmp_object_key": target["object_key"],
+			"upload_token": upload_token,
 		}
 	)
 	doc.insert(ignore_permissions=True)
+
+	log_drive_event(
+		"upload_session_created",
+		upload_session_id=doc.name,
+		owner_doctype=doc.owner_doctype,
+		owner_name=doc.owner_name,
+		slot=doc.intended_slot,
+		storage_backend=doc.storage_backend,
+		status=doc.status,
+	)
 
 	return {
 		"upload_session_id": doc.name,
@@ -96,6 +114,14 @@ def abort_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 	doc.status = "aborted"
 	doc.aborted_on = now_datetime()
 	doc.save(ignore_permissions=True)
+
+	log_drive_event(
+		"upload_session_aborted",
+		upload_session_id=doc.name,
+		owner_doctype=doc.owner_doctype,
+		owner_name=doc.owner_name,
+		slot=doc.intended_slot,
+	)
 
 	return {
 		"upload_session_id": doc.name,

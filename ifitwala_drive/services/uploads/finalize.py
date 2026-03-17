@@ -9,9 +9,20 @@ import frappe
 from frappe import _
 from frappe.utils import get_datetime, now_datetime
 
+from ifitwala_drive.services.integration.ifitwala_ed_admissions import (
+	run_admissions_post_finalize,
+	validate_applicant_document_finalize_context,
+)
+from ifitwala_drive.services.integration.ifitwala_ed_media import (
+	get_attached_field_override,
+	run_media_post_finalize,
+	validate_media_finalize_context,
+)
 from ifitwala_drive.services.integration.ifitwala_ed_tasks import (
 	get_task_submission_context_override,
+	validate_task_submission_finalize_context,
 )
+from ifitwala_drive.services.logging import log_drive_event
 from ifitwala_drive.services.storage.base import get_storage_backend
 from ifitwala_drive.services.uploads.validation import validate_finalize_session_payload
 
@@ -58,14 +69,19 @@ def _build_final_object_key(doc) -> str:
 
 def _build_file_kwargs(doc, storage_artifact: dict[str, Any]) -> dict[str, Any]:
 	file_url = storage_artifact.get("file_url") or storage_artifact.get("object_key")
+	attached_field = get_attached_field_override(doc)
 
-	return {
+	file_kwargs = {
 		"attached_to_doctype": doc.attached_doctype,
 		"attached_to_name": doc.attached_name,
 		"is_private": doc.is_private,
 		"file_name": doc.filename_original,
 		"file_url": file_url,
 	}
+	if attached_field:
+		file_kwargs["attached_to_field"] = attached_field
+
+	return file_kwargs
 
 
 def _build_classification(doc) -> dict[str, Any]:
@@ -103,17 +119,29 @@ def _mark_session_failed(doc, exc: Exception) -> None:
 	doc.status = "failed"
 	doc.error_log = str(exc)
 	doc.save(ignore_permissions=True)
+	log_drive_event(
+		"upload_session_finalize_failed",
+		upload_session_id=doc.name,
+		owner_doctype=doc.owner_doctype,
+		owner_name=doc.owner_name,
+		slot=doc.intended_slot,
+		error=str(exc),
+	)
 
 
-def _completed_response(doc) -> dict[str, Any]:
-	return {
+def _completed_response(doc, extra: dict[str, Any] | None = None) -> dict[str, Any]:
+	response = {
 		"drive_file_id": getattr(doc, "drive_file", None),
 		"drive_file_version_id": None,
 		"file_id": getattr(doc, "file", None),
 		"canonical_ref": None,
 		"status": doc.status,
 		"preview_status": "pending" if doc.status == "completed" else None,
+		"file_url": frappe.db.get_value("File", doc.file, "file_url") if getattr(doc, "file", None) else None,
 	}
+	if extra:
+		response.update(extra)
+	return response
 
 
 def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
@@ -138,6 +166,10 @@ def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 	if doc.status == "completed":
 		return _completed_response(doc)
 
+	validate_task_submission_finalize_context(doc)
+	validate_media_finalize_context(doc)
+	validate_applicant_document_finalize_context(doc)
+
 	storage = get_storage_backend(getattr(doc, "storage_backend", None))
 	if not doc.tmp_object_key or not storage.temporary_object_exists(object_key=doc.tmp_object_key):
 		frappe.throw(_("Temporary uploaded object was not found for this upload session."))
@@ -146,6 +178,14 @@ def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 	doc.received_size_bytes = payload.get("received_size_bytes") or doc.received_size_bytes
 	doc.content_hash = payload.get("content_hash") or doc.content_hash
 	doc.save(ignore_permissions=True)
+
+	log_drive_event(
+		"upload_session_finalize_started",
+		upload_session_id=doc.name,
+		owner_doctype=doc.owner_doctype,
+		owner_name=doc.owner_name,
+		slot=doc.intended_slot,
+	)
 
 	try:
 		storage_artifact = storage.finalize_temporary_object(
@@ -168,4 +208,17 @@ def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 	doc.error_log = None
 	doc.save(ignore_permissions=True)
 
-	return _completed_response(doc)
+	extra_response = {}
+	extra_response.update(run_media_post_finalize(doc, created))
+	extra_response.update(run_admissions_post_finalize(doc, created))
+
+	log_drive_event(
+		"upload_session_finalized",
+		upload_session_id=doc.name,
+		file_id=doc.file,
+		owner_doctype=doc.owner_doctype,
+		owner_name=doc.owner_name,
+		slot=doc.intended_slot,
+	)
+
+	return _completed_response(doc, extra=extra_response)

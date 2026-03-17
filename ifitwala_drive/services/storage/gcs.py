@@ -15,17 +15,32 @@ class GCSStorageBackend:
 	backend_name = "gcs"
 
 	def create_temporary_upload_target(
-		self, *, session_key: str, filename: str, mime_type: str | None = None
+		self,
+		*,
+		session_key: str,
+		filename: str,
+		mime_type: str | None = None,
+		upload_token: str | None = None,
 	) -> dict[str, Any]:
 		object_key = f"tmp/{session_key}/{self._normalize_filename(filename)}"
+		headers = self._build_upload_headers(mime_type)
+		if upload_token:
+			headers["X-Drive-Upload-Token"] = upload_token
 		return {
 			"object_key": object_key,
 			"upload_strategy": "signed_put",
 			"upload_target": {
 				"method": "PUT",
 				"url": self._build_upload_url(object_key),
-				"headers": self._build_upload_headers(mime_type),
+				"headers": headers,
 			},
+		}
+
+	def write_temporary_object(self, *, object_key: str, content: bytes) -> dict[str, Any]:
+		# Replace with real proxied upload logic only if GCS proxy upload is required.
+		return {
+			"object_key": object_key,
+			"size_bytes": len(content),
 		}
 
 	def temporary_object_exists(self, *, object_key: str) -> bool:

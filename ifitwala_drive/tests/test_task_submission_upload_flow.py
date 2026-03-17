@@ -98,12 +98,14 @@ def _install_fake_frappe(
 	frappe.local = types.SimpleNamespace(request_ip="127.0.0.1")
 	frappe.generate_hash = lambda length=24: "x" * length
 	frappe.whitelist = lambda *args, **kwargs: lambda fn: fn
+	frappe.conf = {}
 	frappe.get_doc = _get_doc
 	frappe.get_cached_doc = lambda doctype, name: docs_map[(doctype, name)]
 	frappe.log_error = lambda *args, **kwargs: None
 	frappe.get_traceback = lambda: "traceback"
 	frappe.as_json = lambda value, indent=None: str(value)
 	frappe.logger = lambda: types.SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None)
+	frappe.get_site_path = lambda *parts: "/tmp/" + "/".join(parts)
 
 	utils = types.ModuleType("frappe.utils")
 	utils.now_datetime = lambda: now
@@ -174,6 +176,7 @@ def test_task_submission_upload_session_creates_correctly(monkeypatch):
 			"student": "STU-0001",
 			"school": "SCH-0001",
 			"task": "TASK-0001",
+			"check_permission": lambda permission_type=None: None,
 		}
 	)
 	_install_fake_frappe(
@@ -188,6 +191,7 @@ def test_task_submission_upload_session_creates_correctly(monkeypatch):
 		},
 	)
 	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_tasks")
+	sessions_module = _load_module("ifitwala_drive.services.uploads.sessions")
 	captured: dict[str, dict] = {}
 
 	def _fake_create_upload_session_service(payload):
@@ -197,7 +201,11 @@ def test_task_submission_upload_session_creates_correctly(monkeypatch):
 			"status": "created",
 		}
 
-	monkeypatch.setattr(module, "create_upload_session_service", _fake_create_upload_session_service)
+	monkeypatch.setattr(
+		sessions_module,
+		"create_upload_session_service",
+		_fake_create_upload_session_service,
+	)
 
 	response = module.upload_task_submission_artifact_service(
 		{
@@ -230,6 +238,60 @@ def test_task_submission_upload_session_creates_correctly(monkeypatch):
 		"upload_source": "SPA",
 		"secondary_subjects": [],
 	}
+
+
+def test_task_submission_create_session_rejects_context_drift():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.integration.ifitwala_ed_tasks",
+		"ifitwala_drive.services.uploads.validation",
+		"ifitwala_drive.services.uploads.sessions",
+	)
+	task_submission = FakeDoc(
+		{
+			"name": "TSUB-0001",
+			"student": "STU-0001",
+			"school": "SCH-0001",
+			"check_permission": lambda permission_type=None: None,
+		}
+	)
+	_install_fake_frappe(
+		exists_map={
+			("Task Submission", "TSUB-0001"): True,
+			("Organization", "ORG-0001"): True,
+			("School", "SCH-0001"): True,
+		},
+		value_map={
+			("School", "SCH-0001", "organization"): "ORG-0001",
+		},
+		docs_map={
+			("Task Submission", "TSUB-0001"): task_submission,
+		},
+	)
+	module = _load_module("ifitwala_drive.services.uploads.sessions")
+
+	try:
+		module.create_upload_session_service(
+			{
+				"owner_doctype": "Task Submission",
+				"owner_name": "TSUB-0001",
+				"attached_doctype": "Task Submission",
+				"attached_name": "TSUB-0001",
+				"organization": "ORG-0001",
+				"school": "SCH-0001",
+				"primary_subject_type": "Student",
+				"primary_subject_id": "STU-9999",
+				"data_class": "assessment",
+				"purpose": "assessment_submission",
+				"retention_policy": "until_school_exit_plus_6m",
+				"slot": "submission",
+				"filename_original": "essay.docx",
+			}
+		)
+	except RuntimeError as exc:
+		assert "does not match the authoritative owner context" in str(exc)
+	else:
+		raise AssertionError("Expected create_upload_session_service to reject mismatched student context.")
 
 
 def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
@@ -275,11 +337,15 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 			"student": "STU-0001",
 			"school": "SCH-0001",
 			"task": "TASK-0001",
+			"check_permission": lambda permission_type=None: None,
 		}
 	)
 	file_doc_requests = _install_fake_frappe(
 		exists_map={
 			("Task Submission", "TSUB-0001"): True,
+		},
+		value_map={
+			("School", "SCH-0001", "organization"): "ORG-0001",
 		},
 		docs_map={
 			("Drive Upload Session", "DUS-0001"): session_doc,
@@ -327,6 +393,7 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 		"canonical_ref": None,
 		"status": "completed",
 		"preview_status": "pending",
+		"file_url": None,
 	}
 	assert session_doc.status == "completed"
 	assert session_doc.file == "FILE-0001"
@@ -342,3 +409,87 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 		"routing": "task_submission",
 	}
 	assert file_doc_requests == []
+
+
+def test_finalize_rejects_task_submission_context_drift(monkeypatch):
+	_purge_modules(
+		"frappe",
+		"ifitwala_ed",
+		"ifitwala_drive.services.integration.ifitwala_ed_tasks",
+		"ifitwala_drive.services.uploads.finalize",
+		"ifitwala_drive.services.uploads.validation",
+	)
+	now = datetime(2026, 3, 17, 9, 0, 0)
+	session_doc = FakeDoc(
+		{
+			"name": "DUS-0001",
+			"status": "created",
+			"expires_on": now + timedelta(hours=2),
+			"tmp_object_key": "tmp/DUS-0001/essay.docx",
+			"storage_backend": "local",
+			"attached_doctype": "Task Submission",
+			"attached_name": "TSUB-0001",
+			"owner_doctype": "Task Submission",
+			"owner_name": "TSUB-0001",
+			"organization": "ORG-0001",
+			"school": "SCH-0001",
+			"upload_source": "SPA",
+			"filename_original": "essay.docx",
+			"is_private": 1,
+			"intended_primary_subject_type": "Student",
+			"intended_primary_subject_id": "STU-9999",
+			"intended_data_class": "assessment",
+			"intended_purpose": "assessment_submission",
+			"intended_retention_policy": "until_school_exit_plus_6m",
+			"intended_slot": "submission",
+			"secondary_subjects": [],
+		}
+	)
+	task_submission = FakeDoc(
+		{
+			"name": "TSUB-0001",
+			"student": "STU-0001",
+			"school": "SCH-0001",
+			"task": "TASK-0001",
+			"check_permission": lambda permission_type=None: None,
+		}
+	)
+	_install_fake_frappe(
+		exists_map={
+			("Task Submission", "TSUB-0001"): True,
+		},
+		value_map={
+			("School", "SCH-0001", "organization"): "ORG-0001",
+		},
+		docs_map={
+			("Drive Upload Session", "DUS-0001"): session_doc,
+			("Task Submission", "TSUB-0001"): task_submission,
+		},
+		now=now,
+	)
+	module = _load_module("ifitwala_drive.services.uploads.finalize")
+
+	class FakeStorage:
+		backend_name = "local"
+
+		def temporary_object_exists(self, *, object_key: str) -> bool:
+			raise AssertionError(
+				"temporary_object_exists should not be called after authority drift is detected."
+			)
+
+		def finalize_temporary_object(self, *, object_key: str, final_key: str):
+			raise AssertionError(
+				"finalize_temporary_object should not be called after authority drift is detected."
+			)
+
+		def abort_temporary_object(self, *, object_key: str) -> None:
+			raise AssertionError("abort_temporary_object should not be called during finalize.")
+
+	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
+
+	try:
+		module.finalize_upload_session_service({"upload_session_id": "DUS-0001"})
+	except RuntimeError as exc:
+		assert "no longer matches the authoritative Task Submission context" in str(exc)
+	else:
+		raise AssertionError("Expected finalize_upload_session_service to reject drifted session context.")
