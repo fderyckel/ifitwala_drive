@@ -10,11 +10,16 @@ from datetime import datetime, timedelta
 
 def _purge_modules(*prefixes: str) -> None:
 	for module_name in list(sys.modules):
-		if any(module_name == prefix or module_name.startswith(f"{prefix}.") for prefix in prefixes):
+		if any(module_name == prefix or module_name.startswith(f"{prefix}.") for prefix in prefixes) or module_name.startswith(
+			"ifitwala_drive.services.folders"
+		):
 			sys.modules.pop(module_name, None)
+	FakeDoc._insert_counters = {}
 
 
 class FakeDoc:
+	_insert_counters = {}
+
 	def __init__(self, data=None):
 		for key, value in (data or {}).items():
 			setattr(self, key, value)
@@ -29,7 +34,6 @@ class FakeDoc:
 		return self
 
 	def insert(self, ignore_permissions=False):
-		self.inserted += 1
 		if not getattr(self, "name", None):
 			doctype = getattr(self, "doctype", "")
 			prefix_map = {
@@ -37,9 +41,13 @@ class FakeDoc:
 				"Drive File": "DF",
 				"Drive File Version": "DFV",
 				"Drive Binding": "DB",
+				"Drive Folder": "DRF",
 			}
 			prefix = prefix_map.get(doctype, "DOC")
-			self.name = f"{prefix}-{self.inserted:04d}"
+			next_value = self._insert_counters.get(prefix, 0) + 1
+			self._insert_counters[prefix] = next_value
+			self.name = f"{prefix}-{next_value:04d}"
+		self.inserted += 1
 		return self
 
 
@@ -59,6 +67,12 @@ def _install_fake_frappe(
 
 	class FakeDB:
 		def exists(self, doctype, name=None):
+			if isinstance(name, dict):
+				key = (doctype, tuple(sorted(name.items())))
+				if key in exists_map:
+					return exists_map[key]
+				return False
+
 			key = (doctype, name)
 			if key in exists_map:
 				return exists_map[key]
@@ -69,6 +83,12 @@ def _install_fake_frappe(
 			return False
 
 		def get_value(self, doctype, name, fieldname):
+			if isinstance(name, dict):
+				key = (doctype, tuple(sorted(name.items())), fieldname)
+				if key in value_map:
+					return value_map[key]
+				return None
+
 			key = (doctype, name, fieldname)
 			if key in value_map:
 				return value_map[key]
@@ -239,6 +259,7 @@ def test_task_submission_upload_session_creates_correctly(monkeypatch):
 		"purpose": "assessment_submission",
 		"retention_policy": "until_school_exit_plus_6m",
 		"slot": "submission",
+		"folder": "DRF-0005",
 		"filename_original": "essay.docx",
 		"mime_type_hint": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 		"expected_size_bytes": 543210,

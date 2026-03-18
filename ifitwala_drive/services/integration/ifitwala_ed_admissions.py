@@ -4,6 +4,12 @@ from typing import Any
 
 import frappe
 from frappe import _
+from ifitwala_drive.services.folders.resolution import (
+	resolve_applicant_document_folder,
+	resolve_applicant_guardian_image_folder,
+	resolve_applicant_health_folder,
+	resolve_applicant_profile_image_folder,
+)
 
 
 _HEALTH_VACCINATION_SLOT_PREFIX = "health_vaccination_proof_"
@@ -256,6 +262,13 @@ def upload_applicant_document_service(payload: dict[str, Any]) -> dict[str, Any]
 			"purpose": context["purpose"],
 			"retention_policy": context["retention_policy"],
 			"slot": context["slot"],
+			"folder": resolve_applicant_document_folder(
+				student_applicant=context["owner_name"],
+				organization=context["organization"],
+				school=context["school"],
+				slot=context["slot"],
+				document_type_code=context.get("document_type_code"),
+			),
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
@@ -285,6 +298,11 @@ def upload_applicant_profile_image_service(payload: dict[str, Any]) -> dict[str,
 	response = create_upload_session_service(
 		{
 			**context,
+			"folder": resolve_applicant_profile_image_folder(
+				student_applicant=context["owner_name"],
+				organization=context["organization"],
+				school=context["school"],
+			),
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
@@ -307,6 +325,11 @@ def upload_applicant_guardian_image_service(payload: dict[str, Any]) -> dict[str
 	response = create_upload_session_service(
 		{
 			**context,
+			"folder": resolve_applicant_guardian_image_folder(
+				student_applicant=context["owner_name"],
+				organization=context["organization"],
+				school=context["school"],
+			),
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
@@ -335,6 +358,11 @@ def upload_applicant_health_vaccination_proof_service(payload: dict[str, Any]) -
 	response = create_upload_session_service(
 		{
 			**context,
+			"folder": resolve_applicant_health_folder(
+				student_applicant=context["owner_name"],
+				organization=context["organization"],
+				school=context["school"],
+			),
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),

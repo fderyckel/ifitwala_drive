@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import frappe
+from ifitwala_drive.services.concurrency import drive_lock
 
 
 def _build_canonical_ref(*, organization: str | None, drive_file_id: str) -> str:
@@ -96,24 +97,51 @@ def _create_primary_binding(*, drive_file_id: str, file_id: str, upload_session_
 	if not binding_role:
 		return None
 
-	binding = frappe.get_doc(
-		{
-			"doctype": "Drive Binding",
-			"drive_file": drive_file_id,
-			"file": file_id,
-			"status": "active",
-			"binding_doctype": upload_session_doc.attached_doctype,
-			"binding_name": upload_session_doc.attached_name,
-			"binding_role": binding_role,
-			"slot": upload_session_doc.intended_slot,
-			"is_primary": 1,
-			"sort_order": 0,
-			"organization": upload_session_doc.organization,
-			"school": getattr(upload_session_doc, "school", None),
-		}
+	lock_key = "|".join(
+		[
+			"binding",
+			drive_file_id,
+			upload_session_doc.attached_doctype,
+			upload_session_doc.attached_name,
+			binding_role,
+			upload_session_doc.intended_slot,
+		]
 	)
-	binding.insert(ignore_permissions=True)
-	return binding.name
+	with drive_lock(lock_key, timeout=20):
+		existing = frappe.db.get_value(
+			"Drive Binding",
+			{
+				"drive_file": drive_file_id,
+				"binding_doctype": upload_session_doc.attached_doctype,
+				"binding_name": upload_session_doc.attached_name,
+				"binding_role": binding_role,
+				"slot": upload_session_doc.intended_slot,
+				"is_primary": 1,
+				"status": "active",
+			},
+			"name",
+		)
+		if existing:
+			return existing
+
+		binding = frappe.get_doc(
+			{
+				"doctype": "Drive Binding",
+				"drive_file": drive_file_id,
+				"file": file_id,
+				"status": "active",
+				"binding_doctype": upload_session_doc.attached_doctype,
+				"binding_name": upload_session_doc.attached_name,
+				"binding_role": binding_role,
+				"slot": upload_session_doc.intended_slot,
+				"is_primary": 1,
+				"sort_order": 0,
+				"organization": upload_session_doc.organization,
+				"school": getattr(upload_session_doc, "school", None),
+			}
+		)
+		binding.insert(ignore_permissions=True)
+		return binding.name
 
 
 def create_drive_file_artifacts(

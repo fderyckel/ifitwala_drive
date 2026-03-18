@@ -6,6 +6,7 @@ from typing import Any
 
 import frappe
 from frappe import _
+from ifitwala_drive.services.folders.resolution import resolve_task_submission_folder
 
 _TASK_SUBMISSION_DATA_CLASS = "assessment"
 _TASK_SUBMISSION_PURPOSE = "assessment_submission"
@@ -172,6 +173,12 @@ def upload_task_submission_artifact_service(payload: dict[str, Any]) -> dict[str
 	return create_upload_session_service(
 		{
 			**authoritative,
+			"folder": resolve_task_submission_folder(
+				student=authoritative["primary_subject_id"],
+				task_name=getattr(task_submission_doc, "task", None) or task_submission_doc.name,
+				organization=authoritative["organization"],
+				school=authoritative["school"],
+			),
 			"filename_original": filename_original,
 			"mime_type_hint": mime_type_hint,
 			"expected_size_bytes": expected_size_bytes,

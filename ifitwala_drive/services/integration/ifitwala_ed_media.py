@@ -4,6 +4,10 @@ from typing import Any
 
 import frappe
 from frappe import _
+from ifitwala_drive.services.folders.resolution import (
+	resolve_organization_media_folder,
+	resolve_student_image_folder,
+)
 
 _PROFILE_IMAGE_SLOT = "profile_image"
 
@@ -137,6 +141,11 @@ def upload_student_image_service(payload: dict[str, Any]) -> dict[str, Any]:
 	return create_upload_session_service(
 		{
 			**authoritative,
+			"folder": resolve_student_image_folder(
+				student=student_doc.name,
+				organization=authoritative["organization"],
+				school=authoritative["school"],
+			),
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
@@ -168,6 +177,11 @@ def upload_organization_logo_service(payload: dict[str, Any]) -> dict[str, Any]:
 	return create_upload_session_service(
 		{
 			**authoritative,
+			"folder": resolve_organization_media_folder(
+				organization=org_doc.name,
+				school=None,
+				slot=authoritative["slot"],
+			),
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
@@ -256,6 +270,11 @@ def upload_school_gallery_image_service(payload: dict[str, Any]) -> dict[str, An
 	response = create_upload_session_service(
 		{
 			**authoritative,
+			"folder": resolve_organization_media_folder(
+				organization=school_doc.organization,
+				school=school_doc.name,
+				slot=authoritative["slot"],
+			),
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
@@ -310,6 +329,11 @@ def upload_organization_media_asset_service(payload: dict[str, Any]) -> dict[str
 	response = create_upload_session_service(
 		{
 			**authoritative,
+			"folder": resolve_organization_media_folder(
+				organization=organization,
+				school=school,
+				slot=authoritative["slot"],
+			),
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),

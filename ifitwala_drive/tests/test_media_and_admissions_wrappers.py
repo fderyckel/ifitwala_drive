@@ -6,6 +6,8 @@ import types
 
 
 class FakeDoc:
+	_insert_counters = {}
+
 	def __init__(self, data=None):
 		for key, value in (data or {}).items():
 			setattr(self, key, value)
@@ -27,6 +29,18 @@ class FakeDoc:
 		self.saved += 1
 		return self
 
+	def insert(self, ignore_permissions=False):
+		doctype = getattr(self, "doctype", "DocType")
+		prefix_map = {
+			"Drive Folder": "DRF",
+		}
+		prefix = prefix_map.get(doctype, "DOC")
+		next_value = self._insert_counters.get(prefix, 0) + 1
+		self._insert_counters[prefix] = next_value
+		if not getattr(self, "name", None):
+			self.name = f"{prefix}-{next_value:04d}"
+		return self
+
 
 def _normalize_key_part(value):
 	if isinstance(value, dict):
@@ -40,8 +54,11 @@ def _normalize_key_part(value):
 
 def _purge_modules(*prefixes: str) -> None:
 	for module_name in list(sys.modules):
-		if any(module_name == prefix or module_name.startswith(f"{prefix}.") for prefix in prefixes):
+		if any(module_name == prefix or module_name.startswith(f"{prefix}.") for prefix in prefixes) or module_name.startswith(
+			"ifitwala_drive.services.folders"
+		):
 			sys.modules.pop(module_name, None)
+	FakeDoc._insert_counters = {}
 
 
 def _install_fake_frappe(*, exists_map=None, value_map=None, docs_map=None):
@@ -75,6 +92,8 @@ def _install_fake_frappe(*, exists_map=None, value_map=None, docs_map=None):
 			)
 			if key in value_map:
 				return value_map[key]
+			if isinstance(name, dict):
+				return None
 			doc = docs_map.get((doctype, name))
 			if doc is None:
 				return None
@@ -160,6 +179,7 @@ def test_upload_student_image_uses_authoritative_contract():
 	assert recorder["payload"]["organization"] == "ORG-0001"
 	assert recorder["payload"]["slot"] == "profile_image"
 	assert recorder["payload"]["is_private"] == 0
+	assert recorder["payload"]["folder"].startswith("DRF-")
 
 
 def test_upload_organization_logo_keeps_organization_as_owner():
@@ -203,6 +223,7 @@ def test_upload_organization_logo_keeps_organization_as_owner():
 	assert recorder["payload"]["owner_name"] == "ORG-0001"
 	assert recorder["payload"]["attached_doctype"] == "Organization"
 	assert recorder["payload"]["slot"] == "organization_logo__org-0001"
+	assert recorder["payload"]["folder"].startswith("DRF-")
 
 
 def test_upload_applicant_document_builds_item_scoped_session():
@@ -265,6 +286,7 @@ def test_upload_applicant_document_builds_item_scoped_session():
 	assert recorder["payload"]["attached_doctype"] == "Applicant Document Item"
 	assert recorder["payload"]["attached_name"] == "ADI-0001"
 	assert recorder["payload"]["slot"] == "identity_passport_passport_copy"
+	assert recorder["payload"]["folder"].startswith("DRF-")
 
 
 def test_upload_applicant_profile_image_builds_applicant_scoped_session():
@@ -300,6 +322,7 @@ def test_upload_applicant_profile_image_builds_applicant_scoped_session():
 	assert recorder["payload"]["attached_name"] == "APP-0001"
 	assert recorder["payload"]["slot"] == "profile_image"
 	assert recorder["payload"]["is_private"] == 1
+	assert recorder["payload"]["folder"].startswith("DRF-")
 
 
 def test_upload_applicant_guardian_image_builds_row_scoped_session():
@@ -346,6 +369,7 @@ def test_upload_applicant_guardian_image_builds_row_scoped_session():
 	assert recorder["payload"]["attached_name"] == "ROW-0001"
 	assert recorder["payload"]["slot"] == "guardian_profile_image__row-0001"
 	assert recorder["payload"]["is_private"] == 1
+	assert recorder["payload"]["folder"].startswith("DRF-")
 
 
 def test_upload_applicant_health_vaccination_proof_builds_profile_scoped_session():
@@ -396,6 +420,7 @@ def test_upload_applicant_health_vaccination_proof_builds_profile_scoped_session
 	assert recorder["payload"]["attached_name"] == "AHP-0001"
 	assert recorder["payload"]["slot"] == "health_vaccination_proof_mmr_2020-03-04"
 	assert recorder["payload"]["is_private"] == 1
+	assert recorder["payload"]["folder"].startswith("DRF-")
 
 
 def test_get_admissions_attached_field_override_returns_vaccinations_for_health_uploads():
