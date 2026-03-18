@@ -19,6 +19,7 @@
   "status",
   "preview_status",
   "section_identity",
+  "source_upload_session",
   "canonical_ref",
   "display_name",
   "folder",
@@ -75,6 +76,15 @@
    "fieldname": "section_identity",
    "fieldtype": "Section Break",
    "label": "Identity"
+  },
+  {
+   "fieldname": "source_upload_session",
+   "fieldtype": "Link",
+   "label": "Source Upload Session",
+   "options": "Drive Upload Session",
+   "read_only": 1,
+   "reqd": 1,
+   "unique": 1
   },
   {
    "fieldname": "canonical_ref",

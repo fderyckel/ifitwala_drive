@@ -15,10 +15,16 @@ def _purge_modules(*prefixes: str) -> None:
 		):
 			sys.modules.pop(module_name, None)
 	FakeDoc._insert_counters = {}
+	FakeDoc._docs_map = {}
+	FakeDoc._duplicate_insert_once = {}
+	FakeDoc._duplicate_insert_materialized_docs = {}
 
 
 class FakeDoc:
 	_insert_counters = {}
+	_docs_map = {}
+	_duplicate_insert_once = {}
+	_duplicate_insert_materialized_docs = {}
 
 	def __init__(self, data=None):
 		for key, value in (data or {}).items():
@@ -34,8 +40,19 @@ class FakeDoc:
 		return self
 
 	def insert(self, ignore_permissions=False):
+		doctype = getattr(self, "doctype", "")
+		remaining_duplicates = self._duplicate_insert_once.get(doctype, 0)
+		if remaining_duplicates:
+			self._duplicate_insert_once[doctype] = remaining_duplicates - 1
+			materialized_docs = self._duplicate_insert_materialized_docs.get(doctype, [])
+			if not isinstance(materialized_docs, list):
+				materialized_docs = [materialized_docs]
+			for doc_data in materialized_docs:
+				doc = doc_data if isinstance(doc_data, FakeDoc) else FakeDoc(doc_data)
+				self._docs_map[(doc.doctype, doc.name)] = doc
+			raise DuplicateEntryError(f"Duplicate entry for {doctype}")
+
 		if not getattr(self, "name", None):
-			doctype = getattr(self, "doctype", "")
 			prefix_map = {
 				"Drive Upload Session": "DUS",
 				"Drive File": "DF",
@@ -48,7 +65,12 @@ class FakeDoc:
 			self._insert_counters[prefix] = next_value
 			self.name = f"{prefix}-{next_value:04d}"
 		self.inserted += 1
+		self._docs_map[(doctype, self.name)] = self
 		return self
+
+
+class DuplicateEntryError(Exception):
+	pass
 
 
 def _install_fake_frappe(
@@ -58,10 +80,17 @@ def _install_fake_frappe(
 	docs_map: dict[tuple[str, str], FakeDoc] | None = None,
 	now: datetime | None = None,
 	forbid_file_doc: bool = False,
+	duplicate_insert_once: dict[str, int] | None = None,
+	duplicate_insert_materialized_docs: dict[str, object] | None = None,
 ):
 	exists_map = exists_map or {}
 	value_map = value_map or {}
 	docs_map = docs_map or {}
+	duplicate_insert_once = duplicate_insert_once or {}
+	duplicate_insert_materialized_docs = duplicate_insert_materialized_docs or {}
+	FakeDoc._docs_map = docs_map
+	FakeDoc._duplicate_insert_once = dict(duplicate_insert_once)
+	FakeDoc._duplicate_insert_materialized_docs = dict(duplicate_insert_materialized_docs)
 	now = now or datetime(2026, 3, 17, 9, 0, 0)
 	file_doc_requests: list[dict] = []
 
@@ -71,6 +100,12 @@ def _install_fake_frappe(
 				key = (doctype, tuple(sorted(name.items())))
 				if key in exists_map:
 					return exists_map[key]
+				for candidate_doctype, candidate_name in docs_map:
+					if candidate_doctype != doctype:
+						continue
+					doc = docs_map[(candidate_doctype, candidate_name)]
+					if all(getattr(doc, fieldname, None) == value for fieldname, value in name.items()):
+						return candidate_name
 				return False
 
 			key = (doctype, name)
@@ -87,6 +122,16 @@ def _install_fake_frappe(
 				key = (doctype, tuple(sorted(name.items())), fieldname)
 				if key in value_map:
 					return value_map[key]
+				for candidate_doctype, candidate_name in docs_map:
+					if candidate_doctype != doctype:
+						continue
+					doc = docs_map[(candidate_doctype, candidate_name)]
+					if all(getattr(doc, filter_field, None) == value for filter_field, value in name.items()):
+						if fieldname == "name":
+							return candidate_name
+						if isinstance(fieldname, (list, tuple)):
+							return [getattr(doc, field, None) for field in fieldname]
+						return getattr(doc, fieldname, None)
 				return None
 
 			key = (doctype, name, fieldname)
@@ -129,6 +174,7 @@ def _install_fake_frappe(
 	frappe.conf = {}
 	frappe.get_doc = _get_doc
 	frappe.get_cached_doc = lambda doctype, name: docs_map[(doctype, name)]
+	frappe.DuplicateEntryError = DuplicateEntryError
 	frappe.log_error = lambda *args, **kwargs: None
 	frappe.get_traceback = lambda: "traceback"
 	frappe.as_json = lambda value, indent=None: str(value)
@@ -528,3 +574,109 @@ def test_finalize_rejects_task_submission_context_drift(monkeypatch):
 		assert "no longer matches the authoritative Task Submission context" in str(exc)
 	else:
 		raise AssertionError("Expected finalize_upload_session_service to reject drifted session context.")
+
+
+def test_create_drive_file_artifacts_recovers_from_duplicate_inserts():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.files.creation",
+	)
+	existing_drive_file = FakeDoc(
+		{
+			"doctype": "Drive File",
+			"name": "DF-0099",
+			"source_upload_session": "DUS-0001",
+			"current_version": "DFV-0099",
+			"canonical_ref": "drv:ORG-0001:DF-0099",
+		}
+	)
+	existing_binding = FakeDoc(
+		{
+			"doctype": "Drive Binding",
+			"name": "DB-0099",
+			"primary_key": "DF-0099|Task Submission|TSUB-0001|submission_artifact|submission",
+		}
+	)
+	_install_fake_frappe(
+		docs_map={},
+		duplicate_insert_once={
+			"Drive File": 1,
+			"Drive Binding": 1,
+		},
+		duplicate_insert_materialized_docs={
+			"Drive File": existing_drive_file,
+			"Drive Binding": existing_binding,
+		},
+	)
+	module = _load_module("ifitwala_drive.services.files.creation")
+	upload_session_doc = FakeDoc(
+		{
+			"name": "DUS-0001",
+			"attached_doctype": "Task Submission",
+			"attached_name": "TSUB-0001",
+			"owner_doctype": "Task Submission",
+			"owner_name": "TSUB-0001",
+			"organization": "ORG-0001",
+			"school": "SCH-0001",
+			"upload_source": "SPA",
+			"filename_original": "essay.docx",
+			"is_private": 1,
+			"intended_primary_subject_type": "Student",
+			"intended_primary_subject_id": "STU-0001",
+			"intended_data_class": "assessment",
+			"intended_purpose": "assessment_submission",
+			"intended_retention_policy": "until_school_exit_plus_6m",
+			"intended_slot": "submission",
+		}
+	)
+
+	response = module.create_drive_file_artifacts(
+		upload_session_doc=upload_session_doc,
+		file_id="FILE-0001",
+		storage_artifact={
+			"storage_backend": "gcs",
+			"object_key": "files/ab/cd/object.docx",
+		},
+	)
+
+	assert response == {
+		"drive_file_id": "DF-0099",
+		"drive_file_version_id": "DFV-0099",
+		"canonical_ref": "drv:ORG-0001:DF-0099",
+		"drive_binding_id": "DB-0099",
+	}
+
+
+def test_folder_resolution_recovers_from_duplicate_folder_insert():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.folders.resolution",
+	)
+	_install_fake_frappe(
+		docs_map={},
+		duplicate_insert_once={"Drive Folder": 1},
+		duplicate_insert_materialized_docs={
+			"Drive Folder": FakeDoc(
+				{
+					"doctype": "Drive Folder",
+					"name": "DRF-9001",
+					"title": "Student",
+					"owner_doctype": "Organization",
+					"owner_name": "ORG-0001",
+					"organization": "ORG-0001",
+					"school": None,
+					"folder_kind": "system_bound",
+					"system_key": "ORG-0001|no-school|Organization|ORG-0001|root|system_bound|student",
+				}
+			),
+		},
+	)
+	module = _load_module("ifitwala_drive.services.folders.resolution")
+
+	folder_id = module.resolve_student_image_folder(
+		student="STU-0001",
+		organization="ORG-0001",
+		school="SCH-0001",
+	)
+
+	assert folder_id == "DRF-0003"

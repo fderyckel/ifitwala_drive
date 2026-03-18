@@ -17,6 +17,7 @@
  "field_order": [
   "title",
   "slug",
+  "system_key",
   "status",
   "is_system_managed",
   "section_hierarchy",
@@ -52,6 +53,13 @@
    "label": "Slug",
    "read_only": 1,
    "unique": 0
+  },
+  {
+   "fieldname": "system_key",
+   "fieldtype": "Data",
+   "label": "System Key",
+   "read_only": 1,
+   "unique": 1
   },
   {
    "default": "active",

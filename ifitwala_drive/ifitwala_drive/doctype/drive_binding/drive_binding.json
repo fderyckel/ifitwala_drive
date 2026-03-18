@@ -17,6 +17,7 @@
  "field_order": [
   "drive_file",
   "file",
+  "primary_key",
   "status",
   "section_binding_target",
   "binding_doctype",
@@ -46,6 +47,13 @@
    "label": "File",
    "options": "File",
    "reqd": 1
+  },
+  {
+   "fieldname": "primary_key",
+   "fieldtype": "Data",
+   "label": "Primary Key",
+   "read_only": 1,
+   "unique": 1
   },
   {
    "default": "active",

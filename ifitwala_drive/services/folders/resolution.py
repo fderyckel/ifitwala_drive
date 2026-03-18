@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 
 import frappe
-from ifitwala_drive.services.concurrency import drive_lock
+from ifitwala_drive.services.concurrency import drive_lock, is_duplicate_entry_error
 
 
 def _slugify(value: str | None) -> str:
@@ -37,6 +37,28 @@ def _folder_lookup_filters(
 	return filters
 
 
+def _build_system_key(
+	*,
+	title: str,
+	parent_drive_folder: str | None,
+	owner_doctype: str,
+	owner_name: str,
+	organization: str,
+	school: str | None,
+	folder_kind: str,
+) -> str:
+	parts = (
+		organization,
+		school or "no-school",
+		owner_doctype,
+		owner_name,
+		parent_drive_folder or "root",
+		folder_kind,
+		_slugify(title),
+	)
+	return "|".join(str(part or "").strip() for part in parts)
+
+
 def _ensure_folder(
 	*,
 	title: str,
@@ -51,6 +73,15 @@ def _ensure_folder(
 	is_private: int = 1,
 ) -> str:
 	filters = _folder_lookup_filters(
+		title=title,
+		parent_drive_folder=parent_drive_folder,
+		owner_doctype=owner_doctype,
+		owner_name=owner_name,
+		organization=organization,
+		school=school,
+		folder_kind=folder_kind,
+	)
+	system_key = _build_system_key(
 		title=title,
 		parent_drive_folder=parent_drive_folder,
 		owner_doctype=owner_doctype,
@@ -83,6 +114,7 @@ def _ensure_folder(
 				"slug": _slugify(title),
 				"status": "active",
 				"is_system_managed": 1,
+				"system_key": system_key,
 				"parent_drive_folder": parent_drive_folder,
 				"owner_doctype": owner_doctype,
 				"owner_name": owner_name,
@@ -94,7 +126,20 @@ def _ensure_folder(
 				"is_private": is_private,
 			}
 		)
-		doc.insert(ignore_permissions=True)
+		try:
+			doc.insert(ignore_permissions=True)
+		except Exception as exc:
+			if not is_duplicate_entry_error(exc):
+				raise
+
+			existing = frappe.db.get_value(
+				"Drive Folder",
+				{"system_key": system_key},
+				"name",
+			)
+			if not existing:
+				raise
+			return existing
 		return doc.name
 
 

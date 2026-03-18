@@ -80,6 +80,8 @@ class DriveFolder(Document):
 		else:
 			self.slug = self._slugify(self.title)
 
+		self.system_key = self._build_system_key()
+
 	def _validate_status(self) -> None:
 		if self.status not in _ALLOWED_STATUSES:
 			frappe.throw(_("Invalid status for Drive Folder: {0}").format(self.status))
@@ -160,3 +162,15 @@ class DriveFolder(Document):
 		value = re.sub(r"[^a-z0-9]+", "-", value)
 		value = re.sub(r"-{2,}", "-", value).strip("-")
 		return value or "folder"
+
+	def _build_system_key(self) -> str:
+		parts = (
+			self.organization,
+			self.school or "no-school",
+			self.owner_doctype,
+			self.owner_name,
+			self.parent_drive_folder or "root",
+			self.folder_kind,
+			self._slugify(self.title),
+		)
+		return "|".join(str(part or "").strip() for part in parts)

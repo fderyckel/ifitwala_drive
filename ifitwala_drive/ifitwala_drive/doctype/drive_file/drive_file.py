@@ -43,6 +43,7 @@ class DriveFile(Document):
 	def _validate_required_fields(self) -> None:
 		required_fields = (
 			"file",
+			"source_upload_session",
 			"display_name",
 			"attached_doctype",
 			"attached_name",
@@ -79,6 +80,7 @@ class DriveFile(Document):
 	def _validate_links(self) -> None:
 		link_checks = (
 			("file", "File"),
+			("source_upload_session", "Drive Upload Session"),
 			("folder", "Drive Folder"),
 			("current_version", "Drive File Version"),
 			("organization", "Organization"),
@@ -89,4 +91,3 @@ class DriveFile(Document):
 			value = self.get(fieldname)
 			if value and not frappe.db.exists(doctype, value):
 				frappe.throw(_("{0} does not exist: {1}").format(doctype, value))
-

@@ -55,6 +55,8 @@ class DriveBinding(Document):
 		if self.sort_order is None:
 			self.sort_order = 0
 
+		self.primary_key = self._build_primary_key()
+
 	def _validate_required_fields(self) -> None:
 		required_fields = (
 			"drive_file",
@@ -145,3 +147,16 @@ class DriveBinding(Document):
 
 		if self.school and drive_file.school and self.school != drive_file.school:
 			frappe.throw(_("Drive Binding school must match the Drive File school."))
+
+	def _build_primary_key(self) -> str | None:
+		if not self.is_primary or self.status != "active":
+			return None
+
+		parts = (
+			self.drive_file,
+			self.binding_doctype,
+			self.binding_name,
+			self.binding_role,
+			self.slot,
+		)
+		return "|".join(str(part or "").strip() for part in parts)

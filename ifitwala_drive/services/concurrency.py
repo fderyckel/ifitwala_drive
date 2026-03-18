@@ -21,3 +21,19 @@ def drive_lock(lock_key: str, *, timeout: int = 30):
 		return nullcontext()
 
 	return cache.lock(f"{_LOCK_PREFIX}:{lock_key}", timeout=timeout)
+
+
+def is_duplicate_entry_error(exc: Exception) -> bool:
+	if exc.__class__.__name__ == "DuplicateEntryError":
+		return True
+
+	message = str(exc).lower()
+	return any(
+		token in message
+		for token in (
+			"duplicate entry",
+			"duplicate key",
+			"unique constraint",
+			"unique failed",
+		)
+	)
