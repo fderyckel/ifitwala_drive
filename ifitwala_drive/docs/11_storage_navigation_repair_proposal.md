@@ -4,6 +4,8 @@
 
 Proposed.
 
+The product frame that now governs follow-on implementation is [14_drive_north_star_v1.md](/Users/francois.de/Documents/ifitwala_drive/ifitwala_drive/docs/14_drive_north_star_v1.md).
+
 This note addresses the current gap between:
 
 * strong governed-upload discipline
