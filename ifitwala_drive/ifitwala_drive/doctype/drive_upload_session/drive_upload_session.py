@@ -159,6 +159,8 @@ class DriveUploadSession(Document):
 			("school", "School"),
 			("folder", "Drive Folder"),
 			("created_by_user", "User"),
+			("drive_file", "Drive File"),
+			("drive_file_version", "Drive File Version"),
 			("file", "File"),
 		)
 

@@ -51,7 +51,9 @@
   "completed_on",
   "aborted_on",
   "drive_file",
+  "drive_file_version",
   "file",
+  "canonical_ref",
   "error_log"
  ],
  "fields": [
@@ -301,10 +303,23 @@
    "read_only": 1
   },
   {
+   "fieldname": "drive_file_version",
+   "fieldtype": "Link",
+   "label": "Drive File Version",
+   "options": "Drive File Version",
+   "read_only": 1
+  },
+  {
    "fieldname": "file",
    "fieldtype": "Link",
    "label": "File",
    "options": "File",
+   "read_only": 1
+  },
+  {
+   "fieldname": "canonical_ref",
+   "fieldtype": "Data",
+   "label": "Canonical Ref",
    "read_only": 1
   },
   {

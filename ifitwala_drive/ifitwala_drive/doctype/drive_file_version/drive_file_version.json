@@ -1,0 +1,132 @@
+{
+ "actions": [],
+ "allow_copy": 0,
+ "allow_events_in_timeline": 0,
+ "allow_guest_to_view": 0,
+ "allow_import": 0,
+ "allow_rename": 0,
+ "autoname": "hash",
+ "beta": 0,
+ "creation": "2026-03-18 00:00:00.000000",
+ "custom": 0,
+ "default_view": "List",
+ "doctype": "DocType",
+ "document_type": "Document",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "drive_file",
+  "version_no",
+  "file",
+  "is_current",
+  "version_reason",
+  "section_storage",
+  "storage_object_key",
+  "size_bytes",
+  "mime_type",
+  "content_hash"
+ ],
+ "fields": [
+  {
+   "fieldname": "drive_file",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Drive File",
+   "options": "Drive File",
+   "reqd": 1
+  },
+  {
+   "fieldname": "version_no",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Version No",
+   "reqd": 1
+  },
+  {
+   "fieldname": "file",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "File",
+   "options": "File",
+   "reqd": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "is_current",
+   "fieldtype": "Check",
+   "label": "Is Current",
+   "reqd": 1
+  },
+  {
+   "default": "initial_upload",
+   "fieldname": "version_reason",
+   "fieldtype": "Select",
+   "label": "Version Reason",
+   "options": "initial_upload\nreplace\nderivative\nsystem_regeneration",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_storage",
+   "fieldtype": "Section Break",
+   "label": "Storage"
+  },
+  {
+   "fieldname": "storage_object_key",
+   "fieldtype": "Data",
+   "label": "Storage Object Key",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "size_bytes",
+   "fieldtype": "Int",
+   "label": "Size Bytes",
+   "read_only": 1
+  },
+  {
+   "fieldname": "mime_type",
+   "fieldtype": "Data",
+   "label": "MIME Type",
+   "read_only": 1
+  },
+  {
+   "fieldname": "content_hash",
+   "fieldtype": "Data",
+   "label": "Content Hash",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "hide_toolbar": 0,
+ "index_web_pages_for_search": 0,
+ "is_submittable": 0,
+ "issingle": 0,
+ "links": [],
+ "modified": "2026-03-18 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Ifitwala Drive",
+ "name": "Drive File Version",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "read_only": 0,
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1,
+ "track_seen": 0
+}

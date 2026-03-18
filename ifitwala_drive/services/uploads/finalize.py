@@ -28,6 +28,7 @@ from ifitwala_drive.services.integration.ifitwala_ed_tasks import (
 	get_task_submission_context_override,
 	validate_task_submission_finalize_context,
 )
+from ifitwala_drive.services.files.creation import create_drive_file_artifacts
 from ifitwala_drive.services.logging import log_drive_event
 from ifitwala_drive.services.storage.base import get_storage_backend
 from ifitwala_drive.services.uploads.validation import validate_finalize_session_payload
@@ -150,11 +151,21 @@ def _mark_session_failed(doc, exc: Exception) -> None:
 
 
 def _completed_response(doc, extra: dict[str, Any] | None = None) -> dict[str, Any]:
+	drive_file_id = getattr(doc, "drive_file", None)
+	drive_file_version_id = getattr(doc, "drive_file_version", None)
+	canonical_ref = getattr(doc, "canonical_ref", None)
+
+	if drive_file_id and not drive_file_version_id:
+		drive_file_version_id = frappe.db.get_value("Drive File", drive_file_id, "current_version")
+
+	if drive_file_id and not canonical_ref:
+		canonical_ref = frappe.db.get_value("Drive File", drive_file_id, "canonical_ref")
+
 	response = {
-		"drive_file_id": getattr(doc, "drive_file", None),
-		"drive_file_version_id": None,
+		"drive_file_id": drive_file_id,
+		"drive_file_version_id": drive_file_version_id,
 		"file_id": getattr(doc, "file", None),
-		"canonical_ref": None,
+		"canonical_ref": canonical_ref,
 		"status": doc.status,
 		"preview_status": "pending" if doc.status == "completed" else None,
 		"file_url": frappe.db.get_value("File", doc.file, "file_url") if getattr(doc, "file", None) else None,
@@ -221,11 +232,19 @@ def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 			secondary_subjects=_get_secondary_subjects(doc),
 			context_override=_get_context_override(doc),
 		)
+		drive_artifacts = create_drive_file_artifacts(
+			upload_session_doc=doc,
+			file_id=created.name,
+			storage_artifact=storage_artifact,
+		)
 	except Exception as exc:
 		_mark_session_failed(doc, exc)
 		raise
 
 	doc.file = created.name
+	doc.drive_file = drive_artifacts["drive_file_id"]
+	doc.drive_file_version = drive_artifacts["drive_file_version_id"]
+	doc.canonical_ref = drive_artifacts["canonical_ref"]
 	doc.status = "completed"
 	doc.completed_on = now_datetime()
 	doc.error_log = None

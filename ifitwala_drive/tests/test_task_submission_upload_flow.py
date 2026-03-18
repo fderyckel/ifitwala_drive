@@ -31,7 +31,15 @@ class FakeDoc:
 	def insert(self, ignore_permissions=False):
 		self.inserted += 1
 		if not getattr(self, "name", None):
-			self.name = "DUS-0001"
+			doctype = getattr(self, "doctype", "")
+			prefix_map = {
+				"Drive Upload Session": "DUS",
+				"Drive File": "DF",
+				"Drive File Version": "DFV",
+				"Drive Binding": "DB",
+			}
+			prefix = prefix_map.get(doctype, "DOC")
+			self.name = f"{prefix}-{self.inserted:04d}"
 		return self
 
 
@@ -390,16 +398,19 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 	)
 
 	assert response == {
-		"drive_file_id": None,
-		"drive_file_version_id": None,
+		"drive_file_id": "DF-0001",
+		"drive_file_version_id": "DFV-0001",
 		"file_id": "FILE-0001",
-		"canonical_ref": None,
+		"canonical_ref": "drv:ORG-0001:DF-0001",
 		"status": "completed",
 		"preview_status": "pending",
 		"file_url": None,
 	}
 	assert session_doc.status == "completed"
 	assert session_doc.file == "FILE-0001"
+	assert session_doc.drive_file == "DF-0001"
+	assert session_doc.drive_file_version == "DFV-0001"
+	assert session_doc.canonical_ref == "drv:ORG-0001:DF-0001"
 	assert session_doc.content_hash == "sha256:abc123"
 	assert dispatcher_recorder["call"]["classification"]["slot"] == "submission"
 	assert dispatcher_recorder["call"]["classification"]["primary_subject_type"] == "Student"

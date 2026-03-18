@@ -1,0 +1,283 @@
+{
+ "actions": [],
+ "allow_copy": 0,
+ "allow_events_in_timeline": 0,
+ "allow_guest_to_view": 0,
+ "allow_import": 0,
+ "allow_rename": 0,
+ "autoname": "hash",
+ "beta": 0,
+ "creation": "2026-03-18 00:00:00.000000",
+ "custom": 0,
+ "default_view": "List",
+ "doctype": "DocType",
+ "document_type": "Document",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "file",
+  "status",
+  "preview_status",
+  "section_identity",
+  "canonical_ref",
+  "display_name",
+  "folder",
+  "section_context",
+  "attached_doctype",
+  "attached_name",
+  "owner_doctype",
+  "owner_name",
+  "organization",
+  "school",
+  "primary_subject_type",
+  "primary_subject_id",
+  "data_class",
+  "purpose",
+  "retention_policy",
+  "slot",
+  "section_versioning",
+  "current_version_no",
+  "current_version",
+  "section_storage",
+  "storage_backend",
+  "storage_object_key",
+  "upload_source",
+  "content_hash",
+  "is_private"
+ ],
+ "fields": [
+  {
+   "fieldname": "file",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "File",
+   "options": "File",
+   "reqd": 1
+  },
+  {
+   "default": "active",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "active\nprocessing\nblocked\nerased\nsuperseded",
+   "reqd": 1
+  },
+  {
+   "default": "pending",
+   "fieldname": "preview_status",
+   "fieldtype": "Select",
+   "label": "Preview Status",
+   "options": "pending\nready\nfailed\nnot_applicable",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_identity",
+   "fieldtype": "Section Break",
+   "label": "Identity"
+  },
+  {
+   "fieldname": "canonical_ref",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Canonical Ref",
+   "read_only": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "display_name",
+   "fieldtype": "Data",
+   "label": "Display Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "folder",
+   "fieldtype": "Link",
+   "label": "Folder",
+   "options": "Drive Folder"
+  },
+  {
+   "fieldname": "section_context",
+   "fieldtype": "Section Break",
+   "label": "Context"
+  },
+  {
+   "fieldname": "attached_doctype",
+   "fieldtype": "Data",
+   "label": "Attached Doctype",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "attached_name",
+   "fieldtype": "Data",
+   "label": "Attached Name",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "owner_doctype",
+   "fieldtype": "Data",
+   "label": "Owner Doctype",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "owner_name",
+   "fieldtype": "Data",
+   "label": "Owner Name",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "organization",
+   "fieldtype": "Link",
+   "label": "Organization",
+   "options": "Organization",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "school",
+   "fieldtype": "Link",
+   "label": "School",
+   "options": "School",
+   "read_only": 1
+  },
+  {
+   "fieldname": "primary_subject_type",
+   "fieldtype": "Data",
+   "label": "Primary Subject Type",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "primary_subject_id",
+   "fieldtype": "Data",
+   "label": "Primary Subject ID",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "data_class",
+   "fieldtype": "Data",
+   "label": "Data Class",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "purpose",
+   "fieldtype": "Data",
+   "label": "Purpose",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "retention_policy",
+   "fieldtype": "Data",
+   "label": "Retention Policy",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "slot",
+   "fieldtype": "Data",
+   "label": "Slot",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_versioning",
+   "fieldtype": "Section Break",
+   "label": "Versioning"
+  },
+  {
+   "default": "0",
+   "fieldname": "current_version_no",
+   "fieldtype": "Int",
+   "label": "Current Version No",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "current_version",
+   "fieldtype": "Link",
+   "label": "Current Version",
+   "options": "Drive File Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_storage",
+   "fieldtype": "Section Break",
+   "label": "Storage"
+  },
+  {
+   "fieldname": "storage_backend",
+   "fieldtype": "Data",
+   "label": "Storage Backend",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "storage_object_key",
+   "fieldtype": "Data",
+   "label": "Storage Object Key",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "upload_source",
+   "fieldtype": "Select",
+   "label": "Upload Source",
+   "options": "Desk\nSPA\nAPI\nJob",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "content_hash",
+   "fieldtype": "Data",
+   "label": "Content Hash",
+   "read_only": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "is_private",
+   "fieldtype": "Check",
+   "label": "Is Private",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "hide_toolbar": 0,
+ "index_web_pages_for_search": 0,
+ "is_submittable": 0,
+ "issingle": 0,
+ "links": [],
+ "modified": "2026-03-18 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Ifitwala Drive",
+ "name": "Drive File",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "read_only": 0,
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1,
+ "track_seen": 0
+}
