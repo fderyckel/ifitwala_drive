@@ -344,7 +344,7 @@ def test_upload_applicant_guardian_image_builds_row_scoped_session():
 	assert recorder["payload"]["owner_doctype"] == "Student Applicant"
 	assert recorder["payload"]["attached_doctype"] == "Student Applicant Guardian"
 	assert recorder["payload"]["attached_name"] == "ROW-0001"
-	assert recorder["payload"]["slot"] == "guardian_profile_image__row_0001"
+	assert recorder["payload"]["slot"] == "guardian_profile_image__row-0001"
 	assert recorder["payload"]["is_private"] == 1
 
 
@@ -439,7 +439,7 @@ def test_get_admissions_attached_field_override_returns_guardian_image_for_guard
 		types.SimpleNamespace(
 			owner_doctype="Student Applicant",
 			attached_doctype="Student Applicant Guardian",
-			intended_slot="guardian_profile_image__row_0001",
+			intended_slot="guardian_profile_image__row-0001",
 		)
 	)
 
@@ -575,7 +575,7 @@ def test_run_admissions_post_finalize_updates_guardian_image_row():
 			owner_name="APP-0001",
 			attached_doctype="Student Applicant Guardian",
 			attached_name="ROW-0001",
-			intended_slot="guardian_profile_image__row_0001",
+			intended_slot="guardian_profile_image__row-0001",
 		),
 		CreatedFile(),
 	)
