@@ -14,8 +14,10 @@ from frappe.utils import get_datetime, now_datetime
 from ifitwala_drive.services.integration.ifitwala_ed_admissions import (
 	get_admissions_attached_field_override,
 	run_admissions_post_finalize,
+	validate_applicant_guardian_image_finalize_context,
 	validate_applicant_health_finalize_context,
 	validate_applicant_document_finalize_context,
+	validate_applicant_profile_image_finalize_context,
 )
 from ifitwala_drive.services.integration.ifitwala_ed_media import (
 	get_attached_field_override,
@@ -187,6 +189,8 @@ def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 	validate_task_submission_finalize_context(doc)
 	validate_media_finalize_context(doc)
 	validate_applicant_document_finalize_context(doc)
+	validate_applicant_profile_image_finalize_context(doc)
+	validate_applicant_guardian_image_finalize_context(doc)
 	validate_applicant_health_finalize_context(doc)
 
 	storage = get_storage_backend(getattr(doc, "storage_backend", None))

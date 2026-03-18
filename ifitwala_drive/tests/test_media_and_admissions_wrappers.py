@@ -267,6 +267,87 @@ def test_upload_applicant_document_builds_item_scoped_session():
 	assert recorder["payload"]["slot"] == "identity_passport_passport_copy"
 
 
+def test_upload_applicant_profile_image_builds_applicant_scoped_session():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.integration.ifitwala_ed_admissions",
+		"ifitwala_drive.services.uploads.sessions",
+	)
+	_install_fake_frappe(
+		value_map={
+			(
+				"Student Applicant",
+				"APP-0001",
+				("organization", "school"),
+				True,
+			): {"organization": "ORG-0001", "school": "SCH-0001"},
+		}
+	)
+	recorder = {}
+	_install_fake_sessions(recorder)
+
+	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_admissions")
+	response = module.upload_applicant_profile_image_service(
+		{
+			"student_applicant": "APP-0001",
+			"filename_original": "profile.jpg",
+		}
+	)
+
+	assert response["student_applicant"] == "APP-0001"
+	assert recorder["payload"]["owner_doctype"] == "Student Applicant"
+	assert recorder["payload"]["attached_doctype"] == "Student Applicant"
+	assert recorder["payload"]["attached_name"] == "APP-0001"
+	assert recorder["payload"]["slot"] == "profile_image"
+	assert recorder["payload"]["is_private"] == 1
+
+
+def test_upload_applicant_guardian_image_builds_row_scoped_session():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.integration.ifitwala_ed_admissions",
+		"ifitwala_drive.services.uploads.sessions",
+	)
+	_install_fake_frappe(
+		value_map={
+			(
+				"Student Applicant Guardian",
+				(
+					("name", "ROW-0001"),
+					("parent", "APP-0001"),
+					("parenttype", "Student Applicant"),
+				),
+				("name", "parent"),
+				True,
+			): {"name": "ROW-0001", "parent": "APP-0001"},
+			(
+				"Student Applicant",
+				"APP-0001",
+				("organization", "school"),
+				True,
+			): {"organization": "ORG-0001", "school": "SCH-0001"},
+		}
+	)
+	recorder = {}
+	_install_fake_sessions(recorder)
+
+	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_admissions")
+	response = module.upload_applicant_guardian_image_service(
+		{
+			"student_applicant": "APP-0001",
+			"guardian_row_name": "ROW-0001",
+			"filename_original": "guardian.jpg",
+		}
+	)
+
+	assert response["guardian_row_name"] == "ROW-0001"
+	assert recorder["payload"]["owner_doctype"] == "Student Applicant"
+	assert recorder["payload"]["attached_doctype"] == "Student Applicant Guardian"
+	assert recorder["payload"]["attached_name"] == "ROW-0001"
+	assert recorder["payload"]["slot"] == "guardian_profile_image__row_0001"
+	assert recorder["payload"]["is_private"] == 1
+
+
 def test_upload_applicant_health_vaccination_proof_builds_profile_scoped_session():
 	_purge_modules(
 		"frappe",
@@ -331,6 +412,38 @@ def test_get_admissions_attached_field_override_returns_vaccinations_for_health_
 	)
 
 	assert fieldname == "vaccinations"
+
+
+def test_get_admissions_attached_field_override_returns_applicant_image_for_profile_uploads():
+	_purge_modules("frappe", "ifitwala_drive.services.integration.ifitwala_ed_admissions")
+	_install_fake_frappe()
+	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_admissions")
+
+	fieldname = module.get_admissions_attached_field_override(
+		types.SimpleNamespace(
+			owner_doctype="Student Applicant",
+			attached_doctype="Student Applicant",
+			intended_slot="profile_image",
+		)
+	)
+
+	assert fieldname == "applicant_image"
+
+
+def test_get_admissions_attached_field_override_returns_guardian_image_for_guardian_uploads():
+	_purge_modules("frappe", "ifitwala_drive.services.integration.ifitwala_ed_admissions")
+	_install_fake_frappe()
+	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_admissions")
+
+	fieldname = module.get_admissions_attached_field_override(
+		types.SimpleNamespace(
+			owner_doctype="Student Applicant",
+			attached_doctype="Student Applicant Guardian",
+			intended_slot="guardian_profile_image__row_0001",
+		)
+	)
+
+	assert fieldname == "guardian_image"
 
 
 def test_run_media_post_finalize_updates_student_image():
@@ -411,6 +524,66 @@ def test_run_admissions_post_finalize_resets_review_state():
 	assert response["classification"] == "FC-0001"
 	assert response["applicant_document_item"] == "ADI-0001"
 	assert db_set_calls[0][0] == "Applicant Document Item"
+
+
+def test_run_admissions_post_finalize_updates_applicant_profile_image():
+	_purge_modules("frappe", "ifitwala_drive.services.integration.ifitwala_ed_admissions")
+	db_set_calls = _install_fake_frappe(
+		value_map={
+			("File Classification", (("file", "FILE-0001"),), "name"): "FC-0003",
+		}
+	)
+	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_admissions")
+
+	class CreatedFile:
+		name = "FILE-0001"
+		file_url = "/private/files/profile.jpg"
+
+	response = module.run_admissions_post_finalize(
+		types.SimpleNamespace(
+			owner_doctype="Student Applicant",
+			owner_name="APP-0001",
+			attached_doctype="Student Applicant",
+			attached_name="APP-0001",
+			intended_slot="profile_image",
+		),
+		CreatedFile(),
+	)
+
+	assert response["classification"] == "FC-0003"
+	assert response["file_url"] == "/private/files/profile.jpg"
+	assert db_set_calls[0][0] == "Student Applicant"
+	assert db_set_calls[0][2] == "applicant_image"
+
+
+def test_run_admissions_post_finalize_updates_guardian_image_row():
+	_purge_modules("frappe", "ifitwala_drive.services.integration.ifitwala_ed_admissions")
+	db_set_calls = _install_fake_frappe(
+		value_map={
+			("File Classification", (("file", "FILE-0001"),), "name"): "FC-0004",
+		}
+	)
+	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_admissions")
+
+	class CreatedFile:
+		name = "FILE-0001"
+		file_url = "/private/files/guardian.jpg"
+
+	response = module.run_admissions_post_finalize(
+		types.SimpleNamespace(
+			owner_doctype="Student Applicant",
+			owner_name="APP-0001",
+			attached_doctype="Student Applicant Guardian",
+			attached_name="ROW-0001",
+			intended_slot="guardian_profile_image__row_0001",
+		),
+		CreatedFile(),
+	)
+
+	assert response["classification"] == "FC-0004"
+	assert response["guardian_row_name"] == "ROW-0001"
+	assert db_set_calls[0][0] == "Student Applicant Guardian"
+	assert db_set_calls[0][2] == "guardian_image"
 
 
 def test_run_admissions_post_finalize_returns_health_upload_metadata():
