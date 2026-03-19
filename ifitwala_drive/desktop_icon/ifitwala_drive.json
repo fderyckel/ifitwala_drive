@@ -9,9 +9,8 @@
  "idx": 1,
  "label": "Ifitwala Drive",
  "link_to": "Ifitwala Drive",
- "link_type": "Workspace Sidebar",
+ "link_type": "Workspace",
  "name": "Ifitwala Drive",
  "restrict_removal": 0,
- "sidebar": "Ifitwala Drive",
  "standard": 1
 }

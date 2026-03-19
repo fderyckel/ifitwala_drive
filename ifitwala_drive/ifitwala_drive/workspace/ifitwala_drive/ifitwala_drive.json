@@ -1,5 +1,6 @@
 {
  "app": "ifitwala_drive",
+ "charts": [],
  "content": "[{\"id\":\"drive-header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Ifitwala Drive</span>\",\"col\":12}},{\"id\":\"drive-shortcut-workspace\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Drive Workspace\",\"col\":3}},{\"id\":\"drive-shortcut-files\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Drive Files\",\"col\":3}},{\"id\":\"drive-shortcut-folders\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Drive Folders\",\"col\":3}},{\"id\":\"drive-shortcut-sessions\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Upload Sessions\",\"col\":3}},{\"id\":\"drive-shortcut-jobs\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Processing Jobs\",\"col\":3}}]",
  "custom_blocks": [],
  "docstatus": 0,

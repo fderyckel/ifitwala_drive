@@ -48,6 +48,10 @@ export type FolderBrowseResponse = {
 	items: FolderItem[]
 }
 
+export type WorkspaceRootsResponse = {
+	roots: FolderSummary[]
+}
+
 export type ContextBrowseResponse = {
 	context: {
 		doctype: string

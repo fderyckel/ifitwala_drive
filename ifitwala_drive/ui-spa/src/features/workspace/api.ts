@@ -4,6 +4,7 @@ import type {
 	ContextBrowseResponse,
 	FolderBrowseResponse,
 	GrantResponse,
+	WorkspaceRootsResponse,
 	WorkspaceQuery
 } from './types'
 
@@ -29,6 +30,12 @@ export function browseFolder(folder: string): Promise<FolderBrowseResponse> {
 		include_files: 1,
 		limit: 100,
 		offset: 0
+	})
+}
+
+export function listWorkspaceRoots(): Promise<WorkspaceRootsResponse> {
+	return callFrappeApi<WorkspaceRootsResponse>('ifitwala_drive.api.folders.list_workspace_roots', {
+		limit: 24
 	})
 }
 

@@ -30,6 +30,16 @@ def _assert_can_read(doctype: str, name: str) -> None:
 		doc.check_permission("read")
 
 
+def _can_read(doctype: str | None, name: str | None) -> bool:
+	if not doctype or not name:
+		return False
+	try:
+		_assert_can_read(doctype, name)
+	except Exception:
+		return False
+	return True
+
+
 def _get_folder_doc(folder_id: str):
 	if not folder_id:
 		frappe.throw(_("Missing required field: folder"))
@@ -120,6 +130,13 @@ def _serialize_optional_folder_summary(
 	if not folder_doc:
 		return None
 	return _serialize_folder_summary(folder_doc, folder_cache)
+
+
+def _root_folder_filters() -> dict[str, Any]:
+	return {
+		"status": "active",
+		"parent_drive_folder": ["in", ["", None]],
+	}
 
 
 def _serialize_file_entry(
@@ -257,6 +274,49 @@ def list_folder_items_service(payload: dict[str, Any]) -> dict[str, Any]:
 	return {
 		"folder": _serialize_folder_summary(folder_doc, folder_cache),
 		"items": items,
+	}
+
+
+def list_workspace_roots_service(payload: dict[str, Any]) -> dict[str, Any]:
+	limit = max(_as_int(payload.get("limit"), 24), 1)
+	folder_cache: dict[str, Any] = {}
+	roots: list[dict[str, Any]] = []
+
+	root_rows = frappe.get_all(
+		"Drive Folder",
+		filters=_root_folder_filters(),
+		fields=[
+			"name",
+			"title",
+			"path_cache",
+			"parent_drive_folder",
+			"owner_doctype",
+			"owner_name",
+			"folder_kind",
+			"context_doctype",
+			"context_name",
+			"is_system_managed",
+			"is_private",
+			"modified",
+		],
+		order_by="title asc, modified desc",
+		limit_page_length=limit,
+	)
+
+	for row in root_rows:
+		if row.get("parent_drive_folder"):
+			continue
+		if not _can_read(row.get("owner_doctype"), row.get("owner_name")):
+			continue
+
+		folder_doc = _load_folder_doc(row["name"], folder_cache)
+		if not folder_doc:
+			folder_doc = frappe.get_doc("Drive Folder", row["name"])
+			folder_cache[row["name"]] = folder_doc
+		roots.append(_serialize_folder_summary(folder_doc, folder_cache))
+
+	return {
+		"roots": roots,
 	}
 
 

@@ -14,7 +14,7 @@ def test_desktop_icon_is_public_and_points_to_workspace_sidebar():
 	assert icon["doctype"] == "Desktop Icon"
 	assert icon["hidden"] == 0
 	assert icon["label"] == "Ifitwala Drive"
-	assert icon["link_type"] == "Workspace Sidebar"
+	assert icon["link_type"] == "Workspace"
 	assert icon["link_to"] == "Ifitwala Drive"
 	assert "roles" not in icon
 
@@ -31,14 +31,15 @@ def test_workspace_sidebar_exposes_drive_navigation():
 		"Upload Sessions",
 		"Processing Jobs",
 	]
-	assert sidebar["items"][0]["link_type"] == "Workspace"
-	assert sidebar["items"][0]["link_to"] == "Ifitwala Drive"
+	assert sidebar["items"][0]["link_type"] == "URL"
+	assert sidebar["items"][0]["url"] == "/app/ifitwala-drive"
 
 
 def test_workspace_is_public_and_links_to_drive_workspace():
 	workspace = _load_json(ROOT / "ifitwala_drive" / "workspace" / "ifitwala_drive" / "ifitwala_drive.json")
 
 	assert workspace["doctype"] == "Workspace"
+	assert workspace["charts"] == []
 	assert workspace["public"] == 1
 	assert workspace["for_user"] == ""
 	assert "roles" not in workspace
@@ -46,3 +47,8 @@ def test_workspace_is_public_and_links_to_drive_workspace():
 		shortcut.get("label") == "Drive Workspace" and shortcut.get("url") == "/drive_workspace"
 		for shortcut in workspace["shortcuts"]
 	)
+
+
+def test_no_legacy_drive_desktop_records_remain():
+	assert not (ROOT / "desktop_icon" / "drive.json").exists()
+	assert not (ROOT / "workspace_sidebar" / "drive.json").exists()

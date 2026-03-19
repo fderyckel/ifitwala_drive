@@ -17,6 +17,8 @@ class FakeDoc:
 			setattr(self, key, value)
 
 	def check_permission(self, permission_type=None):
+		if getattr(self, "permission_error", False):
+			raise RuntimeError("Permission denied")
 		return None
 
 
@@ -397,4 +399,148 @@ def test_list_folder_items_returns_child_folders_and_files():
 				"can_download": True,
 			},
 		],
+	}
+
+
+def test_list_workspace_roots_returns_only_accessible_root_folders():
+	_purge_modules("frappe", "ifitwala_drive.services.folders.browse")
+	organization_doc = FakeDoc({"name": "ORG-0001"})
+	forbidden_owner = FakeDoc({"name": "ORG-0002", "permission_error": True})
+	root_a = FakeDoc(
+		{
+			"name": "DRF-ROOT-A",
+			"title": "Admissions",
+			"path_cache": "admissions",
+			"owner_doctype": "Organization",
+			"owner_name": "ORG-0001",
+			"folder_kind": "system_bound",
+			"context_doctype": "Student Applicant",
+			"context_name": "APP-0001",
+			"is_system_managed": 1,
+			"is_private": 1,
+		}
+	)
+	root_b = FakeDoc(
+		{
+			"name": "DRF-ROOT-B",
+			"title": "Private Root",
+			"path_cache": "private-root",
+			"owner_doctype": "Organization",
+			"owner_name": "ORG-0002",
+			"folder_kind": "system_bound",
+			"context_doctype": "Organization",
+			"context_name": "ORG-0002",
+			"is_system_managed": 1,
+			"is_private": 1,
+		}
+	)
+	child = FakeDoc(
+		{
+			"name": "DRF-CHILD",
+			"title": "Child",
+			"path_cache": "admissions/child",
+			"parent_drive_folder": "DRF-ROOT-A",
+			"owner_doctype": "Organization",
+			"owner_name": "ORG-0001",
+			"folder_kind": "system_bound",
+			"context_doctype": "Student Applicant",
+			"context_name": "APP-0001",
+			"is_system_managed": 1,
+			"is_private": 1,
+		}
+	)
+	_install_fake_frappe(
+		exists_map={
+			("Organization", "ORG-0001"): True,
+			("Organization", "ORG-0002"): True,
+			("Drive Folder", "DRF-ROOT-A"): True,
+			("Drive Folder", "DRF-ROOT-B"): True,
+			("Drive Folder", "DRF-CHILD"): True,
+		},
+		docs_map={
+			("Organization", "ORG-0001"): organization_doc,
+			("Organization", "ORG-0002"): forbidden_owner,
+			("Drive Folder", "DRF-ROOT-A"): root_a,
+			("Drive Folder", "DRF-ROOT-B"): root_b,
+			("Drive Folder", "DRF-CHILD"): child,
+		},
+		get_all_handlers={
+			"Drive Folder": lambda **kwargs: [
+				{
+					"name": "DRF-ROOT-A",
+					"title": "Admissions",
+					"path_cache": "admissions",
+					"parent_drive_folder": None,
+					"owner_doctype": "Organization",
+					"owner_name": "ORG-0001",
+					"folder_kind": "system_bound",
+					"context_doctype": "Student Applicant",
+					"context_name": "APP-0001",
+					"is_system_managed": 1,
+					"is_private": 1,
+					"modified": "2026-03-19 09:00:00",
+				},
+				{
+					"name": "DRF-ROOT-B",
+					"title": "Private Root",
+					"path_cache": "private-root",
+					"parent_drive_folder": None,
+					"owner_doctype": "Organization",
+					"owner_name": "ORG-0002",
+					"folder_kind": "system_bound",
+					"context_doctype": "Organization",
+					"context_name": "ORG-0002",
+					"is_system_managed": 1,
+					"is_private": 1,
+					"modified": "2026-03-19 08:00:00",
+				},
+				{
+					"name": "DRF-CHILD",
+					"title": "Child",
+					"path_cache": "admissions/child",
+					"parent_drive_folder": "DRF-ROOT-A",
+					"owner_doctype": "Organization",
+					"owner_name": "ORG-0001",
+					"folder_kind": "system_bound",
+					"context_doctype": "Student Applicant",
+					"context_name": "APP-0001",
+					"is_system_managed": 1,
+					"is_private": 1,
+					"modified": "2026-03-19 07:00:00",
+				},
+			],
+		},
+	)
+	module = _load_module("ifitwala_drive.services.folders.browse")
+
+	response = module.list_workspace_roots_service({})
+
+	assert response == {
+		"roots": [
+			{
+				"id": "DRF-ROOT-A",
+				"title": "Admissions",
+				"path_cache": "admissions",
+				"context_path": "Admissions",
+				"folder_kind": "system_bound",
+				"parent_folder": None,
+				"breadcrumbs": [
+					{
+						"id": "DRF-ROOT-A",
+						"title": "Admissions",
+						"path_cache": "admissions",
+					}
+				],
+				"owner": {
+					"doctype": "Organization",
+					"name": "ORG-0001",
+				},
+				"context": {
+					"doctype": "Student Applicant",
+					"name": "APP-0001",
+				},
+				"is_system_managed": 1,
+				"is_private": 1,
+			}
+		]
 	}

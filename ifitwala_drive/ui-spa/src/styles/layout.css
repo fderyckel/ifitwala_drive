@@ -26,6 +26,12 @@
 		align-items: start;
 	}
 
+	.drive-body-grid {
+		display: grid;
+		gap: 1rem;
+		align-items: start;
+	}
+
 	.drive-list {
 		display: grid;
 		gap: 0.8rem;
@@ -49,6 +55,10 @@
 	@media (min-width: 980px) {
 		.drive-hero-grid {
 			grid-template-columns: minmax(0, 1.7fr) minmax(320px, 0.9fr);
+		}
+
+		.drive-body-grid {
+			grid-template-columns: minmax(230px, 0.55fr) minmax(0, 1.45fr);
 		}
 	}
 }
