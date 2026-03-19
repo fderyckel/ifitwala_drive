@@ -4,8 +4,9 @@
 	"private": true,
 	"type": "module",
 	"license": "MIT",
+	"packageManager": "yarn@1.22.22",
 	"engines": {
-		"node": ">=18"
+		"node": ">=24"
 	},
 	"dependencies": {
 		"vue": "^3.5.26"

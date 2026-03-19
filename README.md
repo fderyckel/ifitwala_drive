@@ -44,6 +44,36 @@ This runs:
 
 GitHub Actions runs the same script for pull requests targeting `main` and for pushes to `main`.
 
+### Frontend Build
+
+The Drive workspace Vue app lives in `ifitwala_drive/ui-spa` and builds into
+`ifitwala_drive/public/vite`.
+
+Use the repo root wrapper so the build path stays aligned with Bench:
+
+```bash
+yarn build
+```
+
+This runs the `ui-spa` dependency install and the Vite production build. Once
+Node and Yarn are available, `bench build --app ifitwala_drive` will invoke the
+same root build script.
+
+Useful commands:
+
+```bash
+yarn type-check:spa
+yarn dev:spa
+```
+
+Runtime baseline:
+
+- Node `>=24`
+- Yarn `1.22.22` via Corepack or equivalent
+
+This machine currently has neither `node` nor `yarn`, so frontend build
+verification must happen on a workstation or CI runner with that toolchain.
+
 ### License
 
 mit
