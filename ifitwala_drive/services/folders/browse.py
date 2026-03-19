@@ -218,9 +218,7 @@ def list_folder_items_service(payload: dict[str, Any]) -> dict[str, Any]:
 					"is_private": None,
 				}
 			child_summary["item_type"] = "folder"
-			items.append(
-				child_summary
-			)
+			items.append(child_summary)
 
 	if include_files:
 		drive_files = frappe.get_all(

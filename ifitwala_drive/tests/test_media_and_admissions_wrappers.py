@@ -3,10 +3,11 @@ from __future__ import annotations
 import importlib
 import sys
 import types
+from typing import ClassVar
 
 
 class FakeDoc:
-	_insert_counters = {}
+	_insert_counters: ClassVar[dict[str, int]] = {}
 
 	def __init__(self, data=None):
 		for key, value in (data or {}).items():
@@ -54,9 +55,9 @@ def _normalize_key_part(value):
 
 def _purge_modules(*prefixes: str) -> None:
 	for module_name in list(sys.modules):
-		if any(module_name == prefix or module_name.startswith(f"{prefix}.") for prefix in prefixes) or module_name.startswith(
-			"ifitwala_drive.services.folders"
-		):
+		if any(
+			module_name == prefix or module_name.startswith(f"{prefix}.") for prefix in prefixes
+		) or module_name.startswith("ifitwala_drive.services.folders"):
 			sys.modules.pop(module_name, None)
 	FakeDoc._insert_counters = {}
 

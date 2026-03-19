@@ -18,4 +18,3 @@ def list_folder_items(**kwargs: Any) -> dict[str, Any]:
 @frappe.whitelist()
 def list_context_files(**kwargs: Any) -> dict[str, Any]:
 	return list_context_files_service(kwargs)
-

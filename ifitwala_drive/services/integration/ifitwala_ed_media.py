@@ -4,6 +4,7 @@ from typing import Any
 
 import frappe
 from frappe import _
+
 from ifitwala_drive.services.folders.resolution import (
 	resolve_organization_media_folder,
 	resolve_student_image_folder,

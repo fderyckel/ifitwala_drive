@@ -5,10 +5,10 @@ from typing import Any
 import frappe
 
 from ifitwala_drive.services.integration.ifitwala_ed_admissions import (
+	upload_applicant_document_service,
 	upload_applicant_guardian_image_service,
 	upload_applicant_health_vaccination_proof_service,
 	upload_applicant_profile_image_service,
-	upload_applicant_document_service,
 )
 
 

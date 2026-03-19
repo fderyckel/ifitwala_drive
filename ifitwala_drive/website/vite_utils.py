@@ -15,7 +15,7 @@ def get_vite_assets(
 	for path in manifest_paths:
 		if not os.path.exists(path):
 			continue
-		with open(path, "r", encoding="utf-8") as handle:
+		with open(path, encoding="utf-8") as handle:
 			try:
 				manifest = json.load(handle)
 				break

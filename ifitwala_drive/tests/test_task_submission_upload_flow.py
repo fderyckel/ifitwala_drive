@@ -6,13 +6,14 @@ import importlib
 import sys
 import types
 from datetime import datetime, timedelta
+from typing import ClassVar
 
 
 def _purge_modules(*prefixes: str) -> None:
 	for module_name in list(sys.modules):
-		if any(module_name == prefix or module_name.startswith(f"{prefix}.") for prefix in prefixes) or module_name.startswith(
-			"ifitwala_drive.services.folders"
-		):
+		if any(
+			module_name == prefix or module_name.startswith(f"{prefix}.") for prefix in prefixes
+		) or module_name.startswith("ifitwala_drive.services.folders"):
 			sys.modules.pop(module_name, None)
 	FakeDoc._insert_counters = {}
 	FakeDoc._docs_map = {}
@@ -21,10 +22,10 @@ def _purge_modules(*prefixes: str) -> None:
 
 
 class FakeDoc:
-	_insert_counters = {}
-	_docs_map = {}
-	_duplicate_insert_once = {}
-	_duplicate_insert_materialized_docs = {}
+	_insert_counters: ClassVar[dict[str, int]] = {}
+	_docs_map: ClassVar[dict[tuple[str, str], "FakeDoc"]] = {}
+	_duplicate_insert_once: ClassVar[dict[str, int]] = {}
+	_duplicate_insert_materialized_docs: ClassVar[dict[str, object]] = {}
 
 	def __init__(self, data=None):
 		for key, value in (data or {}).items():

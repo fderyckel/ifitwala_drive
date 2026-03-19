@@ -1,0 +1,60 @@
+{
+ "app": "ifitwala_drive",
+ "content": "[{\"id\":\"drive-header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Ifitwala Drive</span>\",\"col\":12}},{\"id\":\"drive-shortcut-workspace\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Drive Workspace\",\"col\":3}},{\"id\":\"drive-shortcut-files\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Drive Files\",\"col\":3}},{\"id\":\"drive-shortcut-folders\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Drive Folders\",\"col\":3}},{\"id\":\"drive-shortcut-sessions\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Upload Sessions\",\"col\":3}},{\"id\":\"drive-shortcut-jobs\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Processing Jobs\",\"col\":3}}]",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "folder-normal",
+ "idx": 1,
+ "indicator_color": "green",
+ "is_hidden": 0,
+ "label": "Ifitwala Drive",
+ "links": [],
+ "module": "Ifitwala Drive",
+ "name": "Ifitwala Drive",
+ "number_cards": [],
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "shortcuts": [
+  {
+   "color": "Green",
+   "doc_view": "List",
+   "label": "Drive Workspace",
+   "type": "URL",
+   "url": "/drive_workspace"
+  },
+  {
+   "color": "Blue",
+   "doc_view": "List",
+   "label": "Drive Files",
+   "link_to": "Drive File",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Drive Folders",
+   "link_to": "Drive Folder",
+   "type": "DocType"
+  },
+  {
+   "color": "Orange",
+   "doc_view": "List",
+   "label": "Upload Sessions",
+   "link_to": "Drive Upload Session",
+   "type": "DocType"
+  },
+  {
+   "color": "Purple",
+   "doc_view": "List",
+   "label": "Processing Jobs",
+   "link_to": "Drive Processing Job",
+   "type": "DocType"
+  }
+ ],
+ "title": "Ifitwala Drive",
+ "type": "Workspace"
+}
