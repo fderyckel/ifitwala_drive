@@ -1,0 +1,213 @@
+@layer components {
+	.drive-panel {
+		border: 1px solid var(--border-subtle);
+		border-radius: var(--radius-xl);
+		background: rgb(var(--surface-strong-rgb) / 0.86);
+		box-shadow: var(--shadow-soft);
+		backdrop-filter: blur(14px);
+	}
+
+	.drive-hero {
+		padding: 1.5rem;
+		display: grid;
+		gap: 1rem;
+	}
+
+	.drive-overline {
+		margin: 0;
+		font-size: 0.75rem;
+		font-weight: 700;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: rgb(var(--leaf-rgb) / 0.95);
+	}
+
+	.drive-title {
+		margin: 0;
+		font-family: var(--font-serif);
+		font-size: clamp(2rem, 4vw, 3.25rem);
+		line-height: 1;
+	}
+
+	.drive-subtitle {
+		margin: 0;
+		max-width: 66ch;
+		font-size: 0.97rem;
+		line-height: 1.6;
+		color: rgb(var(--ink-rgb) / 0.74);
+	}
+
+	.drive-breadcrumbs {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.55rem;
+	}
+
+	.drive-crumb {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.45rem;
+		padding: 0.45rem 0.8rem;
+		border-radius: 999px;
+		border: 1px solid rgb(var(--border-rgb) / 0.95);
+		background: rgb(var(--surface-strong-rgb) / 0.9);
+		font-size: 0.86rem;
+		color: rgb(var(--ink-rgb) / 0.78);
+		transition:
+			transform 120ms ease,
+			border-color 120ms ease,
+			color 120ms ease;
+	}
+
+	.drive-crumb:hover {
+		transform: translateY(-1px);
+		border-color: rgb(var(--leaf-rgb) / 0.55);
+		color: rgb(var(--canopy-rgb) / 1);
+	}
+
+	.drive-status {
+		display: flex;
+		align-items: center;
+		gap: 0.65rem;
+		padding: 0.9rem 1rem;
+		border-radius: var(--radius-lg);
+		font-size: 0.92rem;
+	}
+
+	.drive-status[data-tone="neutral"] {
+		background: rgb(var(--surface-soft-rgb) / 0.96);
+		color: rgb(var(--ink-rgb) / 0.74);
+	}
+
+	.drive-status[data-tone="error"] {
+		background: rgb(var(--flame-rgb) / 0.12);
+		color: rgb(var(--clay-rgb) / 1);
+	}
+
+	.drive-status[data-tone="loading"] {
+		background: rgb(var(--jacaranda-rgb) / 0.1);
+		color: rgb(var(--jacaranda-rgb) / 1);
+	}
+
+	.drive-card {
+		padding: 1rem;
+		display: grid;
+		gap: 1rem;
+	}
+
+	.drive-card__head {
+		display: flex;
+		justify-content: space-between;
+		gap: 0.75rem;
+		align-items: start;
+	}
+
+	.drive-card__meta {
+		margin: 0 0 0.35rem;
+		font-size: 0.78rem;
+		font-weight: 700;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: rgb(var(--slate-rgb) / 0.82);
+	}
+
+	.drive-card__title {
+		margin: 0;
+		font-size: 1.08rem;
+		font-weight: 700;
+		line-height: 1.35;
+	}
+
+	.drive-card__path {
+		margin: 0.35rem 0 0;
+		font-size: 0.88rem;
+		line-height: 1.5;
+		color: rgb(var(--ink-rgb) / 0.65);
+	}
+
+	.drive-card__actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.65rem;
+	}
+
+	.drive-badge {
+		display: inline-flex;
+		align-items: center;
+		padding: 0.36rem 0.68rem;
+		border-radius: 999px;
+		background: rgb(var(--surface-soft-rgb) / 1);
+		border: 1px solid rgb(var(--border-rgb) / 0.95);
+		font-size: 0.76rem;
+		font-weight: 700;
+		color: rgb(var(--canopy-rgb) / 0.96);
+		white-space: nowrap;
+	}
+
+	.drive-button {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0.7rem 0.95rem;
+		border-radius: 999px;
+		border: 1px solid rgb(var(--leaf-rgb) / 0.28);
+		background: rgb(var(--leaf-rgb) / 0.1);
+		color: rgb(var(--canopy-rgb) / 1);
+		font-size: 0.9rem;
+		font-weight: 700;
+		cursor: pointer;
+		transition:
+			transform 120ms ease,
+			background 120ms ease,
+			border-color 120ms ease;
+	}
+
+	.drive-button:hover:not(:disabled) {
+		transform: translateY(-1px);
+		background: rgb(var(--leaf-rgb) / 0.16);
+		border-color: rgb(var(--leaf-rgb) / 0.42);
+	}
+
+	.drive-button:focus-visible {
+		outline: none;
+		box-shadow: var(--shadow-focus);
+	}
+
+	.drive-button:disabled {
+		cursor: not-allowed;
+		opacity: 0.48;
+	}
+
+	.drive-button--quiet {
+		background: rgb(var(--surface-strong-rgb) / 0.92);
+		border-color: rgb(var(--border-rgb) / 0.95);
+		color: rgb(var(--ink-rgb) / 0.78);
+	}
+
+	.drive-kpi {
+		padding: 1rem 1.05rem;
+		display: grid;
+		gap: 0.35rem;
+	}
+
+	.drive-kpi__label {
+		margin: 0;
+		font-size: 0.78rem;
+		font-weight: 700;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: rgb(var(--slate-rgb) / 0.82);
+	}
+
+	.drive-kpi__value {
+		margin: 0;
+		font-size: 1.35rem;
+		font-weight: 700;
+	}
+
+	.drive-empty {
+		padding: 2rem 1.1rem;
+		text-align: center;
+		color: rgb(var(--ink-rgb) / 0.72);
+	}
+}

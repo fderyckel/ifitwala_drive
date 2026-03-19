@@ -1,0 +1,35 @@
+{% extends "templates/web.html" %}
+
+{% block page_content %}
+{% if has_vite_workspace %}
+{% for href in vite_preload %}
+<link rel="modulepreload" href="{{ href }}">
+{% endfor %}
+{% for href in vite_css %}
+<link rel="stylesheet" href="{{ href }}">
+{% endfor %}
+
+<div id="ifitwala-drive-workspace-app" data-csrf-token="{{ csrf_token }}"></div>
+<script type="module" src="{{ vite_js }}"></script>
+{% else %}
+<link rel="stylesheet" href="/assets/ifitwala_drive/css/drive_workspace.css">
+
+<main class="drive-page">
+	<section class="drive-hero">
+		<div>
+			<p class="drive-overline" id="drive-workspace-mode">Drive workspace</p>
+			<h1 id="drive-workspace-heading">Drive Workspace</h1>
+			<p class="drive-subtitle" id="drive-workspace-subheading">
+				Context-first browsing owned by Ifitwala_drive. This surface is generic Drive UI and should be deep-linked from educational workflows, not rebuilt inside them.
+			</p>
+		</div>
+		<div id="drive-workspace-status" class="drive-status" data-tone="neutral" hidden></div>
+		<nav id="drive-workspace-breadcrumbs" class="drive-breadcrumbs" aria-label="Drive breadcrumbs"></nav>
+	</section>
+
+	<section id="drive-workspace-list" class="drive-grid" aria-live="polite"></section>
+</main>
+
+<script src="/assets/ifitwala_drive/js/drive_workspace.js"></script>
+{% endif %}
+{% endblock %}

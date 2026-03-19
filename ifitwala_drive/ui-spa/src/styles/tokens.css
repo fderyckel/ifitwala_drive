@@ -1,0 +1,42 @@
+@layer base {
+	:root {
+		--ink-rgb: 10 18 28;
+		--slate-rgb: 83 97 112;
+		--canopy-rgb: 19 72 54;
+		--leaf-rgb: 38 124 85;
+		--moss-rgb: 144 174 115;
+		--sky-rgb: 239 245 246;
+		--sand-rgb: 246 239 229;
+		--clay-rgb: 186 94 61;
+		--jacaranda-rgb: 112 105 186;
+		--flame-rgb: 227 102 63;
+		--border-rgb: 222 229 233;
+		--shade-rgb: 15 23 42;
+		--surface-rgb: 248 246 242;
+		--surface-strong-rgb: 255 255 255;
+		--surface-soft-rgb: 243 247 248;
+		--border-subtle: rgb(var(--border-rgb) / 0.72);
+		--border-strong: rgb(var(--border-rgb) / 1);
+		--shadow-soft: 0 14px 32px rgb(var(--ink-rgb) / 0.08);
+		--shadow-strong: 0 20px 45px rgb(var(--ink-rgb) / 0.13);
+		--shadow-focus: 0 0 0 3px rgb(var(--leaf-rgb) / 0.25);
+		--radius-lg: 1rem;
+		--radius-xl: 1.375rem;
+		--font-sans:
+			"Plus Jakarta Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+		--font-serif: "DM Serif Display", Georgia, "Times New Roman", serif;
+		--font-mono:
+			"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+			"Courier New", monospace;
+		--drive-gradient:
+			radial-gradient(circle at 8% 12%, rgb(var(--leaf-rgb) / 0.26), transparent 34%),
+			radial-gradient(circle at 94% 8%, rgb(var(--jacaranda-rgb) / 0.22), transparent 34%),
+			radial-gradient(circle at 86% 92%, rgb(var(--moss-rgb) / 0.24), transparent 38%),
+			linear-gradient(
+				180deg,
+				rgb(var(--sky-rgb) / 1) 0%,
+				rgb(var(--surface-soft-rgb) / 1) 46%,
+				rgb(var(--sand-rgb) / 1) 100%
+			);
+	}
+}
