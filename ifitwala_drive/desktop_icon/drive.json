@@ -1,0 +1,52 @@
+{
+ "app": "ifitwala_drive",
+ "bg_color": "gray",
+ "creation": "2026-03-17 17:02:12.130465",
+ "docstatus": 0,
+ "doctype": "Desktop Icon",
+ "hidden": 0,
+ "icon_type": "Link",
+ "idx": 20,
+ "label": "Drive",
+ "link_to": "Drive",
+ "link_type": "Workspace Sidebar",
+ "modified": "2026-03-18 12:46:43.414760",
+ "modified_by": "Administrator",
+ "name": "Drive",
+ "owner": "Administrator",
+ "restrict_removal": 1,
+ "roles": [
+  {
+   "role": "Academic Admin"
+  },
+  {
+   "role": "Academic Assistant"
+  },
+  {
+   "role": "Administrator"
+  },
+  {
+   "role": "Assistant Admin"
+  },
+  {
+   "role": "Accreditation Visitor"
+  },
+  {
+   "role": "Marketing Manager"
+  },
+  {
+   "role": "Marketing User"
+  },
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "Admission Manager"
+  },
+  {
+   "role": "Admission Officer"
+  }
+ ],
+ "sidebar": "Drive",
+ "standard": 1
+}
