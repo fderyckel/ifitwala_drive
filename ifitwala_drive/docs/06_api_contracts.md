@@ -508,20 +508,40 @@ List folders/files within a Drive folder.
   "folder": {
     "id": "FOLDER-0001",
     "title": "Course Resources",
-    "path_cache": "org-0001/course-resources"
+    "path_cache": "org-0001/course-resources",
+    "context_path": "Organization / Course Resources",
+    "breadcrumbs": [
+      {
+        "id": "FOLDER-ROOT",
+        "title": "Organization",
+        "path_cache": "org-0001"
+      },
+      {
+        "id": "FOLDER-0001",
+        "title": "Course Resources",
+        "path_cache": "org-0001/course-resources"
+      }
+    ]
   },
   "items": [
     {
       "item_type": "folder",
       "id": "FOLDER-0002",
-      "title": "Week 1"
+      "title": "Week 1",
+      "path_cache": "org-0001/course-resources/week-1",
+      "context_path": "Organization / Course Resources / Week 1"
     },
     {
       "item_type": "file",
       "id": "DF-0001",
       "title": "worksheet.pdf",
       "binding_role": "task_resource",
-      "preview_status": "ready"
+      "preview_status": "ready",
+      "canonical_ref": "drv:ORG-0001:DF-0001",
+      "folder_path": "org-0001/course-resources",
+      "context_path": "Organization / Course Resources",
+      "can_preview": true,
+      "can_download": true
     }
   ]
 }
@@ -557,12 +577,21 @@ This is the main context-first retrieval API.
   },
   "files": [
     {
+      "id": "DF-0001",
       "drive_file_id": "DF-0001",
       "canonical_ref": "drv:ORG-0001:DF-0001",
       "slot": "submission",
       "title": "essay.docx",
       "current_version_no": 2,
-      "preview_status": "pending"
+      "preview_status": "pending",
+      "folder_path": "student/task-0001/submissions",
+      "context_path": "Student / TASK-0001 / Submissions",
+      "attached_to": {
+        "doctype": "Task Submission",
+        "name": "TSUB-0001"
+      },
+      "can_preview": false,
+      "can_download": true
     }
   ]
 }
@@ -612,7 +641,7 @@ Return a short-lived download grant for a Drive file.
 
 ```json
 {
-  "grant_type": "signed_url",
+  "grant_type": "signed_url or private_url",
   "url": "short-lived-download-url",
   "expires_on": "2026-03-17 10:10:00"
 }
@@ -622,7 +651,7 @@ Must enforce:
 
 * user can see owning doc
 * user can download in this context
-* file is active / not blocked
+* file is `active`
 
 ---
 
@@ -644,12 +673,18 @@ Return a short-lived preview grant.
 
 ```json
 {
-  "grant_type": "signed_url",
+  "grant_type": "signed_url or private_url",
   "url": "short-lived-preview-url",
   "expires_on": "2026-03-17 10:10:00",
   "preview_status": "ready"
 }
 ```
+
+Must enforce:
+
+* user can see owning doc
+* file is `active`
+* `preview_status` is `ready`
 
 ---
 
@@ -753,4 +788,3 @@ while the real logic lives in:
 * `services/storage/`
 * `services/access/`
 * `services/integration/`
-

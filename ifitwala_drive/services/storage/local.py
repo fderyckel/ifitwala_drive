@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
+from datetime import datetime
 from typing import Any
 from urllib.parse import quote
 
@@ -73,6 +74,32 @@ class LocalStorageBackend:
 		if os.path.exists(path):
 			os.remove(path)
 			self._cleanup_empty_parents(path)
+
+	def issue_download_grant(
+		self,
+		*,
+		object_key: str,
+		file_url: str | None,
+		expires_on: datetime,
+	) -> dict[str, Any]:
+		url = file_url or self._build_private_file_url(object_key)
+		return {
+			"grant_type": "private_url",
+			"url": url,
+		}
+
+	def issue_preview_grant(
+		self,
+		*,
+		object_key: str,
+		file_url: str | None,
+		expires_on: datetime,
+	) -> dict[str, Any]:
+		url = file_url or self._build_private_file_url(object_key)
+		return {
+			"grant_type": "private_url",
+			"url": url,
+		}
 
 	def _build_upload_url(self, session_key: str) -> str:
 		return f"/api/method/ifitwala_drive.api.uploads.upload_session_blob?session_key={quote(session_key)}"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Protocol
 
 DEFAULT_STORAGE_BACKEND = "local"
@@ -26,6 +27,22 @@ class StorageBackend(Protocol):
 	def finalize_temporary_object(self, *, object_key: str, final_key: str) -> dict[str, Any]: ...
 
 	def abort_temporary_object(self, *, object_key: str) -> None: ...
+
+	def issue_download_grant(
+		self,
+		*,
+		object_key: str,
+		file_url: str | None,
+		expires_on: datetime,
+	) -> dict[str, Any]: ...
+
+	def issue_preview_grant(
+		self,
+		*,
+		object_key: str,
+		file_url: str | None,
+		expires_on: datetime,
+	) -> dict[str, Any]: ...
 
 
 def get_storage_backend(backend_name: str | None = None) -> StorageBackend:

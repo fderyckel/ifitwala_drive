@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 from urllib.parse import quote
 
@@ -58,6 +59,30 @@ class GCSStorageBackend:
 	def abort_temporary_object(self, *, object_key: str) -> None:
 		# Replace with delete temp object if present.
 		return
+
+	def issue_download_grant(
+		self,
+		*,
+		object_key: str,
+		file_url: str | None,
+		expires_on: datetime,
+	) -> dict[str, Any]:
+		return {
+			"grant_type": "signed_url",
+			"url": file_url or self._build_private_object_url(object_key),
+		}
+
+	def issue_preview_grant(
+		self,
+		*,
+		object_key: str,
+		file_url: str | None,
+		expires_on: datetime,
+	) -> dict[str, Any]:
+		return {
+			"grant_type": "signed_url",
+			"url": file_url or self._build_private_object_url(object_key),
+		}
 
 	def _build_upload_headers(self, mime_type: str | None) -> dict[str, Any]:
 		if not mime_type:
