@@ -260,18 +260,24 @@ async function loadWorkspace() {
 		const doctype = query.doctype as string
 		const name = query.name as string
 		const response = await browseContext(doctype, name, query.bindingRole)
-		modeLabel.value = 'Context files'
+		modeLabel.value = 'Context browse'
 		heading.value = `${doctype} · ${name}`
 		subheading.value = query.bindingRole
-			? `Context files for binding role ${query.bindingRole}`
-			: 'Context file view'
-		const normalizedFiles: FolderItem[] = response.files.map((file) => ({
-			...file,
-			item_type: 'file'
-		}))
-		breadcrumbs.value = response.files[0]?.folder?.breadcrumbs || []
-		folderSummary.value = response.files[0]?.folder || null
-		items.value = normalizedFiles
+			? `Context browse for binding role ${query.bindingRole}`
+			: 'Context folders and files'
+		const normalizedItems: FolderItem[] = response.items?.length
+			? response.items
+			: response.files.map((file) => ({
+					...file,
+					item_type: 'file'
+				}))
+		const firstFolder = normalizedItems.find((item) => item.item_type === 'folder') as FolderSummary | undefined
+		const firstFileWithFolder = normalizedItems.find(
+			(item) => item.item_type === 'file' && item.folder
+		) as FileSummary | undefined
+		breadcrumbs.value = firstFolder?.breadcrumbs || firstFileWithFolder?.folder?.breadcrumbs || []
+		folderSummary.value = firstFolder || firstFileWithFolder?.folder || null
+		items.value = normalizedItems
 		setStatus('')
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unable to load Drive workspace.'

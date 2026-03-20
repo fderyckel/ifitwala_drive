@@ -574,6 +574,7 @@ This is the main context-first retrieval API.
     "doctype": "Task Submission",
     "name": "TSUB-0001"
   },
+  "folders": [],
   "files": [
     {
       "id": "DF-0001",
@@ -592,9 +593,33 @@ This is the main context-first retrieval API.
       "can_preview": false,
       "can_download": true
     }
+  ],
+  "items": [
+    {
+      "id": "DF-0001",
+      "drive_file_id": "DF-0001",
+      "canonical_ref": "drv:ORG-0001:DF-0001",
+      "slot": "submission",
+      "title": "essay.docx",
+      "current_version_no": 2,
+      "preview_status": "pending",
+      "folder_path": "student/task-0001/submissions",
+      "context_path": "Student / TASK-0001 / Submissions",
+      "attached_to": {
+        "doctype": "Task Submission",
+        "name": "TSUB-0001"
+      },
+      "can_preview": false,
+      "can_download": true,
+      "item_type": "file"
+    }
   ]
 }
 ```
+
+`folders` and `items` are additive browse projections.
+`files` remains the binding-centric file list for compatibility with existing consumers.
+Folder-structured contexts such as `Employee`, `Student Applicant`, or `Task` may populate `folders` and include folder rows in `items`.
 
 ---
 

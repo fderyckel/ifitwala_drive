@@ -325,7 +325,7 @@
 				return;
 			}
 
-			setHeadings(doctype + ' · ' + name, 'Loading context files...', 'Context files');
+			setHeadings(doctype + ' · ' + name, 'Loading context browse...', 'Context browse');
 			const response = await callApi('ifitwala_drive.api.folders.list_context_files', {
 				doctype: doctype,
 				name: name,
@@ -333,15 +333,25 @@
 			});
 			setHeadings(
 				doctype + ' · ' + name,
-				bindingRole ? 'Context files for binding role ' + bindingRole : 'Context file view',
-				'Context files'
+				bindingRole ? 'Context browse for binding role ' + bindingRole : 'Context folders and files',
+				'Context browse'
 			);
 			const fileRows = (response.files || []).map(function (row) {
 				return Object.assign({ item_type: 'file' }, row);
 			});
-			const breadcrumbs = fileRows[0] && fileRows[0].folder ? fileRows[0].folder.breadcrumbs : [];
+			const rows = Array.isArray(response.items) && response.items.length ? response.items : fileRows;
+			const firstFolder = rows.find(function (row) {
+				return row && row.item_type === 'folder';
+			});
+			const firstFileWithFolder = rows.find(function (row) {
+				return row && row.item_type === 'file' && row.folder;
+			});
+			const breadcrumbs =
+				(firstFolder && firstFolder.breadcrumbs) ||
+				(firstFileWithFolder && firstFileWithFolder.folder && firstFileWithFolder.folder.breadcrumbs) ||
+				[];
 			renderBreadcrumbs(breadcrumbs || []);
-			renderRows(fileRows);
+			renderRows(rows);
 			bindActions();
 		} catch (error) {
 			setStatus(error.message || 'Unable to load Drive workspace.', 'error');

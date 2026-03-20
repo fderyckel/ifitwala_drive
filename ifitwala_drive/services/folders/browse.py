@@ -190,6 +190,128 @@ def _current_roles(user: str | None) -> set[str]:
 		return set()
 
 
+def _maybe_materialize_context_folders(doctype: str, name: str) -> None:
+	if doctype != "Employee" or not name:
+		return
+	if not frappe.db.exists("Employee", name):
+		return
+
+	try:
+		employee_doc = frappe.get_doc("Employee", name)
+	except Exception:
+		return
+
+	organization = str(getattr(employee_doc, "organization", None) or "").strip()
+	if not organization:
+		return
+
+	school = str(getattr(employee_doc, "school", None) or "").strip() or None
+
+	try:
+		from ifitwala_drive.services.folders.resolution import resolve_employee_image_folder
+	except ImportError:
+		return
+
+	try:
+		resolve_employee_image_folder(employee=name, organization=organization, school=school)
+	except Exception:
+		return
+
+
+def _list_context_root_folders(doctype: str, name: str) -> list[dict[str, Any]]:
+	_maybe_materialize_context_folders(doctype, name)
+
+	folder_cache: dict[str, Any] = {}
+	rows = _safe_get_all(
+		"Drive Folder",
+		filters={
+			"status": "active",
+			"context_doctype": doctype,
+			"context_name": name,
+		},
+		fields=[
+			"name",
+			"title",
+			"path_cache",
+			"parent_drive_folder",
+			"owner_doctype",
+			"owner_name",
+			"folder_kind",
+			"context_doctype",
+			"context_name",
+			"is_system_managed",
+			"is_private",
+			"modified",
+		],
+		order_by="title asc, modified desc",
+	)
+
+	folders: list[dict[str, Any]] = []
+	for row in rows:
+		if not _can_read(row.get("owner_doctype"), row.get("owner_name")):
+			continue
+
+		folder_doc = _load_folder_doc(row["name"], folder_cache)
+		if not folder_doc:
+			continue
+
+		parent_doc = _load_folder_doc(getattr(folder_doc, "parent_drive_folder", None), folder_cache)
+		if parent_doc and (
+			getattr(parent_doc, "context_doctype", None) == doctype
+			and getattr(parent_doc, "context_name", None) == name
+		):
+			continue
+
+		summary = _serialize_folder_summary(folder_doc, folder_cache)
+		summary["item_type"] = "folder"
+		folders.append(summary)
+
+	if len(folders) == 1:
+		context_root = folders[0]
+		child_rows = _safe_get_all(
+			"Drive Folder",
+			filters={
+				"status": "active",
+				"parent_drive_folder": context_root["id"],
+			},
+			fields=[
+				"name",
+				"title",
+				"path_cache",
+				"parent_drive_folder",
+				"owner_doctype",
+				"owner_name",
+				"folder_kind",
+				"context_doctype",
+				"context_name",
+				"is_system_managed",
+				"is_private",
+				"modified",
+			],
+			order_by="title asc, modified desc",
+		)
+
+		child_folders: list[dict[str, Any]] = []
+		for row in child_rows:
+			if row.get("parent_drive_folder") != context_root["id"]:
+				continue
+			if not _can_read(row.get("owner_doctype"), row.get("owner_name")):
+				continue
+
+			folder_doc = _load_folder_doc(row["name"], folder_cache)
+			if not folder_doc:
+				continue
+
+			summary = _serialize_folder_summary(folder_doc, folder_cache)
+			summary["item_type"] = "folder"
+			child_folders.append(summary)
+
+		if child_folders:
+			return child_folders
+
+	return folders
+
+
 def _list_accessible_root_folders(limit: int) -> list[dict[str, Any]]:
 	folder_cache: dict[str, Any] = {}
 	roots: list[dict[str, Any]] = []
@@ -314,6 +436,45 @@ def _own_context_targets(user: str, limit: int) -> list[dict[str, Any]]:
 			)
 			if len(targets) >= limit:
 				return targets
+
+	return targets
+
+
+def _employee_context_targets(user: str, limit: int) -> list[dict[str, Any]]:
+	roles = _current_roles(user)
+	if not roles.intersection({"HR Manager", "HR User", "System Manager"}):
+		return []
+
+	rows = _safe_get_all(
+		"Employee",
+		filters={"employment_status": "Active"},
+		fields=["name", "employee_full_name", "school", "modified"],
+		order_by="employee_full_name asc, modified desc",
+		limit_page_length=max(limit * 4, limit),
+	)
+
+	targets: list[dict[str, Any]] = []
+	seen: set[str] = set()
+	for row in rows:
+		name = str(row.get("name") or "").strip()
+		if not name or name in seen or not _can_read("Employee", name):
+			continue
+		seen.add(name)
+
+		label = str(row.get("employee_full_name") or "").strip() or name
+		school = str(row.get("school") or "").strip()
+		caption = name if not school else _("{0} · {1}").format(name, school)
+		targets.append(
+			_build_context_home_target(
+				doctype="Employee",
+				name=name,
+				label=label,
+				caption=caption,
+				badge=_("Employee"),
+			)
+		)
+		if len(targets) >= limit:
+			return targets
 
 	return targets
 
@@ -572,6 +733,17 @@ def list_workspace_home_service(payload: dict[str, Any]) -> dict[str, Any]:
 				}
 			)
 
+		employee_targets = _employee_context_targets(user, limit)
+		if employee_targets:
+			sections.append(
+				{
+					"key": "employees",
+					"label": _("Employees"),
+					"description": _("Readable employee Drive contexts for HR-scoped staff."),
+					"items": employee_targets,
+				}
+			)
+
 	root_targets = [_build_folder_home_target(root) for root in _list_accessible_root_folders(limit)]
 	if root_targets:
 		sections.append(
@@ -604,6 +776,7 @@ def list_context_files_service(payload: dict[str, Any]) -> dict[str, Any]:
 		frappe.throw(_("Missing required field: name"))
 
 	_assert_can_read(doctype, name)
+	context_folders = _list_context_root_folders(doctype, name)
 
 	filters: dict[str, Any] = {
 		"binding_doctype": doctype,
@@ -666,10 +839,15 @@ def list_context_files_service(payload: dict[str, Any]) -> dict[str, Any]:
 			entry["slot"] = drive_file.get("slot") or binding.get("slot")
 			files.append(entry)
 
+	items = list(context_folders)
+	items.extend({**file, "item_type": "file"} for file in files)
+
 	return {
 		"context": {
 			"doctype": doctype,
 			"name": name,
 		},
+		"folders": context_folders,
 		"files": files,
+		"items": items,
 	}

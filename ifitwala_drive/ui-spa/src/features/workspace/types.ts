@@ -83,7 +83,9 @@ export type ContextBrowseResponse = {
 		doctype: string
 		name: string
 	}
+	folders?: FolderSummary[]
 	files: FileSummary[]
+	items?: FolderItem[]
 }
 
 export type GrantResponse = {
