@@ -14,7 +14,8 @@ def test_desktop_icon_is_public_and_points_to_workspace_sidebar():
 	assert icon["doctype"] == "Desktop Icon"
 	assert icon["hidden"] == 0
 	assert icon["label"] == "Ifitwala Drive"
-	assert icon["link_type"] == "Workspace"
+	assert icon["icon_type"] == "Link"
+	assert icon["link_type"] == "Workspace Sidebar"
 	assert icon["link_to"] == "Ifitwala Drive"
 	assert "roles" not in icon
 

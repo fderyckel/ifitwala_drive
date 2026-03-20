@@ -6,3 +6,4 @@
 # Patches added in this section will be executed after doctypes are migrated
 ifitwala_drive.patches.repair_drive_doctype_modules
 ifitwala_drive.patches.cleanup_legacy_drive_desk_records
+ifitwala_drive.patches.normalize_ifitwala_drive_desktop_icon
