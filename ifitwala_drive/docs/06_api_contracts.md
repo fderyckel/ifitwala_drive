@@ -344,10 +344,7 @@ Upload or register a resource attached to a Task.
 ```json
 {
   "task": "TASK-0001",
-  "organization": "ORG-0001",
-  "school": "SCH-0001",
-  "resource_kind": "uploaded_file",
-  "folder": "optional-drive-folder-id",
+  "row_name": "optional-existing-attached-document-row",
   "filename_original": "worksheet.pdf",
   "mime_type_hint": "application/pdf",
   "expected_size_bytes": 123456
@@ -358,12 +355,14 @@ Upload or register a resource attached to a Task.
 
 * owner_doctype = `Task`
 * owner_name = task id
-* slot = something like `supporting_material` or configured task resource slot
+* attached_doctype/name = `Task` / task id in the compatibility slice
+* primary_subject = owning organization derived from `Task.default_course -> Course.school -> School.organization`
+* slot = `supporting_material__<row_name>`
 * purpose/data_class/retention derived server-side
 
 ### Response
 
-Upload session or finalized resource depending on flow stage.
+Upload session metadata including the authoritative `row_name` / slot for the compatibility attachment row.
 
 ---
 

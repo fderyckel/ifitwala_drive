@@ -27,7 +27,10 @@ from ifitwala_drive.services.integration.ifitwala_ed_media import (
 	validate_media_finalize_context,
 )
 from ifitwala_drive.services.integration.ifitwala_ed_tasks import (
+	get_task_resource_context_override,
 	get_task_submission_context_override,
+	run_task_post_finalize,
+	validate_task_resource_finalize_context,
 	validate_task_submission_finalize_context,
 )
 from ifitwala_drive.services.logging import log_drive_event
@@ -123,6 +126,8 @@ def _build_classification(doc) -> dict[str, Any]:
 def _get_context_override(doc) -> dict[str, Any] | None:
 	if doc.owner_doctype == "Task Submission":
 		return get_task_submission_context_override(doc.owner_name)
+	if doc.owner_doctype == "Task":
+		return get_task_resource_context_override(doc.owner_name, doc.intended_slot)
 
 	return None
 
@@ -200,6 +205,7 @@ def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 			return _completed_response(doc)
 
 		validate_task_submission_finalize_context(doc)
+		validate_task_resource_finalize_context(doc)
 		validate_media_finalize_context(doc)
 		validate_applicant_document_finalize_context(doc)
 		validate_applicant_profile_image_finalize_context(doc)
@@ -253,6 +259,7 @@ def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 		doc.save(ignore_permissions=True)
 
 		extra_response = {}
+		extra_response.update(run_task_post_finalize(doc, created))
 		extra_response.update(run_media_post_finalize(doc, created))
 		extra_response.update(run_admissions_post_finalize(doc, created))
 

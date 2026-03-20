@@ -455,6 +455,85 @@ def resolve_task_submission_folder(
 	)
 
 
+def _ensure_courses_root(*, organization: str) -> str:
+	return _ensure_folder(
+		title="Courses",
+		parent_drive_folder=None,
+		owner_doctype="Organization",
+		owner_name=organization,
+		organization=organization,
+		school=None,
+		folder_kind="system_bound",
+		context_doctype="Organization",
+		context_name=organization,
+	)
+
+
+def resolve_task_resource_folder(
+	*,
+	task: str,
+	course: str,
+	organization: str,
+	school: str,
+) -> str:
+	courses_root = _ensure_courses_root(organization=organization)
+	school_root = _ensure_folder(
+		title=school,
+		parent_drive_folder=courses_root,
+		owner_doctype="Organization",
+		owner_name=organization,
+		organization=organization,
+		school=school,
+		folder_kind="course_shared",
+		context_doctype="School",
+		context_name=school,
+	)
+	course_root = _ensure_folder(
+		title=course,
+		parent_drive_folder=school_root,
+		owner_doctype="Course",
+		owner_name=course,
+		organization=organization,
+		school=school,
+		folder_kind="course_shared",
+		context_doctype="Course",
+		context_name=course,
+	)
+	tasks_root = _ensure_folder(
+		title="Tasks",
+		parent_drive_folder=course_root,
+		owner_doctype="Course",
+		owner_name=course,
+		organization=organization,
+		school=school,
+		folder_kind="course_shared",
+		context_doctype="Course",
+		context_name=course,
+	)
+	task_root = _ensure_folder(
+		title=task,
+		parent_drive_folder=tasks_root,
+		owner_doctype="Task",
+		owner_name=task,
+		organization=organization,
+		school=school,
+		folder_kind="course_shared",
+		context_doctype="Task",
+		context_name=task,
+	)
+	return _ensure_folder(
+		title="Resources",
+		parent_drive_folder=task_root,
+		owner_doctype="Task",
+		owner_name=task,
+		organization=organization,
+		school=school,
+		folder_kind="course_shared",
+		context_doctype="Task",
+		context_name=task,
+	)
+
+
 def _ensure_organization_media_root(*, organization: str) -> str:
 	return _ensure_folder(
 		title="Organization Media",
