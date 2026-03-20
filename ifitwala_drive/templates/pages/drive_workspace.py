@@ -20,6 +20,13 @@ ENTRY_KEYS = [
 ]
 
 
+def _asset_exists(asset_url: str) -> bool:
+	if not asset_url or not asset_url.startswith(PUBLIC_BASE):
+		return False
+	relative_path = asset_url.removeprefix(PUBLIC_BASE)
+	return os.path.exists(os.path.join(VITE_DIR, relative_path))
+
+
 def get_context(context):
 	context.no_cache = 1
 	context.title = "Drive Workspace"
@@ -30,4 +37,9 @@ def get_context(context):
 		public_base=PUBLIC_BASE,
 		entry_keys=ENTRY_KEYS,
 	)
-	context.has_vite_workspace = context.vite_js != f"{PUBLIC_BASE}main.js"
+	context.has_vite_workspace = (
+		context.vite_js != f"{PUBLIC_BASE}main.js" and _asset_exists(context.vite_js)
+	)
+	if not context.has_vite_workspace:
+		context.vite_css = []
+		context.vite_preload = []

@@ -362,6 +362,56 @@ def resolve_student_image_folder(*, student: str, organization: str, school: str
 	)
 
 
+def _ensure_employee_root(*, employee: str, organization: str, school: str | None) -> str:
+	employees_root = _ensure_folder(
+		title="Employees",
+		parent_drive_folder=None,
+		owner_doctype="Organization",
+		owner_name=organization,
+		organization=organization,
+		school=None,
+		folder_kind="system_bound",
+		context_doctype="Employee",
+	)
+	return _ensure_folder(
+		title=employee,
+		parent_drive_folder=employees_root,
+		owner_doctype="Employee",
+		owner_name=employee,
+		organization=organization,
+		school=school,
+		folder_kind="staff_documents",
+		context_doctype="Employee",
+		context_name=employee,
+	)
+
+
+def resolve_employee_image_folder(*, employee: str, organization: str, school: str | None) -> str:
+	employee_root = _ensure_employee_root(employee=employee, organization=organization, school=school)
+	profile_root = _ensure_folder(
+		title="Profile",
+		parent_drive_folder=employee_root,
+		owner_doctype="Employee",
+		owner_name=employee,
+		organization=organization,
+		school=school,
+		folder_kind="staff_documents",
+		context_doctype="Employee",
+		context_name=employee,
+	)
+	return _ensure_folder(
+		title="Employee Image",
+		parent_drive_folder=profile_root,
+		owner_doctype="Employee",
+		owner_name=employee,
+		organization=organization,
+		school=school,
+		folder_kind="staff_documents",
+		context_doctype="Employee",
+		context_name=employee,
+	)
+
+
 def resolve_task_submission_folder(
 	*,
 	student: str,

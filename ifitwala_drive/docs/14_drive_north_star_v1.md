@@ -85,7 +85,16 @@ Users should not need to remember storage locations to do normal work.
 
 Drive browsing exists to support navigation, reuse, cleanup, and orientation.
 
-The first workspace set should be:
+The current implemented landing is:
+
+* `Reviewing`
+* `My Drive`
+* `Folders`
+
+These sections are derived from records and roots the user can already `read`.
+If only one readable target exists, the workspace should open it automatically.
+
+The next workspace set should still grow toward:
 
 * `My Resources`
 * `Shared Course Resources`
@@ -184,8 +193,9 @@ The first browse surfaces that matter are:
 5. `Course / <course> / Resources`
 6. `Organization Media / Organization / ...`
 7. `Organization Media / Schools / <school> / ...`
-8. `Teacher / <teacher> / My Resources`
-9. `Teacher / <teacher> / Shared Course Resources`
+8. `Employees / <employee> / Profile / Employee Image`
+9. `Teacher / <teacher> / My Resources`
+10. `Teacher / <teacher> / Shared Course Resources`
 
 If a new implementation slice does not clearly improve one of these surfaces, it should be questioned.
 
@@ -238,6 +248,7 @@ The next work should stay tied to:
 
 * the first browse surfaces above
 * teacher resource workspace rules
+* richer home providers for instructor, health, admissions, and scoped admin views
 * migration safety
 * UI retrieval clarity
 

@@ -98,6 +98,46 @@ body {
 	margin-top: 1.4rem;
 }
 
+.drive-home {
+	display: grid;
+	gap: 1.2rem;
+	grid-column: 1 / -1;
+}
+
+.drive-home-section {
+	display: grid;
+	gap: 0.9rem;
+	grid-column: 1 / -1;
+}
+
+.drive-home-section__head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: end;
+	justify-content: space-between;
+	gap: 0.75rem;
+	padding: 0.25rem 0.1rem;
+}
+
+.drive-home-section__title {
+	margin: 0.15rem 0 0;
+	font-size: 1.35rem;
+	line-height: 1.15;
+}
+
+.drive-home-section__copy {
+	margin: 0.25rem 0 0;
+	font-size: 0.94rem;
+	line-height: 1.55;
+	color: var(--drive-subtle);
+}
+
+.drive-home-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+	gap: 1rem;
+}
+
 .drive-card {
 	display: grid;
 	gap: 1rem;

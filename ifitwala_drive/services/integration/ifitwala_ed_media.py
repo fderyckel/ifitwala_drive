@@ -6,6 +6,7 @@ import frappe
 from frappe import _
 
 from ifitwala_drive.services.folders.resolution import (
+	resolve_employee_image_folder,
 	resolve_organization_media_folder,
 	resolve_student_image_folder,
 )
@@ -118,6 +119,11 @@ def upload_employee_image_service(payload: dict[str, Any]) -> dict[str, Any]:
 	return create_upload_session_service(
 		{
 			**authoritative,
+			"folder": resolve_employee_image_folder(
+				employee=employee_doc.name,
+				organization=authoritative["organization"],
+				school=authoritative["school"],
+			),
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),

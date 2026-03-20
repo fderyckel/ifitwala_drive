@@ -1,6 +1,27 @@
 ### Ifitwala Drive
 
-file managemetn for ifitwala_ed
+Governed file management for `ifitwala_ed`.
+
+### Current Workspace Behavior
+
+The default Drive landing at `/drive_workspace` is now a governed home, not a
+query-parameter instruction page.
+
+Current home sections are derived from records the user can already `read`:
+
+- `Reviewing`: open applicant review assignments, including role-based health review
+- `My Drive`: the user's own employee, student, or applicant contexts
+- `Folders`: readable governed root folders
+
+If exactly one target is available, Drive auto-opens it.
+
+Employee profile media now routes into a deterministic staff tree:
+
+- `Employees / <employee> / Profile / Employee Image`
+
+Browse remains permission-inherited from the owning document. Opening an
+organization-level root does not expose child employee folders or files unless
+the current user can read that employee's owning document.
 
 ### Installation
 
@@ -58,6 +79,9 @@ yarn build
 This runs the `ui-spa` dependency install and the Vite production build. Once
 Node and Yarn are available, `bench build --app ifitwala_drive` will invoke the
 same root build script.
+
+If the compiled Vite entry is missing at runtime, the Drive page now falls back
+to the legacy workspace JS/CSS surface instead of rendering a broken SPA mount.
 
 Useful commands:
 

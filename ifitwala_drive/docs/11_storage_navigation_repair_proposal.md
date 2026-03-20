@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed.
+Partially implemented.
 
 The product frame that now governs follow-on implementation is [14_drive_north_star_v1.md](/Users/francois.de/Documents/ifitwala_drive/ifitwala_drive/docs/14_drive_north_star_v1.md).
 
@@ -14,6 +14,18 @@ This note addresses the current gap between:
 The current implementation is preserving some important invariants, but it is not yet delivering an acceptable file-management model for users or operators.
 
 It should be treated as a repair plan for Phase 1, not as a new architecture direction.
+
+## Implemented Repair Slice
+
+The following repair slice is now live in code:
+
+* `/drive_workspace` loads a governed workspace home instead of requiring manual query parameters
+* workspace home groups readable targets into `Reviewing`, `My Drive`, and readable root `Folders`
+* if exactly one readable target exists, the workspace opens it automatically
+* organization-level root browse now filters child folders and files by owning-document read permission
+* employee profile-image uploads now create and use the deterministic tree `Employees / <employee> / Profile / Employee Image`
+
+This means the note is no longer purely conceptual for navigation. The remaining work is expanding home providers and browse projections beyond the first implemented slice.
 
 ---
 
@@ -152,6 +164,7 @@ Examples:
 * `Admissions / Applicant / APPL-02-2026-223 / Documents / ID Documents`
 * `Admissions / Applicant / APPL-2026-03-001 / Health`
 * `Organization Media / School / SCH-0001 / Logos`
+* `Employees / EMP-0001 / Profile / Employee Image`
 
 This path must be stored and queryable in Drive metadata, not inferred from the storage object key.
 

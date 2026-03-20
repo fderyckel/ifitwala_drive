@@ -60,15 +60,87 @@
 		$('#drive-workspace-subheading').textContent = secondary || '';
 	}
 
-	function renderIdle() {
+	function targetLink(target) {
+		return (target && target.href) || '/drive_workspace';
+	}
+
+	function actionLabelForTarget(target) {
+		return target && target.target_kind === 'folder' ? 'Open folder' : 'Open files';
+	}
+
+	function targetMetaLabel(target) {
+		return target && target.target_kind === 'folder' ? 'Folder' : 'Context';
+	}
+
+	function renderHomeTarget(target) {
+		return (
+			'<article class="drive-card">' +
+			'<div class="drive-card__head">' +
+			'<div>' +
+			'<p class="drive-card__meta">' + escapeHtml(targetMetaLabel(target)) + '</p>' +
+			'<h3>' + escapeHtml(target.label || target.name || target.id) + '</h3>' +
+			(target.caption ? '<p class="drive-card__path">' + escapeHtml(target.caption) + '</p>' : '') +
+			'</div>' +
+			'<span class="drive-badge">' + escapeHtml(target.badge || 'Drive') + '</span>' +
+			'</div>' +
+			'<div class="drive-card__actions">' +
+			'<a class="drive-button" href="' + escapeHtml(targetLink(target)) + '">' + actionLabelForTarget(target) + '</a>' +
+			'</div>' +
+			'</article>'
+		);
+	}
+
+	function renderHomeSection(section) {
+		const items = Array.isArray(section.items) ? section.items : [];
+		return (
+			'<section class="drive-home-section">' +
+			'<div class="drive-home-section__head">' +
+			'<div>' +
+			'<p class="drive-overline">' + escapeHtml(section.label || 'Workspace') + '</p>' +
+			'<h2 class="drive-home-section__title">' + escapeHtml(section.label || 'Workspace') + '</h2>' +
+			(section.description
+				? '<p class="drive-home-section__copy">' + escapeHtml(section.description) + '</p>'
+				: '') +
+			'</div>' +
+			'<span class="drive-badge">' + escapeHtml(String(items.length)) + '</span>' +
+			'</div>' +
+			'<div class="drive-home-grid">' +
+			items.map(renderHomeTarget).join('') +
+			'</div>' +
+			'</section>'
+		);
+	}
+
+	function renderHome(response) {
+		const sections = Array.isArray(response && response.sections) ? response.sections : [];
+		const suggestedTarget = response && response.suggested_target;
+		if (suggestedTarget && suggestedTarget.auto_open && suggestedTarget.href) {
+			window.location.replace(suggestedTarget.href);
+			return true;
+		}
+
+		const suggestedCopy =
+			suggestedTarget && suggestedTarget.label
+				? 'Suggested next view: ' + suggestedTarget.label + '.'
+				: 'Open a governed view you are already allowed to read.';
 		setHeadings(
-			'Open a Drive context or folder',
-			'Use query parameters like ?folder=<id> or ?doctype=<DocType>&name=<record>.',
-			'Drive workspace'
+			'Your Drive workspace',
+			sections.length
+				? suggestedCopy
+				: 'No governed file views are available to your current permissions yet.',
+			'Workspace home'
 		);
 		$('#drive-workspace-breadcrumbs').innerHTML = '';
+		if (!sections.length) {
+			$('#drive-workspace-list').innerHTML =
+				'<article class="drive-card drive-card--empty"><h3>No governed views available</h3><p>This account does not yet have any readable Drive context or folder to open.</p></article>';
+			return false;
+		}
 		$('#drive-workspace-list').innerHTML =
-			'<article class="drive-card drive-card--empty"><h3>No target selected</h3><p>This page is designed to be deep-linked from contextual Ifitwala_Ed surfaces while remaining owned by Ifitwala_drive.</p></article>';
+			'<div class="drive-home">' +
+			sections.map(renderHomeSection).join('') +
+			'</div>';
+		return false;
 	}
 
 	function folderLink(folderId) {
@@ -217,8 +289,19 @@
 		setStatus('');
 
 		if (!folder && !(doctype && name)) {
-			renderIdle();
-			return;
+			try {
+				setHeadings('Loading workspace...', '', 'Workspace home');
+				const response = await callApi('ifitwala_drive.api.folders.list_workspace_home', {
+					limit: 6,
+				});
+				if (renderHome(response)) return;
+				return;
+			} catch (error) {
+				setStatus(error.message || 'Unable to load Drive workspace.', 'error');
+				$('#drive-workspace-list').innerHTML =
+					'<article class="drive-card drive-card--empty"><h3>Workspace unavailable</h3><p>The Drive workspace home could not be loaded for this account.</p></article>';
+				return;
+			}
 		}
 
 		try {

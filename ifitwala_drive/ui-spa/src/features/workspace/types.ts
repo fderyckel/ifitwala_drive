@@ -52,6 +52,32 @@ export type WorkspaceRootsResponse = {
 	roots: FolderSummary[]
 }
 
+export type WorkspaceHomeTarget = {
+	id: string
+	target_kind: 'folder' | 'context'
+	label: string
+	caption?: string | null
+	badge?: string | null
+	href: string
+	folder?: string | null
+	doctype?: string | null
+	name?: string | null
+	binding_role?: string | null
+	auto_open?: boolean
+}
+
+export type WorkspaceHomeSection = {
+	key: string
+	label: string
+	description?: string | null
+	items: WorkspaceHomeTarget[]
+}
+
+export type WorkspaceHomeResponse = {
+	sections: WorkspaceHomeSection[]
+	suggested_target?: WorkspaceHomeTarget | null
+}
+
 export type ContextBrowseResponse = {
 	context: {
 		doctype: string

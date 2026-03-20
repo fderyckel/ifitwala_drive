@@ -6,10 +6,17 @@ import {
 	browseFolder,
 	issueDownloadGrant,
 	issuePreviewGrant,
-	listWorkspaceRoots,
+	listWorkspaceHome,
 	parseWorkspaceQuery
 } from '@/features/workspace/api'
-import type { FileSummary, FolderBreadcrumb, FolderItem, FolderSummary } from '@/features/workspace/types'
+import type {
+	FileSummary,
+	FolderBreadcrumb,
+	FolderItem,
+	FolderSummary,
+	WorkspaceHomeSection,
+	WorkspaceHomeTarget
+} from '@/features/workspace/types'
 
 type StatusTone = 'neutral' | 'loading' | 'error'
 
@@ -23,13 +30,33 @@ const statusTone = ref<StatusTone>('neutral')
 const breadcrumbs = ref<FolderBreadcrumb[]>([])
 const folderSummary = ref<FolderSummary | null>(null)
 const items = ref<FolderItem[]>([])
+const homeSections = ref<WorkspaceHomeSection[]>([])
+const suggestedTarget = ref<WorkspaceHomeTarget | null>(null)
 
 const query = parseWorkspaceQuery(window.location.search)
 
-const fileCount = computed(() => items.value.filter((item) => item.item_type === 'file').length)
-const folderCount = computed(() => items.value.filter((item) => item.item_type === 'folder').length)
 const hasTarget = computed(() => Boolean(query.folder || (query.doctype && query.name)))
-const hasVisibleRoots = computed(() => !hasTarget.value && items.value.length > 0)
+const homeItemCount = computed(() =>
+	homeSections.value.reduce((total, section) => total + section.items.length, 0)
+)
+const folderCount = computed(() =>
+	hasTarget.value
+		? items.value.filter((item) => item.item_type === 'folder').length
+		: homeSections.value.reduce(
+				(total, section) =>
+					total + section.items.filter((item) => item.target_kind === 'folder').length,
+				0
+			)
+)
+const fileCount = computed(() =>
+	hasTarget.value
+		? items.value.filter((item) => item.item_type === 'file').length
+		: homeSections.value.reduce(
+				(total, section) =>
+					total + section.items.filter((item) => item.target_kind === 'context').length,
+				0
+			)
+)
 const currentContextUrl = computed(() => {
 	if (!(query.doctype && query.name)) return ''
 	const params = new URLSearchParams({
@@ -40,26 +67,30 @@ const currentContextUrl = computed(() => {
 	return `/drive_workspace?${params.toString()}`
 })
 const itemCountLabel = computed(() => {
-	if (!hasTarget.value) return 'Awaiting target'
-	const count = items.value.length
-	return `${count} ${count === 1 ? 'item' : 'items'}`
+	const count = hasTarget.value ? items.value.length : homeItemCount.value
+	return `${count} ${count === 1 ? (hasTarget.value ? 'item' : 'view') : hasTarget.value ? 'items' : 'views'}`
 })
 const scopeTitle = computed(() => {
 	if (folderSummary.value?.title) return folderSummary.value.title
 	if (query.doctype && query.name) return `${query.doctype} · ${query.name}`
-	return 'No target selected'
+	return 'My Drive'
 })
 const scopeDetail = computed(() => {
 	if (folderSummary.value?.context_path) return folderSummary.value.context_path
 	if (folderSummary.value?.path_cache) return folderSummary.value.path_cache
 	if (query.bindingRole) return `Binding role: ${query.bindingRole}`
 	if (query.doctype && query.name) return 'Context-governed browse'
-	if (hasVisibleRoots.value) return 'Choose a governed root available to your permissions.'
-	return 'No governed roots are available to your current permissions yet.'
+	if (homeSections.value.length && suggestedTarget.value?.label) {
+		return `${suggestedTarget.value.label} is suggested first, and the rest of your readable Drive views are grouped below.`
+	}
+	if (homeSections.value.length) return 'Choose a governed view based on documents you can already read.'
+	return 'No governed file views are available to your current permissions yet.'
 })
 const scopeBadges = computed(() => {
 	if (!hasTarget.value) {
-		return ['Drive-owned surface', 'Context first']
+		const badges = ['Governed by record access', 'Context first']
+		if (suggestedTarget.value?.badge) badges.push(suggestedTarget.value.badge)
+		return badges.slice(0, 4)
 	}
 
 	const badges: string[] = []
@@ -75,12 +106,26 @@ const railLinks = computed(() => {
 	const links = [
 		{
 			label: 'Workspace home',
-			caption: 'Await a governed deep link',
+			caption: hasTarget.value ? 'Return to your governed Drive home' : 'Your governed Drive home',
 			href: '/drive_workspace',
 			isActive: !hasTarget.value,
 			isMuted: false
 		}
 	]
+
+	if (!hasTarget.value) {
+		homeSections.value.slice(0, 3).forEach((section) => {
+			const firstItem = section.items[0]
+			if (!firstItem?.href) return
+			links.push({
+				label: section.label,
+				caption: firstItem.label,
+				href: firstItem.href,
+				isActive: false,
+				isMuted: false
+			})
+		})
+	}
 
 	if (query.folder) {
 		links.push({
@@ -162,13 +207,21 @@ async function loadWorkspace() {
 	if (!hasTarget.value) {
 		try {
 			setStatus('Loading workspace home...', 'loading')
-			const response = await listWorkspaceRoots()
+			const response = await listWorkspaceHome()
+			if (response.suggested_target?.auto_open && response.suggested_target.href) {
+				window.location.replace(response.suggested_target.href)
+				return
+			}
 			modeLabel.value = 'Workspace home'
 			heading.value = 'Your Drive workspace'
-			subheading.value = response.roots.length
-				? 'Browse governed roots available to your current permissions.'
-				: 'No governed file roots are available for your current permissions yet.'
-			items.value = response.roots.map((root) => ({ ...root, item_type: 'folder' as const }))
+			subheading.value = response.suggested_target?.label
+				? `Suggested next view: ${response.suggested_target.label}.`
+				: response.sections.length
+					? 'Open a governed view you are already allowed to read.'
+					: 'No governed file views are available for your current permissions yet.'
+			homeSections.value = response.sections
+			suggestedTarget.value = response.suggested_target || null
+			items.value = []
 			breadcrumbs.value = []
 			folderSummary.value = null
 			setStatus('')
@@ -176,6 +229,8 @@ async function loadWorkspace() {
 			const message =
 				error instanceof Error ? error.message : 'Unable to load Drive workspace home.'
 			items.value = []
+			homeSections.value = []
+			suggestedTarget.value = null
 			modeLabel.value = 'Workspace home'
 			heading.value = 'Drive workspace unavailable'
 			subheading.value = 'The workspace home could not be loaded for this account.'
@@ -188,6 +243,8 @@ async function loadWorkspace() {
 
 	try {
 		setStatus('Loading workspace...', 'loading')
+		homeSections.value = []
+		suggestedTarget.value = null
 		if (query.folder) {
 			const response = await browseFolder(query.folder)
 			modeLabel.value = 'Folder browse'
@@ -219,6 +276,8 @@ async function loadWorkspace() {
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unable to load Drive workspace.'
 		items.value = []
+		homeSections.value = []
+		suggestedTarget.value = null
 		setStatus(message, 'error')
 	}
 }
@@ -264,9 +323,11 @@ onMounted(() => {
 							{{ badge }}
 						</span>
 					</div>
-					<div class="drive-context-card__examples" v-if="!hasTarget">
-						<p class="drive-context-card__hint">Examples</p>
-						<code class="drive-code-pill">Open Drive from an Applicant, Task, Student, or Organization view</code>
+					<div class="drive-context-card__examples" v-if="!hasTarget && homeSections.length">
+						<p class="drive-context-card__hint">Sections</p>
+						<code v-for="section in homeSections" :key="section.key" class="drive-code-pill">
+							{{ section.label }}
+						</code>
 					</div>
 				</aside>
 			</section>
@@ -277,11 +338,11 @@ onMounted(() => {
 					<p class="drive-kpi__value">{{ folderCount }}</p>
 				</article>
 				<article class="drive-panel drive-kpi">
-					<p class="drive-kpi__label">Files</p>
+					<p class="drive-kpi__label">{{ hasTarget ? 'Files' : 'Contexts' }}</p>
 					<p class="drive-kpi__value">{{ fileCount }}</p>
 				</article>
 				<article class="drive-panel drive-kpi">
-					<p class="drive-kpi__label">Items</p>
+					<p class="drive-kpi__label">{{ hasTarget ? 'Items' : 'Views' }}</p>
 					<p class="drive-kpi__value">{{ itemCountLabel }}</p>
 				</article>
 				<article class="drive-panel drive-kpi">
@@ -333,27 +394,67 @@ onMounted(() => {
 					<header class="drive-section-header">
 						<div>
 							<p class="drive-overline">Workspace contents</p>
-							<h2 class="drive-section-title">{{ hasTarget ? scopeTitle : 'Ready for a governed view' }}</h2>
+							<h2 class="drive-section-title">{{ hasTarget ? scopeTitle : 'Ready for your governed view' }}</h2>
 						</div>
 						<p class="drive-section-copy">
 							{{
 								hasTarget
 									? itemCountLabel
-									: hasVisibleRoots
-										? 'Available governed roots for your account.'
-										: 'No governed roots discovered for this account yet.'
+									: homeSections.length
+										? 'Readable Drive views for your account.'
+										: 'No governed views discovered for this account yet.'
 							}}
 						</p>
 					</header>
 
 					<section class="drive-list">
-						<article v-if="!hasTarget && !items.length" class="drive-empty">
-							<h2 class="drive-card__title">No governed roots available</h2>
+						<article v-if="!hasTarget && !homeSections.length" class="drive-empty">
+							<h2 class="drive-card__title">No governed views available</h2>
 							<p class="drive-card__path">
-								This account does not currently have any accessible Drive roots. That usually means
-								no Drive-enabled workflow has created files for this permission scope yet.
+								This account does not currently have any readable Drive context or folder to open.
 							</p>
 						</article>
+
+						<div v-else-if="!hasTarget" class="drive-home-sections">
+							<section
+								v-for="section in homeSections"
+								:key="section.key"
+								class="drive-home-section"
+							>
+								<header class="drive-home-section__head">
+									<div>
+										<p class="drive-overline">{{ section.label }}</p>
+										<h3 class="drive-home-section__title">{{ section.label }}</h3>
+										<p v-if="section.description" class="drive-home-section__copy">
+											{{ section.description }}
+										</p>
+									</div>
+									<span class="drive-badge">{{ section.items.length }}</span>
+								</header>
+
+								<div class="drive-home-targets">
+									<article
+										v-for="target in section.items"
+										:key="target.id"
+										class="drive-home-target"
+									>
+										<div class="drive-home-target__body">
+											<p class="drive-row__meta">
+												{{ target.target_kind === 'folder' ? 'Folder' : 'Context' }}
+											</p>
+											<h3 class="drive-row__title">{{ target.label }}</h3>
+											<p v-if="target.caption" class="drive-row__meta">{{ target.caption }}</p>
+										</div>
+										<div class="drive-home-target__actions">
+											<span class="drive-badge">{{ target.badge || 'Drive' }}</span>
+											<a class="drive-button" :href="target.href">
+												{{ target.target_kind === 'folder' ? 'Open folder' : 'Open files' }}
+											</a>
+										</div>
+									</article>
+								</div>
+							</section>
+						</div>
 
 						<article v-else-if="!items.length && !statusMessage" class="drive-empty">
 							<h2 class="drive-card__title">No items returned</h2>

@@ -183,6 +183,43 @@ def test_upload_student_image_uses_authoritative_contract():
 	assert recorder["payload"]["folder"].startswith("DRF-")
 
 
+def test_upload_employee_image_uses_employee_folder_tree():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.integration.ifitwala_ed_media",
+		"ifitwala_drive.services.uploads.sessions",
+	)
+	employee = FakeDoc({"name": "EMP-0001", "organization": "ORG-0001", "school": "SCH-0001"})
+	_install_fake_frappe(
+		exists_map={("Employee", "EMP-0001"): True},
+		docs_map={("Employee", "EMP-0001"): employee},
+	)
+	recorder = {}
+	_install_fake_sessions(recorder)
+	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_media")
+
+	response = module.upload_employee_image_service(
+		{
+			"employee": "EMP-0001",
+			"filename_original": "employee.jpg",
+			"mime_type_hint": "image/jpeg",
+			"expected_size_bytes": 456,
+		}
+	)
+
+	assert response["upload_session_id"] == "DUS-0001"
+	assert recorder["payload"]["owner_doctype"] == "Employee"
+	assert recorder["payload"]["owner_name"] == "EMP-0001"
+	assert recorder["payload"]["attached_doctype"] == "Employee"
+	assert recorder["payload"]["attached_name"] == "EMP-0001"
+	assert recorder["payload"]["primary_subject_id"] == "EMP-0001"
+	assert recorder["payload"]["organization"] == "ORG-0001"
+	assert recorder["payload"]["school"] == "SCH-0001"
+	assert recorder["payload"]["slot"] == "profile_image"
+	assert recorder["payload"]["is_private"] == 0
+	assert recorder["payload"]["folder"].startswith("DRF-")
+
+
 def test_upload_organization_logo_keeps_organization_as_owner():
 	_purge_modules(
 		"frappe",
