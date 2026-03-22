@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 
 import frappe
@@ -48,16 +49,12 @@ class DriveFolder(Document):
 		self._sync_path_fields()
 
 	def autoname(self) -> None:
-		"""Keep names human-readable but deterministic enough for early v1.
-
-		If duplicate titles under the same parent become a real issue later,
-		we can move to a slug + suffix or opaque ID naming pattern.
-		"""
+		"""Use a stable scoped identifier and keep `title` as the human-facing label."""
 		if not self.title:
 			frappe.throw(_("Title is required."))
 
-		# Let Frappe's rename/duplicate handling do the rest.
-		self.name = self.title.strip()
+		self._set_defaults()
+		self.name = self._build_name()
 
 	def _set_defaults(self) -> None:
 		if not self.status:
@@ -174,3 +171,7 @@ class DriveFolder(Document):
 			self._slugify(self.title),
 		)
 		return "|".join(str(part or "").strip() for part in parts)
+
+	def _build_name(self) -> str:
+		digest = hashlib.sha1(self.system_key.encode("utf-8")).hexdigest()[:16].upper()
+		return f"DRF-{digest}"
