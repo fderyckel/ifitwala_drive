@@ -131,10 +131,14 @@ class ConfiguredRemoteStorageBackend(LocalStorageBackend):
 		}
 
 	def _remote_upload_enabled(self) -> bool:
-		return bool(getattr(self.profile, "upload_url_base", None) or getattr(self.profile, "object_url_base", None))
+		return bool(
+			getattr(self.profile, "upload_url_base", None) or getattr(self.profile, "object_url_base", None)
+		)
 
 	def _build_remote_upload_url(self, object_key: str) -> str:
-		base = getattr(self.profile, "upload_url_base", None) or getattr(self.profile, "object_url_base", None)
+		base = getattr(self.profile, "upload_url_base", None) or getattr(
+			self.profile, "object_url_base", None
+		)
 		return self._build_url(base, object_key)
 
 	def _build_download_url(self, object_key: str) -> str:
@@ -155,7 +159,9 @@ class ConfiguredRemoteStorageBackend(LocalStorageBackend):
 		return self._build_url(base, object_key)
 
 	def _build_object_url(self, object_key: str) -> str:
-		base = getattr(self.profile, "object_url_base", None) or getattr(self.profile, "download_url_base", None)
+		base = getattr(self.profile, "object_url_base", None) or getattr(
+			self.profile, "download_url_base", None
+		)
 		if base:
 			return self._build_url(base, object_key)
 		return super()._build_private_file_url(object_key)

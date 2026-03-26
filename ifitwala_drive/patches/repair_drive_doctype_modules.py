@@ -1,6 +1,5 @@
 import frappe
 
-
 DRIVE_DOCTYPES = (
 	"Drive Upload Session",
 	"Drive File",

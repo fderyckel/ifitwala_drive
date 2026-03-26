@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any
 import re
+from typing import Any
 
 import frappe
 from frappe import _
@@ -215,7 +215,9 @@ def run_task_post_finalize(upload_session_doc, created_file) -> dict[str, Any]:
 		target_row = task_doc.append("attachments", {})
 		target_row.name = row_key
 
-	file_url = getattr(created_file, "file_url", None) or frappe.db.get_value("File", created_file.name, "file_url")
+	file_url = getattr(created_file, "file_url", None) or frappe.db.get_value(
+		"File", created_file.name, "file_url"
+	)
 	file_name = getattr(created_file, "file_name", None) or frappe.db.get_value(
 		"File", created_file.name, "file_name"
 	)

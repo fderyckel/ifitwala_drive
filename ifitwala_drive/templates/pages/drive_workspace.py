@@ -37,9 +37,7 @@ def get_context(context):
 		public_base=PUBLIC_BASE,
 		entry_keys=ENTRY_KEYS,
 	)
-	context.has_vite_workspace = (
-		context.vite_js != f"{PUBLIC_BASE}main.js" and _asset_exists(context.vite_js)
-	)
+	context.has_vite_workspace = context.vite_js != f"{PUBLIC_BASE}main.js" and _asset_exists(context.vite_js)
 	if not context.has_vite_workspace:
 		context.vite_css = []
 		context.vite_preload = []

@@ -153,7 +153,9 @@ def _folder_href(folder_id: str) -> str:
 
 
 def _context_href(doctype: str, name: str, binding_role: str | None = None) -> str:
-	href = f"/drive_workspace?doctype={quote(str(doctype or '').strip())}&name={quote(str(name or '').strip())}"
+	href = (
+		f"/drive_workspace?doctype={quote(str(doctype or '').strip())}&name={quote(str(name or '').strip())}"
+	)
 	if binding_role:
 		href += f"&binding_role={quote(str(binding_role).strip())}"
 	return href
@@ -415,9 +417,23 @@ def _own_context_targets(user: str, limit: int) -> list[dict[str, Any]]:
 	targets: list[dict[str, Any]] = []
 
 	for doctype, filters, fields, label_field, caption, badge in (
-		("Employee", {"user_id": user}, ["name", "employee_full_name"], "employee_full_name", _("Your employee files"), _("Mine")),
+		(
+			"Employee",
+			{"user_id": user},
+			["name", "employee_full_name"],
+			"employee_full_name",
+			_("Your employee files"),
+			_("Mine"),
+		),
 		("Student Applicant", {"applicant_user": user}, ["name"], None, _("Your applicant files"), _("Mine")),
-		("Student", {"student_email": user}, ["name", "student_full_name"], "student_full_name", _("Your student workspace"), _("Mine")),
+		(
+			"Student",
+			{"student_email": user},
+			["name", "student_full_name"],
+			"student_full_name",
+			_("Your student workspace"),
+			_("Mine"),
+		),
 	):
 		rows = _safe_get_all(doctype, filters=filters, fields=fields, limit_page_length=limit)
 		for row in rows:
@@ -493,7 +509,14 @@ def _review_assignment_targets(user: str, limit: int) -> list[dict[str, Any]]:
 			_safe_get_all(
 				"Applicant Review Assignment",
 				filters={"assigned_to_role": ["in", roles], "status": "Open"},
-				fields=["name", "student_applicant", "target_type", "target_name", "source_event", "modified"],
+				fields=[
+					"name",
+					"student_applicant",
+					"target_type",
+					"target_name",
+					"source_event",
+					"modified",
+				],
 				order_by="modified desc",
 				limit_page_length=limit,
 			)
@@ -656,8 +679,12 @@ def list_folder_items_service(payload: dict[str, Any]) -> dict[str, Any]:
 		for child in child_folders:
 			child_doc = _load_folder_doc(child["name"], folder_cache) or child
 			if not _can_read(
-				getattr(child_doc, "owner_doctype", None) if hasattr(child_doc, "owner_doctype") else child.get("owner_doctype"),
-				getattr(child_doc, "owner_name", None) if hasattr(child_doc, "owner_name") else child.get("owner_name"),
+				getattr(child_doc, "owner_doctype", None)
+				if hasattr(child_doc, "owner_doctype")
+				else child.get("owner_doctype"),
+				getattr(child_doc, "owner_name", None)
+				if hasattr(child_doc, "owner_name")
+				else child.get("owner_name"),
 			):
 				continue
 			if hasattr(child_doc, "name"):

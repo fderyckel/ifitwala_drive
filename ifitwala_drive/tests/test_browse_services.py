@@ -22,7 +22,9 @@ class FakeDoc:
 		return None
 
 
-def _install_fake_frappe(*, exists_map=None, docs_map=None, get_all_handlers=None, session_user="tester@example.com", roles=None):
+def _install_fake_frappe(
+	*, exists_map=None, docs_map=None, get_all_handlers=None, session_user="tester@example.com", roles=None
+):
 	exists_map = exists_map or {}
 	docs_map = docs_map or {}
 	get_all_handlers = get_all_handlers or {}
@@ -1166,10 +1168,15 @@ def test_list_workspace_home_prioritizes_review_targets_then_personal_contexts()
 	response = module.list_workspace_home_service({})
 
 	assert [section["key"] for section in response["sections"]] == ["reviewing", "mine", "roots"]
-	assert response["sections"][0]["items"][0]["href"] == "/drive_workspace?doctype=Student%20Applicant&name=APP-0001"
+	assert (
+		response["sections"][0]["items"][0]["href"]
+		== "/drive_workspace?doctype=Student%20Applicant&name=APP-0001"
+	)
 	assert response["sections"][1]["items"][0]["href"] == "/drive_workspace?doctype=Employee&name=EMP-SELF"
 	assert response["sections"][2]["items"][0]["href"] == "/drive_workspace?folder=DRF-ROOT-A"
-	assert response["suggested_target"]["href"] == "/drive_workspace?doctype=Student%20Applicant&name=APP-0001"
+	assert (
+		response["suggested_target"]["href"] == "/drive_workspace?doctype=Student%20Applicant&name=APP-0001"
+	)
 	assert response["suggested_target"]["auto_open"] is False
 
 

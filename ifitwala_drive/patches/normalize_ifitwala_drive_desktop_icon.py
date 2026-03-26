@@ -1,6 +1,5 @@
 import frappe
 
-
 ICON_NAME = "Ifitwala Drive"
 EXPECTED_LINK_TYPE = "Workspace Sidebar"
 

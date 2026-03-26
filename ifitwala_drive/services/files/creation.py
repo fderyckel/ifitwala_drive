@@ -13,10 +13,9 @@ def _build_canonical_ref(*, organization: str | None, drive_file_id: str) -> str
 
 
 def _resolve_binding_role(upload_session_doc) -> str | None:
-	if (
-		upload_session_doc.owner_doctype == "Task"
-		and str(getattr(upload_session_doc, "intended_slot", "") or "").startswith("supporting_material__")
-	):
+	if upload_session_doc.owner_doctype == "Task" and str(
+		getattr(upload_session_doc, "intended_slot", "") or ""
+	).startswith("supporting_material__"):
 		return "task_resource"
 
 	if upload_session_doc.owner_doctype == "Organization":
