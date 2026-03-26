@@ -61,9 +61,9 @@ This runs:
 
 - `ruff check`
 - `ruff format --check`
-- the local pytest suite for the current Phase 1 upload/session tests
+- the full Python test suite currently checked into `ifitwala_drive/tests`
 
-GitHub Actions runs the same script for pull requests targeting `main` and for pushes to `main`.
+GitHub Actions runs separate CI jobs for Ruff, the full Python suite, and the frontend type-check/build path for pull requests targeting `main` and for pushes to `main`.
 
 ### Frontend Build
 
