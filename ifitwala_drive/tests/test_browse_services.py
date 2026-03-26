@@ -278,6 +278,91 @@ def test_list_context_files_returns_bound_drive_files():
 	}
 
 
+def test_list_context_files_returns_direct_owner_files_without_binding():
+	_purge_modules("frappe", "ifitwala_drive.services.folders.browse")
+	task_submission = FakeDoc({"name": "TSUB-0002"})
+	_install_fake_frappe(
+		exists_map={("Task Submission", "TSUB-0002"): True},
+		docs_map={
+			("Task Submission", "TSUB-0002"): task_submission,
+		},
+		get_all_handlers={
+			"Drive Binding": lambda **kwargs: [],
+			"Drive File": lambda **kwargs: [
+				{
+					"name": "DF-0002",
+					"canonical_ref": "drv:ORG-0001:DF-0002",
+					"slot": "submission",
+					"display_name": "essay-final.docx",
+					"current_version_no": 1,
+					"preview_status": "pending",
+					"folder": None,
+					"attached_doctype": "Task Submission",
+					"attached_name": "TSUB-0002",
+					"owner_doctype": "Task Submission",
+					"owner_name": "TSUB-0002",
+				}
+			],
+		},
+	)
+	module = _load_module("ifitwala_drive.services.folders.browse")
+
+	response = module.list_context_files_service(
+		{
+			"doctype": "Task Submission",
+			"name": "TSUB-0002",
+		}
+	)
+
+	assert response == {
+		"context": {"doctype": "Task Submission", "name": "TSUB-0002"},
+		"folders": [],
+		"files": [
+			{
+				"id": "DF-0002",
+				"drive_file_id": "DF-0002",
+				"canonical_ref": "drv:ORG-0001:DF-0002",
+				"slot": "submission",
+				"title": "essay-final.docx",
+				"current_version_no": 1,
+				"preview_status": "pending",
+				"binding_role": "submission_artifact",
+				"folder": None,
+				"folder_path": None,
+				"context_path": None,
+				"attached_to": {
+					"doctype": "Task Submission",
+					"name": "TSUB-0002",
+				},
+				"can_preview": False,
+				"can_download": True,
+			}
+		],
+		"items": [
+			{
+				"id": "DF-0002",
+				"drive_file_id": "DF-0002",
+				"canonical_ref": "drv:ORG-0001:DF-0002",
+				"slot": "submission",
+				"title": "essay-final.docx",
+				"current_version_no": 1,
+				"preview_status": "pending",
+				"binding_role": "submission_artifact",
+				"folder": None,
+				"folder_path": None,
+				"context_path": None,
+				"attached_to": {
+					"doctype": "Task Submission",
+					"name": "TSUB-0002",
+				},
+				"can_preview": False,
+				"can_download": True,
+				"item_type": "file",
+			}
+		],
+	}
+
+
 def test_list_folder_items_returns_child_folders_and_files():
 	_purge_modules("frappe", "ifitwala_drive.services.folders.browse")
 	folder_doc = FakeDoc(

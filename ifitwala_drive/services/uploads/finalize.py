@@ -1,10 +1,7 @@
-# ifitwala_drive/ifitwala_drive/services/uploads/finalize.py
-
 from __future__ import annotations
 
-import hashlib
-import os
-from datetime import datetime
+import time
+from datetime import datetime, timedelta
 from typing import Any
 
 import frappe
@@ -35,7 +32,12 @@ from ifitwala_drive.services.integration.ifitwala_ed_tasks import (
 )
 from ifitwala_drive.services.logging import log_drive_event
 from ifitwala_drive.services.storage.base import get_storage_backend
+from ifitwala_drive.services.uploads.keys import build_upload_object_key
 from ifitwala_drive.services.uploads.validation import validate_finalize_session_payload
+
+_FINALIZE_WAIT_SECONDS = 6.0
+_FINALIZE_POLL_SECONDS = 0.25
+_STALE_FINALIZING_SECONDS = 90
 
 
 def _call_authoritative_create_and_classify_file(
@@ -74,22 +76,15 @@ def _get_secondary_subjects(doc) -> list[dict[str, Any]]:
 
 
 def _build_final_object_key(doc) -> str:
-	filename = (doc.filename_original or "upload.bin").strip() or "upload.bin"
-	_, extension = os.path.splitext(filename)
-	seed = "|".join(
-		[
-			(getattr(doc, "session_key", None) or getattr(doc, "name", None) or "").strip(),
-			(getattr(doc, "owner_doctype", None) or "").strip(),
-			(getattr(doc, "owner_name", None) or "").strip(),
-			(getattr(doc, "attached_doctype", None) or "").strip(),
-			(getattr(doc, "attached_name", None) or "").strip(),
-			(getattr(doc, "intended_slot", None) or "").strip(),
-			filename,
-		]
+	return build_upload_object_key(
+		session_key=getattr(doc, "session_key", None) or getattr(doc, "name", None) or "",
+		owner_doctype=getattr(doc, "owner_doctype", None) or "",
+		owner_name=getattr(doc, "owner_name", None) or "",
+		attached_doctype=getattr(doc, "attached_doctype", None) or "",
+		attached_name=getattr(doc, "attached_name", None) or "",
+		slot=getattr(doc, "intended_slot", None) or "",
+		filename=getattr(doc, "filename_original", None) or "upload.bin",
 	)
-	digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()
-	normalized_extension = extension.lower()[:16]
-	return f"files/{digest[:2]}/{digest[2:4]}/{digest}{normalized_extension}"
 
 
 def _build_file_kwargs(doc, storage_artifact: dict[str, Any]) -> dict[str, Any]:
@@ -181,11 +176,44 @@ def _completed_response(doc, extra: dict[str, Any] | None = None) -> dict[str, A
 	return response
 
 
-def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
-	validate_finalize_session_payload(payload)
+def _validate_finalize_context(doc) -> None:
+	validate_task_submission_finalize_context(doc)
+	validate_task_resource_finalize_context(doc)
+	validate_media_finalize_context(doc)
+	validate_applicant_document_finalize_context(doc)
+	validate_applicant_profile_image_finalize_context(doc)
+	validate_applicant_guardian_image_finalize_context(doc)
+	validate_applicant_health_finalize_context(doc)
 
-	with drive_lock(f"upload_session_finalize:{payload['upload_session_id']}", timeout=45):
-		doc = frappe.get_doc("Drive Upload Session", payload["upload_session_id"])
+
+def _is_stale_finalizing(doc) -> bool:
+	if getattr(doc, "status", None) != "finalizing":
+		return False
+	modified = _coerce_datetime(getattr(doc, "modified", None))
+	if not modified:
+		return False
+	return modified <= now_datetime() - timedelta(seconds=_STALE_FINALIZING_SECONDS)
+
+
+def _wait_for_terminal_session(upload_session_id: str) -> dict[str, Any]:
+	deadline = time.monotonic() + _FINALIZE_WAIT_SECONDS
+	while time.monotonic() < deadline:
+		doc = frappe.get_doc("Drive Upload Session", upload_session_id)
+		if doc.status == "completed":
+			return _completed_response(doc)
+		if doc.status in {"failed", "aborted", "expired"}:
+			frappe.throw(
+				_("This upload session cannot be finalized from its current status: {0}").format(doc.status)
+			)
+		time.sleep(_FINALIZE_POLL_SECONDS)
+
+	frappe.throw(_("This upload session is already finalizing. Please retry in a moment."))
+
+
+def _claim_upload_session_for_finalize(payload: dict[str, Any]):
+	upload_session_id = payload["upload_session_id"]
+	with drive_lock(f"upload_session_finalize:{upload_session_id}", timeout=20):
+		doc = frappe.get_doc("Drive Upload Session", upload_session_id)
 
 		expires_on = _coerce_datetime(getattr(doc, "expires_on", None))
 		if (
@@ -202,23 +230,16 @@ def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 			)
 
 		if doc.status == "completed":
-			return _completed_response(doc)
+			return doc, "completed"
 
-		validate_task_submission_finalize_context(doc)
-		validate_task_resource_finalize_context(doc)
-		validate_media_finalize_context(doc)
-		validate_applicant_document_finalize_context(doc)
-		validate_applicant_profile_image_finalize_context(doc)
-		validate_applicant_guardian_image_finalize_context(doc)
-		validate_applicant_health_finalize_context(doc)
+		if doc.status == "finalizing" and not _is_stale_finalizing(doc):
+			return doc, "wait"
 
-		storage = get_storage_backend(getattr(doc, "storage_backend", None))
-		if not doc.tmp_object_key or not storage.temporary_object_exists(object_key=doc.tmp_object_key):
-			frappe.throw(_("Temporary uploaded object was not found for this upload session."))
-
+		_validate_finalize_context(doc)
 		doc.status = "finalizing"
 		doc.received_size_bytes = payload.get("received_size_bytes") or doc.received_size_bytes
 		doc.content_hash = payload.get("content_hash") or doc.content_hash
+		doc.error_log = None
 		doc.save(ignore_permissions=True)
 
 		log_drive_event(
@@ -228,48 +249,68 @@ def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 			owner_name=doc.owner_name,
 			slot=doc.intended_slot,
 		)
+		return doc, "claimed"
 
-		try:
-			storage_artifact = storage.finalize_temporary_object(
-				object_key=doc.tmp_object_key,
-				final_key=_build_final_object_key(doc),
-			)
-			created = _call_authoritative_create_and_classify_file(
-				file_kwargs=_build_file_kwargs(doc, storage_artifact),
-				classification=_build_classification(doc),
-				secondary_subjects=_get_secondary_subjects(doc),
-				context_override=_get_context_override(doc),
-			)
-			drive_artifacts = create_drive_file_artifacts(
-				upload_session_doc=doc,
-				file_id=created.name,
-				storage_artifact=storage_artifact,
-			)
-		except Exception as exc:
-			_mark_session_failed(doc, exc)
-			raise
 
-		doc.file = created.name
-		doc.drive_file = drive_artifacts["drive_file_id"]
-		doc.drive_file_version = drive_artifacts["drive_file_version_id"]
-		doc.canonical_ref = drive_artifacts["canonical_ref"]
-		doc.status = "completed"
-		doc.completed_on = now_datetime()
-		doc.error_log = None
-		doc.save(ignore_permissions=True)
+def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
+	validate_finalize_session_payload(payload)
+	doc, claim_state = _claim_upload_session_for_finalize(payload)
+	if claim_state == "completed":
+		return _completed_response(doc)
+	if claim_state == "wait":
+		return _wait_for_terminal_session(doc.name)
 
-		extra_response = {}
-		extra_response.update(run_task_post_finalize(doc, created))
-		extra_response.update(run_media_post_finalize(doc, created))
-		extra_response.update(run_admissions_post_finalize(doc, created))
+	storage = get_storage_backend(getattr(doc, "storage_backend", None))
+	if not doc.tmp_object_key or not storage.temporary_object_exists(object_key=doc.tmp_object_key):
+		frappe.throw(_("Temporary uploaded object was not found for this upload session."))
 
-		log_drive_event(
-			"upload_session_finalized",
-			upload_session_id=doc.name,
-			file_id=doc.file,
-			owner_doctype=doc.owner_doctype,
-			owner_name=doc.owner_name,
-			slot=doc.intended_slot,
+	try:
+		storage_artifact = storage.finalize_temporary_object(
+			object_key=doc.tmp_object_key,
+			final_key=_build_final_object_key(doc),
 		)
+		created = _call_authoritative_create_and_classify_file(
+			file_kwargs=_build_file_kwargs(doc, storage_artifact),
+			classification=_build_classification(doc),
+			secondary_subjects=_get_secondary_subjects(doc),
+			context_override=_get_context_override(doc),
+		)
+		drive_artifacts = create_drive_file_artifacts(
+			upload_session_doc=doc,
+			file_id=created.name,
+			storage_artifact=storage_artifact,
+		)
+	except Exception as exc:
+		_mark_session_failed(doc, exc)
+		raise
 
-		return _completed_response(doc, extra=extra_response)
+	with drive_lock(f"upload_session_finalize:{doc.name}", timeout=20):
+		refreshed = frappe.get_doc("Drive Upload Session", doc.name)
+		if refreshed.status == "completed":
+			doc = refreshed
+		else:
+			refreshed.file = created.name
+			refreshed.drive_file = drive_artifacts["drive_file_id"]
+			refreshed.drive_file_version = drive_artifacts.get("drive_file_version_id")
+			refreshed.canonical_ref = drive_artifacts["canonical_ref"]
+			refreshed.status = "completed"
+			refreshed.completed_on = now_datetime()
+			refreshed.error_log = None
+			refreshed.save(ignore_permissions=True)
+			doc = refreshed
+
+	extra_response = {}
+	extra_response.update(run_task_post_finalize(doc, created))
+	extra_response.update(run_media_post_finalize(doc, created))
+	extra_response.update(run_admissions_post_finalize(doc, created))
+
+	log_drive_event(
+		"upload_session_finalized",
+		upload_session_id=doc.name,
+		file_id=doc.file,
+		owner_doctype=doc.owner_doctype,
+		owner_name=doc.owner_name,
+		slot=doc.intended_slot,
+	)
+
+	return _completed_response(doc, extra=extra_response)

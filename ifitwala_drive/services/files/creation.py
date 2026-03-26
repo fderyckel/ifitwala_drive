@@ -19,22 +19,8 @@ def _resolve_binding_role(upload_session_doc) -> str | None:
 	):
 		return "task_resource"
 
-	if upload_session_doc.owner_doctype == "Task Submission":
-		return "submission_artifact"
-
 	if upload_session_doc.owner_doctype == "Organization":
 		return "organization_media"
-
-	if upload_session_doc.owner_doctype == "Student" and upload_session_doc.intended_slot == "profile_image":
-		return "student_image"
-
-	if upload_session_doc.owner_doctype == "Employee" and upload_session_doc.intended_slot == "profile_image":
-		return "employee_image"
-
-	if upload_session_doc.owner_doctype == "Student Applicant":
-		if upload_session_doc.attached_doctype == "Applicant Document Item":
-			return "applicant_document"
-		return "general_reference"
 
 	return None
 
@@ -61,41 +47,13 @@ def _build_drive_file_doc(upload_session_doc, *, file_id: str, storage_artifact:
 			"purpose": upload_session_doc.intended_purpose,
 			"retention_policy": upload_session_doc.intended_retention_policy,
 			"slot": upload_session_doc.intended_slot,
-			"current_version_no": 0,
+			"current_version_no": 1,
 			"storage_backend": storage_artifact.get("storage_backend")
 			or getattr(upload_session_doc, "storage_backend", None),
 			"storage_object_key": storage_artifact["object_key"],
 			"upload_source": upload_session_doc.upload_source,
 			"content_hash": getattr(upload_session_doc, "content_hash", None),
 			"is_private": upload_session_doc.is_private,
-		}
-	)
-
-
-def _build_drive_file_version_doc(
-	drive_file_id: str,
-	upload_session_doc,
-	*,
-	file_id: str,
-	storage_artifact: dict[str, Any],
-):
-	size_bytes = (
-		getattr(upload_session_doc, "received_size_bytes", None)
-		or getattr(upload_session_doc, "expected_size_bytes", None)
-		or 0
-	)
-	return frappe.get_doc(
-		{
-			"doctype": "Drive File Version",
-			"drive_file": drive_file_id,
-			"version_no": 1,
-			"file": file_id,
-			"is_current": 1,
-			"version_reason": "initial_upload",
-			"storage_object_key": storage_artifact["object_key"],
-			"size_bytes": size_bytes,
-			"mime_type": getattr(upload_session_doc, "mime_type_hint", None),
-			"content_hash": getattr(upload_session_doc, "content_hash", None),
 		}
 	)
 
@@ -189,17 +147,10 @@ def _existing_drive_file_response(*, drive_file_id: str, upload_session_doc, fil
 		file_id=file_id,
 		upload_session_doc=upload_session_doc,
 	)
-	drive_file_version_id = frappe.db.get_value("Drive File", drive_file_id, "current_version")
-	if not drive_file_version_id:
-		drive_file_version_id = frappe.db.get_value(
-			"Drive File Version",
-			{"drive_file": drive_file_id, "is_current": 1},
-			"name",
-		)
 	canonical_ref = frappe.db.get_value("Drive File", drive_file_id, "canonical_ref")
 	return {
 		"drive_file_id": drive_file_id,
-		"drive_file_version_id": drive_file_version_id,
+		"drive_file_version_id": None,
 		"canonical_ref": canonical_ref,
 		"drive_binding_id": binding_id,
 	}
@@ -248,15 +199,7 @@ def create_drive_file_artifacts(
 				file_id=file_id,
 			)
 
-		drive_file_version = _build_drive_file_version_doc(
-			drive_file.name,
-			upload_session_doc,
-			file_id=file_id,
-			storage_artifact=storage_artifact,
-		)
-		drive_file_version.insert(ignore_permissions=True)
-
-		drive_file.current_version = drive_file_version.name
+		drive_file.current_version = None
 		drive_file.current_version_no = 1
 		drive_file.canonical_ref = _build_canonical_ref(
 			organization=getattr(upload_session_doc, "organization", None),
@@ -272,7 +215,7 @@ def create_drive_file_artifacts(
 
 		return {
 			"drive_file_id": drive_file.name,
-			"drive_file_version_id": drive_file_version.name,
+			"drive_file_version_id": None,
 			"canonical_ref": drive_file.canonical_ref,
 			"drive_binding_id": binding_id,
 		}

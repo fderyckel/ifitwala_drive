@@ -6,59 +6,35 @@
 	}
 
 	.drive-shell {
-		width: min(1260px, calc(100% - 1.5rem));
+		width: min(1400px, calc(100% - 1.25rem));
 		margin: 0 auto;
-		padding: 1.25rem 0 2.5rem;
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
+		padding: 1rem 0 1.75rem;
 	}
 
-	.drive-hero-grid {
+	.drive-shell--browser {
 		display: grid;
 		gap: 1rem;
 	}
 
-	.drive-summary-grid {
+	.drive-main {
 		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 0.85rem;
-		align-items: start;
+		gap: 0.9rem;
+		align-content: start;
 	}
 
-	.drive-body-grid {
+	.drive-table {
 		display: grid;
-		gap: 1rem;
-		align-items: start;
 	}
 
-	.drive-list {
-		display: grid;
-		gap: 0.8rem;
-	}
-
-	.drive-content-panel {
-		padding: 1rem;
-	}
-
-	@media (min-width: 768px) {
+	@media (min-width: 960px) {
 		.drive-shell {
-			width: min(1280px, calc(100% - 2.5rem));
-			padding-top: 1.5rem;
+			width: min(1500px, calc(100% - 2rem));
+			padding-top: 1.15rem;
 		}
 
-		.drive-summary-grid {
-			grid-template-columns: repeat(4, minmax(0, 1fr));
-		}
-	}
-
-	@media (min-width: 980px) {
-		.drive-hero-grid {
-			grid-template-columns: minmax(0, 1.7fr) minmax(320px, 0.9fr);
-		}
-
-		.drive-body-grid {
-			grid-template-columns: minmax(230px, 0.55fr) minmax(0, 1.45fr);
+		.drive-shell--browser {
+			grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
+			align-items: start;
 		}
 	}
 }

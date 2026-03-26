@@ -370,6 +370,63 @@ def test_task_submission_create_session_rejects_context_drift():
 		raise AssertionError("Expected create_upload_session_service to reject mismatched student context.")
 
 
+def test_create_upload_session_reuses_idempotent_request():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.integration.ifitwala_ed_tasks",
+		"ifitwala_drive.services.uploads.validation",
+		"ifitwala_drive.services.uploads.sessions",
+		"ifitwala_drive.services.storage.base",
+		"ifitwala_drive.services.storage.local",
+	)
+	task_submission = FakeDoc(
+		{
+			"name": "TSUB-0001",
+			"student": "STU-0001",
+			"school": "SCH-0001",
+			"check_permission": lambda permission_type=None: None,
+		}
+	)
+	_install_fake_frappe(
+		exists_map={
+			("Task Submission", "TSUB-0001"): True,
+			("Organization", "ORG-0001"): True,
+			("School", "SCH-0001"): True,
+		},
+		value_map={
+			("School", "SCH-0001", "organization"): "ORG-0001",
+		},
+		docs_map={
+			("Task Submission", "TSUB-0001"): task_submission,
+		},
+	)
+	module = _load_module("ifitwala_drive.services.uploads.sessions")
+
+	payload = {
+		"owner_doctype": "Task Submission",
+		"owner_name": "TSUB-0001",
+		"attached_doctype": "Task Submission",
+		"attached_name": "TSUB-0001",
+		"organization": "ORG-0001",
+		"school": "SCH-0001",
+		"primary_subject_type": "Student",
+		"primary_subject_id": "STU-0001",
+		"data_class": "assessment",
+		"purpose": "assessment_submission",
+		"retention_policy": "until_school_exit_plus_6m",
+		"slot": "submission",
+		"filename_original": "essay.docx",
+		"idempotency_key": "retry-001",
+	}
+
+	first = module.create_upload_session_service(dict(payload))
+	second = module.create_upload_session_service(dict(payload))
+
+	assert first["upload_session_id"] == "DUS-0001"
+	assert second["upload_session_id"] == "DUS-0001"
+	assert first["session_key"] == second["session_key"]
+
+
 def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 	_purge_modules(
 		"frappe",
@@ -467,7 +524,7 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 
 	assert response == {
 		"drive_file_id": "DF-0001",
-		"drive_file_version_id": "DFV-0001",
+		"drive_file_version_id": None,
 		"file_id": "FILE-0001",
 		"canonical_ref": "drv:ORG-0001:DF-0001",
 		"status": "completed",
@@ -477,7 +534,7 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 	assert session_doc.status == "completed"
 	assert session_doc.file == "FILE-0001"
 	assert session_doc.drive_file == "DF-0001"
-	assert session_doc.drive_file_version == "DFV-0001"
+	assert session_doc.drive_file_version is None
 	assert session_doc.canonical_ref == "drv:ORG-0001:DF-0001"
 	assert session_doc.content_hash == "sha256:abc123"
 	assert dispatcher_recorder["call"]["classification"]["slot"] == "submission"
@@ -587,26 +644,16 @@ def test_create_drive_file_artifacts_recovers_from_duplicate_inserts():
 			"doctype": "Drive File",
 			"name": "DF-0099",
 			"source_upload_session": "DUS-0001",
-			"current_version": "DFV-0099",
 			"canonical_ref": "drv:ORG-0001:DF-0099",
-		}
-	)
-	existing_binding = FakeDoc(
-		{
-			"doctype": "Drive Binding",
-			"name": "DB-0099",
-			"primary_key": "DF-0099|Task Submission|TSUB-0001|submission_artifact|submission",
 		}
 	)
 	_install_fake_frappe(
 		docs_map={},
 		duplicate_insert_once={
 			"Drive File": 1,
-			"Drive Binding": 1,
 		},
 		duplicate_insert_materialized_docs={
 			"Drive File": existing_drive_file,
-			"Drive Binding": existing_binding,
 		},
 	)
 	module = _load_module("ifitwala_drive.services.files.creation")
@@ -642,9 +689,9 @@ def test_create_drive_file_artifacts_recovers_from_duplicate_inserts():
 
 	assert response == {
 		"drive_file_id": "DF-0099",
-		"drive_file_version_id": "DFV-0099",
+		"drive_file_version_id": None,
 		"canonical_ref": "drv:ORG-0001:DF-0099",
-		"drive_binding_id": "DB-0099",
+		"drive_binding_id": None,
 	}
 
 

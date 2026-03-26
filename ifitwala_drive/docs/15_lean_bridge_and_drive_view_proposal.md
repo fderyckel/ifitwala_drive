@@ -354,6 +354,24 @@ But:
 - preview and download actions
 - sorting by name / modified / type
 
+The target interaction model should feel familiar to anyone who has used Google Drive:
+
+- left navigation rail with stable roots and expandable folders
+- top toolbar with current location, search/filter entry, and primary actions
+- center pane as a dense folder/file list, not a card gallery
+- breadcrumbs above the list
+- row-based actions on hover or selection
+- optional right-side detail panel later, but not required for V1
+
+That does **not** mean copying Google Drive visually.
+It means copying the useful navigation grammar:
+
+- predictable tree
+- quick scanning
+- low-friction folder traversal
+- stable file list
+- obvious selection and open actions
+
 ### 4.2 Important rule
 
 Folders are browse UX, not governance truth.
@@ -450,6 +468,52 @@ Not needed yet:
 - rename
 - drag-and-drop
 - freeform folder creation
+
+### 4.8 Visual direction: Google Drive interaction model, Ifitwala_Ed visual language
+
+The workspace should feel like:
+
+- Google Drive in navigation behavior
+- Ifitwala_Ed in color, typography, spacing, and tone
+
+Recommended design rules:
+
+- reuse existing Ifitwala_Ed token families such as `ink`, `leaf`, `canopy`, `moss`, `sky`, `sand`, `border`, and the current `Plus Jakarta Sans` / `DM Serif Display` pairing
+- keep the shell cleaner and flatter than the current Drive hero-card layout
+- use restrained surfaces and borders rather than large decorative marketing panels
+- keep the left rail quiet and structural
+- keep the main file list dense enough for real work
+- use Ifitwala accent colors for state, selection, and focus rings rather than consumer-tech blues as the main brand language
+- keep gradients subtle and background-only; navigation must read as a work tool, not a landing page
+
+Recommended V1 layout:
+
+- top app bar
+- left tree rail
+- main content panel with breadcrumbs + toolbar + table/list
+- optional small status strip for indexing/preview state
+
+Recommended row structure:
+
+- icon
+- filename
+- context or slot badge
+- modified time
+- file type or subject
+- preview/download actions
+
+Recommended state styling:
+
+- selected row uses Ifitwala leaf/canopy emphasis with accessible contrast
+- folder rows and file rows are visually distinct but use the same grid
+- system/governed state should be shown with compact badges, not large explanation blocks
+
+Avoid:
+
+- oversized hero headers
+- card-per-folder layouts for the primary working view
+- decorative dashboard KPIs at the top of the main browse surface
+- a separate “context mode” visual language that breaks the mental model of one Drive
 
 ---
 

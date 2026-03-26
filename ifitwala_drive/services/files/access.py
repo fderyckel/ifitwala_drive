@@ -79,12 +79,14 @@ def _issue_grant(*, doc, grant_kind: str) -> dict[str, Any]:
 			object_key=doc.storage_object_key,
 			file_url=file_url,
 			expires_on=expires_on,
+			filename=getattr(doc, "display_name", None),
 		)
 	else:
 		grant = storage.issue_download_grant(
 			object_key=doc.storage_object_key,
 			file_url=file_url,
 			expires_on=expires_on,
+			filename=getattr(doc, "display_name", None),
 		)
 
 	response = {

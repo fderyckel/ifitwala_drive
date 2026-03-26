@@ -569,6 +569,32 @@ def _serialize_file_entry(
 	return entry
 
 
+def _derive_direct_binding_role(row: dict[str, Any]) -> str | None:
+	owner_doctype = str(row.get("owner_doctype") or "").strip()
+	slot = str(row.get("slot") or "").strip()
+	attached_doctype = str(row.get("attached_doctype") or "").strip()
+
+	if owner_doctype == "Task" and slot.startswith("supporting_material__"):
+		return "task_resource"
+	if owner_doctype == "Task Submission":
+		return "submission_artifact"
+	if owner_doctype == "Organization":
+		return "organization_media"
+	if owner_doctype == "Student" and slot == "profile_image":
+		return "student_image"
+	if owner_doctype == "Employee" and slot == "profile_image":
+		return "employee_image"
+	if owner_doctype == "Student Applicant" and attached_doctype == "Applicant Document Item":
+		return "applicant_document"
+	return None
+
+
+def _matches_requested_binding_role(row: dict[str, Any], binding_role: str | None) -> bool:
+	if not binding_role:
+		return True
+	return _derive_direct_binding_role(row) == binding_role
+
+
 def _get_binding_map(drive_file_ids: list[str]) -> dict[str, dict[str, Any]]:
 	if not drive_file_ids:
 		return {}
@@ -778,17 +804,59 @@ def list_context_files_service(payload: dict[str, Any]) -> dict[str, Any]:
 	_assert_can_read(doctype, name)
 	context_folders = _list_context_root_folders(doctype, name)
 
-	filters: dict[str, Any] = {
+	files = []
+	folder_cache: dict[str, Any] = {}
+	seen_drive_files: set[str] = set()
+	requested_binding_role = payload.get("binding_role")
+
+	direct_drive_files = frappe.get_all(
+		"Drive File",
+		filters={
+			"owner_doctype": doctype,
+			"owner_name": name,
+			"status": ["in", _active_drive_file_statuses()],
+		},
+		fields=[
+			"name",
+			"canonical_ref",
+			"slot",
+			"display_name",
+			"current_version_no",
+			"preview_status",
+			"folder",
+			"attached_doctype",
+			"attached_name",
+			"owner_doctype",
+			"owner_name",
+		],
+		order_by="modified desc",
+	)
+	for row in direct_drive_files:
+		if row.get("owner_doctype") != doctype or row.get("owner_name") != name:
+			continue
+		if not _matches_requested_binding_role(row, requested_binding_role):
+			continue
+		seen_drive_files.add(row["name"])
+		entry = _serialize_file_entry(
+			row,
+			binding={"binding_role": _derive_direct_binding_role(row)},
+			folder_cache=folder_cache,
+			include_item_type=False,
+		)
+		entry["drive_file_id"] = row["name"]
+		files.append(entry)
+
+	binding_filters: dict[str, Any] = {
 		"binding_doctype": doctype,
 		"binding_name": name,
 		"status": "active",
 	}
-	if payload.get("binding_role"):
-		filters["binding_role"] = payload["binding_role"]
+	if requested_binding_role:
+		binding_filters["binding_role"] = requested_binding_role
 
 	bindings = frappe.get_all(
 		"Drive Binding",
-		filters=filters,
+		filters=binding_filters,
 		fields=["drive_file", "binding_role", "slot", "is_primary", "modified"],
 		order_by="is_primary desc, modified desc",
 	)
@@ -797,12 +865,12 @@ def list_context_files_service(payload: dict[str, Any]) -> dict[str, Any]:
 	binding_by_file: dict[str, dict[str, Any]] = {}
 	for row in bindings:
 		drive_file_id = row["drive_file"]
+		if drive_file_id in seen_drive_files:
+			continue
 		if drive_file_id not in binding_by_file:
 			binding_by_file[drive_file_id] = row
 			drive_file_ids.append(drive_file_id)
 
-	files = []
-	folder_cache: dict[str, Any] = {}
 	if drive_file_ids:
 		drive_files = frappe.get_all(
 			"Drive File",
@@ -820,6 +888,8 @@ def list_context_files_service(payload: dict[str, Any]) -> dict[str, Any]:
 				"folder",
 				"attached_doctype",
 				"attached_name",
+				"owner_doctype",
+				"owner_name",
 			],
 		)
 		drive_file_map = {row["name"]: row for row in drive_files}
