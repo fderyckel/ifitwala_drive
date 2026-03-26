@@ -9,11 +9,16 @@ from urllib.parse import quote
 
 import frappe
 
+from ifitwala_drive.services.storage.base import StorageRuntimeProfile, build_object_key
+
 
 class LocalStorageBackend:
-	"""Same-host storage backend for early Phase 1 rollout."""
+	"""Filesystem-backed storage backend used for local and proxy-upload environments."""
 
 	backend_name = "local"
+
+	def __init__(self, *, profile: StorageRuntimeProfile | None = None):
+		self.profile = profile
 
 	def create_temporary_upload_target(
 		self,
@@ -22,13 +27,22 @@ class LocalStorageBackend:
 		filename: str,
 		mime_type: str | None = None,
 		upload_token: str | None = None,
+		expected_size_bytes: int | None = None,
+		object_key_hint: str | None = None,
 	) -> dict[str, Any]:
-		object_key = f"tmp/{session_key}/{self._normalize_filename(filename)}"
+		object_key = object_key_hint or build_object_key(
+			"tmp",
+			session_key,
+			self._normalize_filename(filename),
+			base_prefix=self._base_prefix(),
+		)
 		headers: dict[str, Any] = {}
 		if mime_type:
 			headers["Content-Type"] = mime_type
 		if upload_token:
 			headers["X-Drive-Upload-Token"] = upload_token
+		if expected_size_bytes is not None:
+			headers["X-Drive-Expected-Size"] = expected_size_bytes
 
 		return {
 			"object_key": object_key,
@@ -55,19 +69,22 @@ class LocalStorageBackend:
 
 	def finalize_temporary_object(self, *, object_key: str, final_key: str) -> dict[str, Any]:
 		source = self._absolute_path(object_key)
+		target = self._absolute_path(final_key)
+		if object_key == final_key:
+			if not os.path.exists(target):
+				raise FileNotFoundError(final_key)
+			return self._artifact_for_key(final_key)
+
+		if os.path.exists(target) and not os.path.exists(source):
+			return self._artifact_for_key(final_key)
+
 		if not os.path.exists(source):
 			raise FileNotFoundError(object_key)
 
-		target = self._absolute_path(final_key)
 		self._ensure_parent(target)
 		shutil.move(source, target)
 		self._cleanup_empty_parents(source)
-
-		return {
-			"object_key": final_key,
-			"storage_backend": self.backend_name,
-			"file_url": self._build_private_file_url(final_key),
-		}
+		return self._artifact_for_key(final_key)
 
 	def abort_temporary_object(self, *, object_key: str) -> None:
 		path = self._absolute_path(object_key)
@@ -81,6 +98,7 @@ class LocalStorageBackend:
 		object_key: str,
 		file_url: str | None,
 		expires_on: datetime,
+		filename: str | None = None,
 	) -> dict[str, Any]:
 		url = file_url or self._build_private_file_url(object_key)
 		return {
@@ -94,11 +112,22 @@ class LocalStorageBackend:
 		object_key: str,
 		file_url: str | None,
 		expires_on: datetime,
+		filename: str | None = None,
 	) -> dict[str, Any]:
 		url = file_url or self._build_private_file_url(object_key)
 		return {
 			"grant_type": "private_url",
 			"url": url,
+		}
+
+	def delete_object(self, *, object_key: str) -> None:
+		self.abort_temporary_object(object_key=object_key)
+
+	def _artifact_for_key(self, object_key: str) -> dict[str, Any]:
+		return {
+			"object_key": object_key,
+			"storage_backend": self.backend_name,
+			"file_url": self._build_private_file_url(object_key),
 		}
 
 	def _build_upload_url(self, session_key: str) -> str:
@@ -111,10 +140,11 @@ class LocalStorageBackend:
 		return os.path.join(self._storage_root(), *object_key.split("/"))
 
 	def _storage_root(self) -> str:
-		configured = None
-		conf = getattr(frappe, "conf", None)
-		if conf:
-			configured = conf.get("ifitwala_drive_local_storage_root")
+		configured = getattr(self.profile, "local_staging_root", None)
+		if not configured:
+			conf = getattr(frappe, "conf", None)
+			if conf:
+				configured = conf.get("ifitwala_drive_local_storage_root")
 		if configured:
 			root = configured
 		elif hasattr(frappe, "get_site_path"):
@@ -124,6 +154,9 @@ class LocalStorageBackend:
 
 		os.makedirs(root, exist_ok=True)
 		return root
+
+	def _base_prefix(self) -> str:
+		return getattr(self.profile, "base_prefix", "") if self.profile else ""
 
 	def _ensure_parent(self, path: str) -> None:
 		os.makedirs(os.path.dirname(path), exist_ok=True)

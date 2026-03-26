@@ -43,17 +43,18 @@ Notes:
 | --- | --- |
 | Current Ed surface | `Task.attachments` child table |
 | Owner doctype/name | `Task` / `task.name` |
-| Attached doctype/name | blocked pending target schema decision |
-| Primary subject | blocked pending target schema decision |
-| Slot | blocked pending task-resource schema lock |
+| Attached doctype/name | compatibility slice: `Task` / `task.name` |
+| Primary subject | compatibility slice: `Organization` / `Task.default_course.school.organization` |
+| Slot | compatibility slice: `supporting_material__<attached_document_row_name>` |
 | Binding role target | `task_resource` |
-| Current Ed canonical persistence | generic attachment row only |
-| Plan status | refactor blocker, not wrapper-only |
+| Current Ed canonical persistence | Drive-owned file plus `Task.attachments` display row |
+| Plan status | compatibility cut shipped; dedicated task-resource schema still pending |
 
 Notes:
 
 * `Task.attachments` is still a generic `Attached Document` table in live Ed.
-* This remains a locked Phase 1 target, but not the first execution slice.
+* The current implementation treats that table as compatibility metadata only; governance truth stays in Drive.
+* The long-term target is still a dedicated Task-resource schema that can persist canonical Drive refs directly.
 
 ## Applicant Document
 

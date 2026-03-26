@@ -109,7 +109,9 @@ def test_issue_download_grant_supports_canonical_ref(monkeypatch):
 		}
 	)
 	task_submission = FakeDoc({"name": "TSUB-0001"})
-	file_doc = FakeDoc({"name": "FILE-0001", "file_url": "/private/files/ifitwala_drive/files/ab/cd/object.docx"})
+	file_doc = FakeDoc(
+		{"name": "FILE-0001", "file_url": "/private/files/ifitwala_drive/files/ab/cd/object.docx"}
+	)
 	_install_fake_frappe(
 		docs_map={
 			("Drive File", "DF-0001"): drive_file,
@@ -120,12 +122,13 @@ def test_issue_download_grant_supports_canonical_ref(monkeypatch):
 	module = _load_module("ifitwala_drive.services.files.access")
 
 	class FakeStorage:
-		def issue_download_grant(self, *, object_key, file_url, expires_on):
+		def issue_download_grant(self, *, object_key, file_url, expires_on, filename=None):
 			assert object_key == "files/ab/cd/object.docx"
 			assert file_url == "/private/files/ifitwala_drive/files/ab/cd/object.docx"
+			assert filename is None
 			return {"grant_type": "private_url", "url": file_url}
 
-		def issue_preview_grant(self, *, object_key, file_url, expires_on):
+		def issue_preview_grant(self, *, object_key, file_url, expires_on, filename=None):
 			raise AssertionError("Preview grant should not be issued in this test.")
 
 	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
@@ -154,7 +157,9 @@ def test_issue_preview_grant_requires_ready_preview(monkeypatch):
 		}
 	)
 	task_submission = FakeDoc({"name": "TSUB-0001"})
-	file_doc = FakeDoc({"name": "FILE-0002", "file_url": "https://storage.ifitwala.invalid/object/files/ef/gh/object.pdf"})
+	file_doc = FakeDoc(
+		{"name": "FILE-0002", "file_url": "https://storage.ifitwala.invalid/object/files/ef/gh/object.pdf"}
+	)
 	_install_fake_frappe(
 		docs_map={
 			("Drive File", "DF-0002"): drive_file,
@@ -165,10 +170,10 @@ def test_issue_preview_grant_requires_ready_preview(monkeypatch):
 	module = _load_module("ifitwala_drive.services.files.access")
 
 	class FakeStorage:
-		def issue_download_grant(self, *, object_key, file_url, expires_on):
+		def issue_download_grant(self, *, object_key, file_url, expires_on, filename=None):
 			raise AssertionError("Download grant should not be issued in this test.")
 
-		def issue_preview_grant(self, *, object_key, file_url, expires_on):
+		def issue_preview_grant(self, *, object_key, file_url, expires_on, filename=None):
 			raise AssertionError("Preview grant should not be called when preview is pending.")
 
 	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
@@ -196,7 +201,9 @@ def test_issue_download_grant_rejects_blocked_file(monkeypatch):
 		}
 	)
 	task_submission = FakeDoc({"name": "TSUB-0001"})
-	file_doc = FakeDoc({"name": "FILE-0003", "file_url": "https://storage.ifitwala.invalid/object/files/ij/kl/object.pdf"})
+	file_doc = FakeDoc(
+		{"name": "FILE-0003", "file_url": "https://storage.ifitwala.invalid/object/files/ij/kl/object.pdf"}
+	)
 	_install_fake_frappe(
 		docs_map={
 			("Drive File", "DF-0003"): drive_file,
@@ -207,10 +214,10 @@ def test_issue_download_grant_rejects_blocked_file(monkeypatch):
 	module = _load_module("ifitwala_drive.services.files.access")
 
 	class FakeStorage:
-		def issue_download_grant(self, *, object_key, file_url, expires_on):
+		def issue_download_grant(self, *, object_key, file_url, expires_on, filename=None):
 			raise AssertionError("Blocked files must not reach storage grant issuance.")
 
-		def issue_preview_grant(self, *, object_key, file_url, expires_on):
+		def issue_preview_grant(self, *, object_key, file_url, expires_on, filename=None):
 			raise AssertionError("Blocked files must not reach storage grant issuance.")
 
 	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())

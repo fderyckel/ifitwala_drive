@@ -6,30 +6,35 @@
 	}
 
 	.drive-shell {
-		width: min(1180px, calc(100% - 2rem));
+		width: min(1400px, calc(100% - 1.25rem));
 		margin: 0 auto;
-		padding: 2rem 0 3rem;
-		display: flex;
-		flex-direction: column;
-		gap: 1.5rem;
+		padding: 1rem 0 1.75rem;
 	}
 
-	.drive-grid {
+	.drive-shell--browser {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 		gap: 1rem;
-		align-items: start;
 	}
 
-	.drive-list {
+	.drive-main {
 		display: grid;
 		gap: 0.9rem;
+		align-content: start;
 	}
 
-	@media (min-width: 768px) {
+	.drive-table {
+		display: grid;
+	}
+
+	@media (min-width: 960px) {
 		.drive-shell {
-			width: min(1220px, calc(100% - 3rem));
-			padding-top: 2.5rem;
+			width: min(1500px, calc(100% - 2rem));
+			padding-top: 1.15rem;
+		}
+
+		.drive-shell--browser {
+			grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
+			align-items: start;
 		}
 	}
 }

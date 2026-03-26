@@ -50,4 +50,3 @@ class DriveFileVersion(Document):
 			value = self.get(fieldname)
 			if value and not frappe.db.exists(doctype, value):
 				frappe.throw(_("{0} does not exist: {1}").format(doctype, value))
-

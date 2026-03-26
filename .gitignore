@@ -33,8 +33,11 @@ env.bak/
 venv.bak/
 
 # Dependency directories
-node_modules/
+node_modules
 jspm_packages/
+
+# Frontend build output
+ifitwala_drive/public/vite/
 
 # IDEs and editors
 .vscode/

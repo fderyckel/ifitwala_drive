@@ -4,13 +4,13 @@ from typing import Any
 
 import frappe
 from frappe import _
+
 from ifitwala_drive.services.folders.resolution import (
 	resolve_applicant_document_folder,
 	resolve_applicant_guardian_image_folder,
 	resolve_applicant_health_folder,
 	resolve_applicant_profile_image_folder,
 )
-
 
 _HEALTH_VACCINATION_SLOT_PREFIX = "health_vaccination_proof_"
 _APPLICANT_PROFILE_IMAGE_SLOT = "profile_image"
@@ -140,9 +140,7 @@ def _get_applicant_health_vaccination_context(payload: dict[str, Any]) -> dict[s
 		or {}
 	)
 	if not health_row.get("name"):
-		frappe.throw(
-			_("Applicant Health Profile does not exist: {0}").format(applicant_health_profile)
-		)
+		frappe.throw(_("Applicant Health Profile does not exist: {0}").format(applicant_health_profile))
 	if health_row.get("student_applicant") != student_applicant:
 		frappe.throw(
 			_("Applicant Health Profile '{0}' does not belong to Student Applicant '{1}'.").format(
@@ -451,9 +449,7 @@ def validate_applicant_profile_image_finalize_context(upload_session_doc) -> dic
 	):
 		return None
 
-	context = _get_applicant_profile_image_context(
-		{"student_applicant": upload_session_doc.owner_name}
-	)
+	context = _get_applicant_profile_image_context({"student_applicant": upload_session_doc.owner_name})
 	field_map = {
 		"owner_doctype": "owner_doctype",
 		"owner_name": "owner_name",
@@ -527,9 +523,7 @@ def validate_applicant_health_finalize_context(upload_session_doc) -> dict[str, 
 	if not (getattr(upload_session_doc, "intended_slot", None) or "").startswith(
 		_HEALTH_VACCINATION_SLOT_PREFIX
 	):
-		frappe.throw(
-			_("Upload session no longer matches the authoritative admissions health slot contract.")
-		)
+		frappe.throw(_("Upload session no longer matches the authoritative admissions health slot contract."))
 
 	context = _get_applicant_health_vaccination_context(
 		{
@@ -565,21 +559,17 @@ def validate_applicant_health_finalize_context(upload_session_doc) -> dict[str, 
 
 
 def run_admissions_post_finalize(upload_session_doc, created_file) -> dict[str, Any]:
-	if (
-		getattr(upload_session_doc, "owner_doctype", None) != "Student Applicant"
-		or getattr(upload_session_doc, "attached_doctype", None)
-		not in {
-			"Student Applicant",
-			"Student Applicant Guardian",
-			"Applicant Document Item",
-			"Applicant Health Profile",
-		}
-	):
+	if getattr(upload_session_doc, "owner_doctype", None) != "Student Applicant" or getattr(
+		upload_session_doc, "attached_doctype", None
+	) not in {
+		"Student Applicant",
+		"Student Applicant Guardian",
+		"Applicant Document Item",
+		"Applicant Health Profile",
+	}:
 		return {}
 
-	classification_name = frappe.db.get_value(
-		"File Classification", {"file": created_file.name}, "name"
-	)
+	classification_name = frappe.db.get_value("File Classification", {"file": created_file.name}, "name")
 	file_url = getattr(created_file, "file_url", None) or frappe.db.get_value(
 		"File", created_file.name, "file_url"
 	)

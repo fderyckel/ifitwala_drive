@@ -90,3 +90,24 @@ def test_get_storage_backend_defaults_to_local():
 
 	backend = base.get_storage_backend()
 	assert backend.backend_name == "local"
+
+
+def test_get_storage_backend_supports_s3_compatible_profile():
+	from ifitwala_drive.services.storage import base
+
+	root = tempfile.mkdtemp(prefix="ifitwala-drive-local-")
+	frappe = _install_fake_frappe(root=root)
+	frappe.conf["ifitwala_drive_storage_profile"] = {
+		"backend_name": "S3 Compatible",
+		"base_prefix": "sites/site-a",
+	}
+
+	backend = base.get_storage_backend()
+	assert backend.backend_name == "s3_compatible"
+	target = backend.create_temporary_upload_target(
+		session_key="session-3",
+		filename="scan.pdf",
+		object_key_hint="sites/site-a/files/aa/bb/scan.pdf",
+	)
+	assert target["object_key"] == "sites/site-a/files/aa/bb/scan.pdf"
+	assert target["upload_strategy"] == "proxy_post"
