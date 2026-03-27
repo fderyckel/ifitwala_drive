@@ -976,6 +976,188 @@ def test_finalize_rejects_mime_hint_mismatch(monkeypatch):
 		raise AssertionError("Expected finalize_upload_session_service to reject MIME mismatch.")
 
 
+def test_finalize_allows_jpeg_signature_fallback_when_magic_is_unavailable(monkeypatch):
+	_purge_modules(
+		"frappe",
+		"ifitwala_ed",
+		"magic",
+		"ifitwala_drive.services.integration.ifitwala_ed_tasks",
+		"ifitwala_drive.services.uploads.finalize",
+		"ifitwala_drive.services.uploads.inspection",
+		"ifitwala_drive.services.uploads.validation",
+	)
+	now = datetime(2026, 3, 17, 9, 0, 0)
+	session_doc = FakeDoc(
+		{
+			"name": "DUS-0001",
+			"status": "created",
+			"expires_on": now + timedelta(hours=2),
+			"tmp_object_key": "tmp/DUS-0001/guardian.jpg",
+			"storage_backend": "gcs",
+			"attached_doctype": "Task Submission",
+			"attached_name": "TSUB-0001",
+			"owner_doctype": "Task Submission",
+			"owner_name": "TSUB-0001",
+			"organization": "ORG-0001",
+			"school": "SCH-0001",
+			"upload_source": "SPA",
+			"filename_original": "guardian.jpg",
+			"mime_type_hint": "image/jpeg",
+			"is_private": 1,
+			"intended_primary_subject_type": "Student",
+			"intended_primary_subject_id": "STU-0001",
+			"intended_data_class": "assessment",
+			"intended_purpose": "assessment_submission",
+			"intended_retention_policy": "until_school_exit_plus_6m",
+			"intended_slot": "submission",
+			"secondary_subjects": [],
+		}
+	)
+	task_submission = FakeDoc(
+		{
+			"name": "TSUB-0001",
+			"student": "STU-0001",
+			"school": "SCH-0001",
+			"task": "TASK-0001",
+			"check_permission": lambda permission_type=None: None,
+		}
+	)
+	_install_fake_frappe(
+		exists_map={("Task Submission", "TSUB-0001"): True},
+		value_map={("School", "SCH-0001", "organization"): "ORG-0001"},
+		docs_map={
+			("Drive Upload Session", "DUS-0001"): session_doc,
+			("Task Submission", "TSUB-0001"): task_submission,
+		},
+		now=now,
+		forbid_file_doc=True,
+	)
+	dispatcher_recorder: dict[str, dict] = {}
+	_install_fake_ifitwala_ed(dispatcher_recorder=dispatcher_recorder)
+	module = _load_module("ifitwala_drive.services.uploads.finalize")
+	inspection_module = _load_module("ifitwala_drive.services.uploads.inspection")
+
+	def _raise_missing_magic():
+		raise ImportError("magic is unavailable")
+
+	monkeypatch.setattr(inspection_module, "_load_magic_module", _raise_missing_magic)
+
+	class FakeStorage:
+		backend_name = "gcs"
+
+		def temporary_object_exists(self, *, object_key: str) -> bool:
+			return True
+
+		def read_temporary_object_head(self, *, object_key: str, max_bytes: int) -> bytes:
+			return b"\xff\xd8\xff\xe0JFIF\x00guardian-photo"
+
+		def finalize_temporary_object(self, *, object_key: str, final_key: str):
+			return {
+				"object_key": final_key,
+				"file_url": f"https://storage.ifitwala.invalid/object/{final_key}",
+			}
+
+		def abort_temporary_object(self, *, object_key: str) -> None:
+			raise AssertionError("abort_temporary_object should not be called during finalize.")
+
+	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
+
+	response = module.finalize_upload_session_service({"upload_session_id": "DUS-0001"})
+
+	assert response["status"] == "completed"
+	assert session_doc.status == "completed"
+	assert session_doc.file == "FILE-0001"
+	assert session_doc.drive_file == "DF-0001"
+	assert dispatcher_recorder["call"]["classification"]["slot"] == "submission"
+	assert dispatcher_recorder["call"]["file_kwargs"]["file_name"] == "guardian.jpg"
+
+
+def test_finalize_rejects_unknown_signature_when_magic_is_unavailable(monkeypatch):
+	_purge_modules(
+		"frappe",
+		"ifitwala_ed",
+		"magic",
+		"ifitwala_drive.services.integration.ifitwala_ed_tasks",
+		"ifitwala_drive.services.uploads.finalize",
+		"ifitwala_drive.services.uploads.inspection",
+		"ifitwala_drive.services.uploads.validation",
+	)
+	now = datetime(2026, 3, 17, 9, 0, 0)
+	session_doc = FakeDoc(
+		{
+			"name": "DUS-0001",
+			"status": "created",
+			"expires_on": now + timedelta(hours=2),
+			"tmp_object_key": "tmp/DUS-0001/upload.bin",
+			"storage_backend": "gcs",
+			"attached_doctype": "Task Submission",
+			"attached_name": "TSUB-0001",
+			"owner_doctype": "Task Submission",
+			"owner_name": "TSUB-0001",
+			"organization": "ORG-0001",
+			"school": "SCH-0001",
+			"upload_source": "SPA",
+			"filename_original": "upload.bin",
+			"mime_type_hint": "application/octet-stream",
+			"is_private": 1,
+			"intended_primary_subject_type": "Student",
+			"intended_primary_subject_id": "STU-0001",
+			"intended_data_class": "assessment",
+			"intended_purpose": "assessment_submission",
+			"intended_retention_policy": "until_school_exit_plus_6m",
+			"intended_slot": "submission",
+			"secondary_subjects": [],
+		}
+	)
+	task_submission = FakeDoc(
+		{
+			"name": "TSUB-0001",
+			"student": "STU-0001",
+			"school": "SCH-0001",
+			"task": "TASK-0001",
+			"check_permission": lambda permission_type=None: None,
+		}
+	)
+	_install_fake_frappe(
+		exists_map={("Task Submission", "TSUB-0001"): True},
+		value_map={("School", "SCH-0001", "organization"): "ORG-0001"},
+		docs_map={
+			("Drive Upload Session", "DUS-0001"): session_doc,
+			("Task Submission", "TSUB-0001"): task_submission,
+		},
+		now=now,
+	)
+	_install_fake_ifitwala_ed(dispatcher_recorder={})
+	module = _load_module("ifitwala_drive.services.uploads.finalize")
+	inspection_module = _load_module("ifitwala_drive.services.uploads.inspection")
+
+	def _raise_missing_magic():
+		raise ImportError("magic is unavailable")
+
+	monkeypatch.setattr(inspection_module, "_load_magic_module", _raise_missing_magic)
+
+	class FakeStorage:
+		backend_name = "gcs"
+
+		def temporary_object_exists(self, *, object_key: str) -> bool:
+			return True
+
+		def read_temporary_object_head(self, *, object_key: str, max_bytes: int) -> bytes:
+			return b"unknown-binary-format"
+
+		def finalize_temporary_object(self, *, object_key: str, final_key: str):
+			raise AssertionError("finalize_temporary_object should not run for unknown MIME.")
+
+	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
+
+	try:
+		module.finalize_upload_session_service({"upload_session_id": "DUS-0001"})
+	except RuntimeError as exc:
+		assert "Unable to validate uploaded content type" in str(exc)
+	else:
+		raise AssertionError("Expected finalize_upload_session_service to fail closed on unknown bytes.")
+
+
 def test_upload_session_blob_accepts_proxy_post(monkeypatch):
 	_purge_modules(
 		"frappe",
