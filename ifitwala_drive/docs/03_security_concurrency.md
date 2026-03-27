@@ -40,6 +40,7 @@ UI hiding is not security.
 
 `mime_type_hint` is advisory only.
 Before a governed file is finalized, Drive should inspect the uploaded bytes, reject dangerous executable/script payloads, and fail closed on MIME mismatches. Deeper scans can still run async later.
+For picture uploads, callers must derive `mime_type_hint` from the uploaded file metadata when available, or from the filename as a fallback. Transport-envelope MIME values such as `multipart/form-data` are invalid hints and must never be forwarded to Drive.
 
 ### 7. Minimal retained audit for erasure
 

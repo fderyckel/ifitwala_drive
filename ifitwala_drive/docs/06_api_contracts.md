@@ -181,6 +181,24 @@ Notes:
 * `proxy_post` remains the local-only fallback.
 * `upload_session_blob` must reject any session whose persisted `upload_strategy` is not `proxy_post`.
 
+### Caller MIME contract
+
+`mime_type_hint` is the caller's claim about the uploaded file bytes that Drive will inspect during finalize.
+It is not the transport MIME of the outer HTTP request.
+
+Therefore:
+
+* callers must derive `mime_type_hint` from the uploaded file object when available
+* on Frappe multipart endpoints, prefer the file object's `mimetype` or `content_type`
+* for raw-content helper calls, prefer an explicit per-file MIME and otherwise fall back to `filename_original`
+* transport-envelope values such as `multipart/form-data` are invalid hints and must never be forwarded to Drive
+* if a caller forwards an envelope MIME instead of the file MIME, Drive is expected to reject the upload at finalize time
+
+Concrete Ed rule:
+
+* on `/api/method/upload_file` flows, `frappe.request.mimetype` usually describes the multipart envelope, not the uploaded file
+* Ed wrappers must not pass `frappe.request.mimetype` through as `mime_type_hint`
+
 ---
 
 ## 3.2 `finalize_upload_session`
@@ -365,10 +383,27 @@ Wrapper contract:
 
 * every documented wrapper must exist as an exported callable in the relevant `ifitwala_drive.api.*` module
 * every exported wrapper must delegate to one authoritative service function
-* tests must cover both layers:
-  * service contract tests
-  * API export/delegation tests
+* tests must cover service contract behavior
+* tests must cover API export/delegation behavior
 * adding a new wrapper is incomplete until the exported API surface is deployed and verified in the running site
+
+### Picture upload wrapper rule
+
+This rule applies to the current picture-oriented wrappers:
+
+* `ifitwala_drive.api.media.upload_student_image`
+* `ifitwala_drive.api.media.upload_guardian_image`
+* `ifitwala_drive.api.media.upload_employee_image`
+* `ifitwala_drive.api.admissions.upload_applicant_profile_image`
+* `ifitwala_drive.api.admissions.upload_applicant_guardian_image`
+
+For these wrappers:
+
+* `filename_original` is required
+* `mime_type_hint` must describe the actual image bytes expected at finalize time
+* callers in `ifitwala_ed` must derive `mime_type_hint` from the uploaded file object when available, or from `filename_original` as a fallback
+* transport-envelope MIME values such as `multipart/form-data` are invalid and must never be forwarded to Drive
+* Drive still performs authoritative byte inspection during finalize and must reject mismatches
 
 ## 5.1 `upload_task_resource`
 

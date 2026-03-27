@@ -39,6 +39,21 @@ Important boundary:
 * Ifitwala_drive validates contract completeness at the boundary
 * Ifitwala_drive must not become the place where admissions, task, or media workflow rules are authored
 
+### MIME boundary rule
+
+For any Ed wrapper that sends `mime_type_hint` to Drive:
+
+* `mime_type_hint` describes the expected file bytes, not the outer HTTP request envelope
+* Ed must derive it from the uploaded file object when available, typically `request.files["file"].mimetype` or `.content_type`
+* if no trustworthy file-object MIME is available, Ed should fall back to `filename_original`
+* Ed must never forward `frappe.request.mimetype` or the top-level request `Content-Type` from a multipart upload endpoint, because on `upload_file`-style flows that value is usually `multipart/form-data`
+* Drive must continue inspecting the uploaded bytes at finalize time and fail closed on mismatches
+
+Concrete anti-pattern:
+
+* browser uploads that arrive through `/api/method/upload_file` often have `frappe.request.mimetype == "multipart/form-data"`
+* forwarding that value to Drive is a contract bug and will cause finalize-time rejection when the bytes are actually `image/png`, `image/jpeg`, `application/pdf`, and so on
+
 Cross-app deployment rule:
 
 * if `Ifitwala_Ed` starts calling a new `ifitwala_drive.api.*` wrapper, that wrapper export is part of the runtime contract
