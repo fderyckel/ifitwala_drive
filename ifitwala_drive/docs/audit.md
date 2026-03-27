@@ -11,23 +11,20 @@ Each feedback item is rated on a 0-1 scale for:
 ### 1. UX Drift: No Resumable Uploads for Google Cloud Storage
 **User Impact: 0.9 | Eng: 0.7**
 **Context**: `03_security_concurrency.md` heavily emphasizes "keep uploads resumable to reduce failed restarts and support unstable networks".
-**Drift**: `ConfiguredRemoteStorageBackend` in `remote.py` enforces a `default_upload_strategy = "signed_put"`. A standard HTTP `PUT` to a GCS Signed URL is not inherently resumable. For true resumability, the system must utilize GCS's Resumable Upload protocol (which involves a `POST` to initiate a session, followed by chunked `PUT` requests). Large student video artifacts on weak connections will inevitably fail.
-**Suggested Fix**: Update `gcs.py` to optionally orchestrate GCS Resumable Uploads. Specifically, configure the storage backend to issue an authenticated HTTP `POST` with `x-goog-resumable: start` against GCP's XML API, retrieving and returning the `Session URI` back to the Vue SPA instead of a native signed `PUT`.
-**Rationale**: Native GCS chunking via `@uppy/gcs` (or similar UI libraries) is the established standard for reliable blob ingestion. Routing these heavy connection lifecycles entirely away from Frappe ensures our Gunicorn backend is safely immune to network timeout events blocking requests.
+**Resolution**: `gcs.py` now owns a concrete GCS adapter that initiates resumable uploads through ADC / Workload Identity and returns `upload_strategy = "resumable_put"` with the provider-issued session URI. `Drive Upload Session` persists the negotiated upload contract so idempotent retries reuse the same target instead of minting a new one.
+**Implication**: Governed GCS uploads now stay direct-to-cloud and retry-safe on unstable connections without routing blob streams through Frappe.
 
 ### 2. Security & Scalability: Proxy Upload Bypass Overhead
 **User Impact: 0.5 | Eng: 0.9**
 **Context**: The application explicitly seeks to optimize GCP infrastructure and protect Frappe nodes from being overwhelmed by heavy file operations.
-**Drift**: The `api/uploads.py` exposes an `upload_session_blob` endpoint that streams the file binary directly into the Frappe backend before passing it to storage. Although `remote.py` supports direct-to-cloud signed URLs, leaving Frappe proxy uploads enabled and exposed for governed chunks completely mitigates the scalability of GCS. Attackers or a massive wave of student submissions could quickly saturate the Frappe web workers.
-**Suggested Fix**: Deprecate and explicitly disable the `upload_session_blob` endpoint within `api/uploads.py` for all environments targeting GCP mode. Enforce that the SPA client inherently relies strictly on the `upload_target` URLs issued from `create_upload_session`.
-**Rationale**: In Cloud Run or GKE contexts, routing multi-megabyte streams through Frappe synchronous paths starves Python application threads. The proxy model fundamentally conflicts with the zero-friction concurrency objective detailed inside `Ifitwala_Press` and Frappe load-balancer deployments.
+**Resolution**: `upload_session_blob` is now hard-gated by the persisted upload contract. Only `proxy_post` sessions are accepted; GCS / remote sessions fail closed and must use the issued direct upload target.
+**Implication**: Local dev keeps its proxy path, but governed remote uploads no longer have a Frappe-streaming bypass that undermines concurrency and cost posture.
 
 ### 3. Security: Lack of Deep Magic-Byte MIME Validation
 **User Impact: 0.2 | Eng: 0.9**
 **Context**: Threat model dictates "students will try anything".
-**Drift**: `drive_upload_session.json` records `mime_type_hint` from the frontend. However, `validation.py` and the storage finalization workflows rely solely on this hint rather than verifying the actual magic bytes (file signature) upon upload completion. A student could theoretically disguise an executable or malicious script as an `.mp4` or `.pdf`, creating severe downstream vulnerabilities.
-**Suggested Fix**: Implement asynchronous MIME enforcement triggering immediately post-upload. Inject a Python script via Frappe Background Jobs analyzing the first 2048 bytes of the artifact blob on GCS utilizing the `python-magic` signature library (or `frappe.utils.file_manager`), comparing the cryptographic fingerprint back strictly against the original `intended_data_class`. Revert the `finalize_upload_session` object if violated.
-**Rationale**: Because "students will probe URL patterns" and try to bypass restrictions, naive HTTP payload headers like `Content-Type` are trivially spoofed and offer zero protection. Real security relies solely on immutable binary inspection.
+**Resolution**: Finalization now performs synchronous head-byte inspection before governed file creation. Drive reads the first 2048 bytes from temp storage, detects MIME via `python-magic`, rejects dangerous executable/script payloads, and rejects mismatches against `mime_type_hint`. Async deep scanning remains a later enhancement, not the first line of defense.
+**Implication**: A file no longer becomes meaningful governance state based only on frontend claims; byte validation is now part of the fail-closed finalize gate.
 
 ### 4. Ambiguity: Public Media Storage & CDN Caching
 **User Impact: 0.8 | Eng: 0.8**
@@ -52,7 +49,7 @@ Each feedback item is rated on a 0-1 scale for:
 
 ### 7. Code Drift: Generic S3/GCS Abstraction vs Documentation Mandates
 **User Impact: 0.0 | Eng: 0.5**
-**Context**: `07_drive_upload_session.md` mandates writing `services/storage/gcs.py` to handle simple temporary object creation natively.
+**Context**: Earlier phase-planning notes expected a more provider-specific `services/storage/gcs.py` implementation.
 **Drift**: The actual implementation abstracted this out into `remote.py` and `base.py`, with `gcs.py` being merely a 10-line subclass overriding `backend_name` and `grant_type`. While this is a better abstraction for multicloud, it represents a substantial documentation drift preventing straightforward understanding by newly onboarded developers.
 **Suggested Fix**: Update `02_system_architecture.md` and `AGENTS.md` explicitly defining a unified AWS `S3/GCS` implementation path mapping to `ConfiguredRemoteStorageBackend`. 
 **Rationale**: The Frappe multi-cloud readiness posture requires that any `Ifitwala_Press` abstractions rely fundamentally on an overarching wrapper class interacting securely across clouds. Synchronizing these changes prevents onboarded UI engineers from falsely hunting down nonexistent provider-specific integration codebases while maintaining the exact security boundaries expected.

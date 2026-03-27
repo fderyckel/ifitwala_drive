@@ -13,6 +13,7 @@ from ifitwala_drive.services.uploads.finalize import finalize_upload_session_ser
 from ifitwala_drive.services.uploads.sessions import (
 	abort_upload_session_service,
 	create_upload_session_service,
+	load_upload_contract,
 )
 
 
@@ -72,6 +73,14 @@ def upload_session_blob(**kwargs: Any) -> dict[str, Any]:
 	if doc.status in {"aborted", "completed", "expired", "failed"}:
 		frappe.throw(_("This upload session does not accept blob uploads in status: {0}").format(doc.status))
 
+	upload_contract = load_upload_contract(doc)
+	if upload_contract.get("upload_strategy") != "proxy_post":
+		frappe.throw(
+			_(
+				"Blob proxy uploads are only allowed for proxy_post sessions. Use the issued upload_target directly."
+			)
+		)
+
 	content = b""
 	request = getattr(frappe, "request", None)
 	if request and getattr(request, "files", None):
@@ -90,7 +99,8 @@ def upload_session_blob(**kwargs: Any) -> dict[str, Any]:
 	if not content:
 		frappe.throw(_("Uploaded file content is empty."))
 
-	if doc.expected_size_bytes and len(content) > doc.expected_size_bytes:
+	expected_size_bytes = getattr(doc, "expected_size_bytes", None)
+	if expected_size_bytes and len(content) > expected_size_bytes:
 		frappe.throw(_("Uploaded blob exceeds the expected size for this upload session."))
 
 	storage = get_storage_backend(getattr(doc, "storage_backend", None))

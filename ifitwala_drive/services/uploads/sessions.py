@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import frappe
@@ -36,14 +37,24 @@ def _serialize_session_response(doc, target: dict[str, Any]) -> dict[str, Any]:
 	}
 
 
-def _load_existing_session_response(session_key: str) -> dict[str, Any] | None:
-	doc_name = frappe.db.get_value("Drive Upload Session", {"session_key": session_key}, "name")
-	if not doc_name:
-		return None
+def _dump_upload_contract(target: dict[str, Any]) -> str:
+	return json.dumps(target, sort_keys=True)
 
-	doc = frappe.get_doc("Drive Upload Session", doc_name)
-	storage = get_storage_backend(getattr(doc, "storage_backend", None))
-	target = storage.create_temporary_upload_target(
+
+def load_upload_contract(doc, *, storage=None, fallback_to_storage: bool = True) -> dict[str, Any]:
+	raw = getattr(doc, "upload_contract_json", None)
+	if raw:
+		parsed = json.loads(raw)
+		if isinstance(parsed, dict):
+			return parsed
+
+	if not fallback_to_storage:
+		return {}
+
+	if storage is None:
+		storage = get_storage_backend(getattr(doc, "storage_backend", None))
+
+	return storage.create_temporary_upload_target(
 		session_key=doc.session_key,
 		filename=doc.filename_original,
 		mime_type=getattr(doc, "mime_type_hint", None),
@@ -51,6 +62,15 @@ def _load_existing_session_response(session_key: str) -> dict[str, Any] | None:
 		expected_size_bytes=getattr(doc, "expected_size_bytes", None),
 		object_key_hint=getattr(doc, "tmp_object_key", None),
 	)
+
+
+def _load_existing_session_response(session_key: str) -> dict[str, Any] | None:
+	doc_name = frappe.db.get_value("Drive Upload Session", {"session_key": session_key}, "name")
+	if not doc_name:
+		return None
+
+	doc = frappe.get_doc("Drive Upload Session", doc_name)
+	target = load_upload_contract(doc)
 	return _serialize_session_response(doc, target)
 
 
@@ -117,6 +137,7 @@ def create_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 				"expected_size_bytes": payload.get("expected_size_bytes"),
 				"storage_backend": storage.backend_name,
 				"tmp_object_key": target["object_key"],
+				"upload_contract_json": _dump_upload_contract(target),
 				"upload_token": upload_token,
 			}
 		)

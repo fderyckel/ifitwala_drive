@@ -16,7 +16,9 @@ from ifitwala_drive.services.integration.ifitwala_ed_bridge import (
 )
 from ifitwala_drive.services.logging import log_drive_event
 from ifitwala_drive.services.storage.base import get_storage_backend
+from ifitwala_drive.services.uploads.inspection import inspect_uploaded_bytes
 from ifitwala_drive.services.uploads.keys import build_upload_object_key
+from ifitwala_drive.services.uploads.sessions import load_upload_contract
 from ifitwala_drive.services.uploads.validation import validate_finalize_session_payload
 
 _FINALIZE_WAIT_SECONDS = 6.0
@@ -206,8 +208,10 @@ def _claim_upload_session_for_finalize(payload: dict[str, Any]):
 
 		finalize_contract = resolve_finalize_contract(doc)
 		doc.status = "finalizing"
-		doc.received_size_bytes = payload.get("received_size_bytes") or doc.received_size_bytes
-		doc.content_hash = payload.get("content_hash") or doc.content_hash
+		doc.received_size_bytes = payload.get("received_size_bytes") or getattr(
+			doc, "received_size_bytes", None
+		)
+		doc.content_hash = payload.get("content_hash") or getattr(doc, "content_hash", None)
 		doc.error_log = None
 		doc.save(ignore_permissions=True)
 
@@ -230,10 +234,12 @@ def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 		return _wait_for_terminal_session(doc.name)
 
 	storage = get_storage_backend(getattr(doc, "storage_backend", None))
+	load_upload_contract(doc, storage=storage, fallback_to_storage=False)
 	if not doc.tmp_object_key or not storage.temporary_object_exists(object_key=doc.tmp_object_key):
 		frappe.throw(_("Temporary uploaded object was not found for this upload session."))
 
 	try:
+		inspect_uploaded_bytes(storage=storage, upload_session_doc=doc)
 		storage_artifact = storage.finalize_temporary_object(
 			object_key=doc.tmp_object_key,
 			final_key=_build_final_object_key(doc),

@@ -68,9 +68,10 @@ class ConfiguredRemoteStorageBackend(LocalStorageBackend):
 		}
 
 	def temporary_object_exists(self, *, object_key: str) -> bool:
-		if super().temporary_object_exists(object_key=object_key):
-			return True
-		return self._remote_upload_enabled()
+		return super().temporary_object_exists(object_key=object_key)
+
+	def read_temporary_object_head(self, *, object_key: str, max_bytes: int) -> bytes:
+		return super().read_temporary_object_head(object_key=object_key, max_bytes=max_bytes)
 
 	def finalize_temporary_object(self, *, object_key: str, final_key: str) -> dict[str, Any]:
 		if super().temporary_object_exists(object_key=object_key):

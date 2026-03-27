@@ -67,6 +67,11 @@ class LocalStorageBackend:
 	def temporary_object_exists(self, *, object_key: str) -> bool:
 		return os.path.exists(self._absolute_path(object_key))
 
+	def read_temporary_object_head(self, *, object_key: str, max_bytes: int) -> bytes:
+		path = self._absolute_path(object_key)
+		with open(path, "rb") as handle:
+			return handle.read(max(0, int(max_bytes)))
+
 	def finalize_temporary_object(self, *, object_key: str, final_key: str) -> dict[str, Any]:
 		source = self._absolute_path(object_key)
 		target = self._absolute_path(final_key)

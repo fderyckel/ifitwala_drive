@@ -33,6 +33,13 @@ bench get-app $URL_OF_THIS_REPO --branch version-16
 bench install-app ifitwala_drive
 ```
 
+For governed upload hardening and GCS direct uploads, the runtime also needs:
+
+- `libmagic` available on the host/container for `python-magic`
+- Application Default Credentials / Workload Identity for GCS when `backend_name = "gcs"`
+
+On macOS, `libmagic` is typically provided by `brew install libmagic`.
+
 ### Contributing
 
 This app uses `pre-commit` for code formatting and linting. Please [install pre-commit](https://pre-commit.com/#installation) and enable it for this repository:

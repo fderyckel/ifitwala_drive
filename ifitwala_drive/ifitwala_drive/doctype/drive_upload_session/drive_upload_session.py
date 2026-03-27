@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import secrets
 
 import frappe
@@ -52,6 +53,7 @@ class DriveUploadSession(Document):
 		self._validate_school_requirement()
 		self._validate_size_fields()
 		self._validate_terminal_state_fields()
+		self._validate_json_fields()
 		self._validate_links()
 
 	def _set_defaults(self) -> None:
@@ -151,6 +153,16 @@ class DriveUploadSession(Document):
 
 		if self.status == "aborted" and not self.aborted_on:
 			self.aborted_on = now_datetime()
+
+	def _validate_json_fields(self) -> None:
+		for fieldname in ("upload_contract_json",):
+			value = self.get(fieldname)
+			if not value:
+				continue
+			try:
+				json.loads(value)
+			except Exception:
+				frappe.throw(_("{0} must contain valid JSON.").format(fieldname.replace("_", " ").title()))
 
 	def _validate_links(self) -> None:
 		"""These links are optional in early flow, but if present they must exist."""

@@ -17,13 +17,13 @@ Ifitwala_drive consumes resolved runtime configuration and never makes synchrono
 
 ## 1. Why This Contract Exists
 
-The current storage layer is too narrow:
+The storage layer is now materially better, but the contract still needs to stay explicit:
 
-- `services/storage/base.py` only resolves `local` and `gcs`
-- the current `gcs` backend is still stub-shaped
-- storage semantics are still implicitly GCS/local flavored
+- runtime resolution now supports `local`, `gcs`, and `s3_compatible`
+- the `gcs` backend now implements direct resumable uploads and object inspection
+- storage semantics still need to stay provider-neutral above the adapter
 
-That is not enough for:
+Without a clear contract, that is still not enough for:
 
 - S3-style object storage
 - Press-managed tenant environment profiles
@@ -175,6 +175,13 @@ class ObjectStorageBackend(Protocol):
         object_key: str,
     ) -> bool: ...
 
+    def read_temporary_object_head(
+        self,
+        *,
+        object_key: str,
+        max_bytes: int,
+    ) -> bytes: ...
+
     def finalize_temporary_object(
         self,
         *,
@@ -228,13 +235,14 @@ Optional later methods:
 Drive should support these upload strategies at the contract layer:
 
 - `proxy_post`
+- `resumable_put`
 - `signed_put`
 - `multipart`
 
 V1 can implement:
 
 - `proxy_post` for `local`
-- `signed_put` for `gcs`
+- `resumable_put` for `gcs`
 - `signed_put` or `multipart` for `s3_compatible`
 
 The rest of the app should not care which strategy is returned.
@@ -244,16 +252,22 @@ The rest of the app should not care which strategy is returned.
 ```json
 {
   "object_key": "tmp/session-key/original-filename.pdf",
-  "upload_strategy": "signed_put",
+  "upload_strategy": "resumable_put",
   "upload_target": {
     "method": "PUT",
-    "url": "short-lived-upload-url",
+    "url": "provider-issued-upload-url-or-session-uri",
     "headers": {
       "Content-Type": "application/pdf"
     }
   }
 }
 ```
+
+For resumable uploads:
+
+- the adapter may do the provider-specific initiation request itself
+- the returned `upload_target.url` may be a resumable session URI rather than a raw signed object URL
+- the upload session should persist the full negotiated contract for idempotent retries
 
 For multipart later:
 

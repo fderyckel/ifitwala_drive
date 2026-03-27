@@ -193,6 +193,8 @@ def _install_fake_frappe(
 	frappe.as_json = lambda value, indent=None: str(value)
 	frappe.logger = lambda: types.SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None)
 	frappe.get_site_path = lambda *parts: "/tmp/" + "/".join(parts)
+	frappe.form_dict = {}
+	frappe.request = None
 
 	utils = types.ModuleType("frappe.utils")
 	utils.now_datetime = lambda: now
@@ -438,12 +440,15 @@ def test_create_upload_session_reuses_idempotent_request():
 	assert first["upload_session_id"] == "DUS-0001"
 	assert second["upload_session_id"] == "DUS-0001"
 	assert first["session_key"] == second["session_key"]
+	assert first["upload_target"] == second["upload_target"]
+	assert FakeDoc._docs_map[("Drive Upload Session", "DUS-0001")].upload_contract_json
 
 
 def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 	_purge_modules(
 		"frappe",
 		"ifitwala_ed",
+		"magic",
 		"ifitwala_drive.services.integration.ifitwala_ed_tasks",
 		"ifitwala_drive.services.uploads.finalize",
 		"ifitwala_drive.services.uploads.sessions",
@@ -466,6 +471,7 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 			"school": "SCH-0001",
 			"upload_source": "SPA",
 			"filename_original": "essay.docx",
+			"mime_type_hint": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 			"is_private": 1,
 			"intended_primary_subject_type": "Student",
 			"intended_primary_subject_id": "STU-0001",
@@ -504,6 +510,10 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 	dispatcher_recorder: dict[str, dict] = {}
 	_install_fake_ifitwala_ed(dispatcher_recorder=dispatcher_recorder)
 	module = _load_module("ifitwala_drive.services.uploads.finalize")
+	sys.modules["magic"] = types.SimpleNamespace(
+		from_buffer=lambda content,
+		mime=True: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	)
 
 	class FakeStorage:
 		backend_name = "gcs"
@@ -511,6 +521,11 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 		def temporary_object_exists(self, *, object_key: str) -> bool:
 			assert object_key == "tmp/DUS-0001/essay.docx"
 			return True
+
+		def read_temporary_object_head(self, *, object_key: str, max_bytes: int) -> bytes:
+			assert object_key == "tmp/DUS-0001/essay.docx"
+			assert max_bytes == 2048
+			return b"PK\x03\x04word"
 
 		def finalize_temporary_object(self, *, object_key: str, final_key: str):
 			assert object_key == "tmp/DUS-0001/essay.docx"
@@ -645,6 +660,393 @@ def test_finalize_rejects_task_submission_context_drift(monkeypatch):
 		assert "no longer matches the authoritative Task Submission context" in str(exc)
 	else:
 		raise AssertionError("Expected finalize_upload_session_service to reject drifted session context.")
+
+
+def test_finalize_rejects_missing_temporary_object(monkeypatch):
+	_purge_modules(
+		"frappe",
+		"ifitwala_ed",
+		"ifitwala_drive.services.integration.ifitwala_ed_tasks",
+		"ifitwala_drive.services.uploads.finalize",
+		"ifitwala_drive.services.uploads.validation",
+	)
+	now = datetime(2026, 3, 17, 9, 0, 0)
+	session_doc = FakeDoc(
+		{
+			"name": "DUS-0001",
+			"status": "created",
+			"expires_on": now + timedelta(hours=2),
+			"tmp_object_key": "tmp/DUS-0001/essay.pdf",
+			"storage_backend": "gcs",
+			"attached_doctype": "Task Submission",
+			"attached_name": "TSUB-0001",
+			"owner_doctype": "Task Submission",
+			"owner_name": "TSUB-0001",
+			"organization": "ORG-0001",
+			"school": "SCH-0001",
+			"upload_source": "SPA",
+			"filename_original": "essay.pdf",
+			"mime_type_hint": "application/pdf",
+			"is_private": 1,
+			"intended_primary_subject_type": "Student",
+			"intended_primary_subject_id": "STU-0001",
+			"intended_data_class": "assessment",
+			"intended_purpose": "assessment_submission",
+			"intended_retention_policy": "until_school_exit_plus_6m",
+			"intended_slot": "submission",
+			"secondary_subjects": [],
+		}
+	)
+	task_submission = FakeDoc(
+		{
+			"name": "TSUB-0001",
+			"student": "STU-0001",
+			"school": "SCH-0001",
+			"task": "TASK-0001",
+			"check_permission": lambda permission_type=None: None,
+		}
+	)
+	_install_fake_frappe(
+		exists_map={("Task Submission", "TSUB-0001"): True},
+		value_map={("School", "SCH-0001", "organization"): "ORG-0001"},
+		docs_map={
+			("Drive Upload Session", "DUS-0001"): session_doc,
+			("Task Submission", "TSUB-0001"): task_submission,
+		},
+		now=now,
+	)
+	module = _load_module("ifitwala_drive.services.uploads.finalize")
+
+	class FakeStorage:
+		backend_name = "gcs"
+
+		def temporary_object_exists(self, *, object_key: str) -> bool:
+			return False
+
+		def read_temporary_object_head(self, *, object_key: str, max_bytes: int) -> bytes:
+			raise AssertionError("read_temporary_object_head should not run when the temp object is missing.")
+
+		def finalize_temporary_object(self, *, object_key: str, final_key: str):
+			raise AssertionError("finalize_temporary_object should not run when the temp object is missing.")
+
+	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
+
+	try:
+		module.finalize_upload_session_service({"upload_session_id": "DUS-0001"})
+	except RuntimeError as exc:
+		assert "Temporary uploaded object was not found" in str(exc)
+	else:
+		raise AssertionError("Expected finalize_upload_session_service to reject missing temp objects.")
+
+
+def test_finalize_rejects_empty_uploaded_object(monkeypatch):
+	_purge_modules(
+		"frappe",
+		"ifitwala_ed",
+		"ifitwala_drive.services.integration.ifitwala_ed_tasks",
+		"ifitwala_drive.services.uploads.finalize",
+		"ifitwala_drive.services.uploads.validation",
+	)
+	now = datetime(2026, 3, 17, 9, 0, 0)
+	session_doc = FakeDoc(
+		{
+			"name": "DUS-0001",
+			"status": "created",
+			"expires_on": now + timedelta(hours=2),
+			"tmp_object_key": "tmp/DUS-0001/essay.pdf",
+			"storage_backend": "gcs",
+			"attached_doctype": "Task Submission",
+			"attached_name": "TSUB-0001",
+			"owner_doctype": "Task Submission",
+			"owner_name": "TSUB-0001",
+			"organization": "ORG-0001",
+			"school": "SCH-0001",
+			"upload_source": "SPA",
+			"filename_original": "essay.pdf",
+			"mime_type_hint": "application/pdf",
+			"is_private": 1,
+			"intended_primary_subject_type": "Student",
+			"intended_primary_subject_id": "STU-0001",
+			"intended_data_class": "assessment",
+			"intended_purpose": "assessment_submission",
+			"intended_retention_policy": "until_school_exit_plus_6m",
+			"intended_slot": "submission",
+			"secondary_subjects": [],
+		}
+	)
+	task_submission = FakeDoc(
+		{
+			"name": "TSUB-0001",
+			"student": "STU-0001",
+			"school": "SCH-0001",
+			"task": "TASK-0001",
+			"check_permission": lambda permission_type=None: None,
+		}
+	)
+	_install_fake_frappe(
+		exists_map={("Task Submission", "TSUB-0001"): True},
+		value_map={("School", "SCH-0001", "organization"): "ORG-0001"},
+		docs_map={
+			("Drive Upload Session", "DUS-0001"): session_doc,
+			("Task Submission", "TSUB-0001"): task_submission,
+		},
+		now=now,
+	)
+	module = _load_module("ifitwala_drive.services.uploads.finalize")
+
+	class FakeStorage:
+		backend_name = "gcs"
+
+		def temporary_object_exists(self, *, object_key: str) -> bool:
+			return True
+
+		def read_temporary_object_head(self, *, object_key: str, max_bytes: int) -> bytes:
+			return b""
+
+		def finalize_temporary_object(self, *, object_key: str, final_key: str):
+			raise AssertionError("finalize_temporary_object should not run for unreadable uploads.")
+
+	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
+
+	try:
+		module.finalize_upload_session_service({"upload_session_id": "DUS-0001"})
+	except RuntimeError as exc:
+		assert "empty or unreadable" in str(exc)
+	else:
+		raise AssertionError("Expected finalize_upload_session_service to reject unreadable uploads.")
+
+
+def test_finalize_rejects_dangerous_detected_mime(monkeypatch):
+	_purge_modules(
+		"frappe",
+		"ifitwala_ed",
+		"magic",
+		"ifitwala_drive.services.integration.ifitwala_ed_tasks",
+		"ifitwala_drive.services.uploads.finalize",
+		"ifitwala_drive.services.uploads.validation",
+	)
+	now = datetime(2026, 3, 17, 9, 0, 0)
+	session_doc = FakeDoc(
+		{
+			"name": "DUS-0001",
+			"status": "created",
+			"expires_on": now + timedelta(hours=2),
+			"tmp_object_key": "tmp/DUS-0001/essay.pdf",
+			"storage_backend": "gcs",
+			"attached_doctype": "Task Submission",
+			"attached_name": "TSUB-0001",
+			"owner_doctype": "Task Submission",
+			"owner_name": "TSUB-0001",
+			"organization": "ORG-0001",
+			"school": "SCH-0001",
+			"upload_source": "SPA",
+			"filename_original": "essay.pdf",
+			"mime_type_hint": "application/pdf",
+			"is_private": 1,
+			"intended_primary_subject_type": "Student",
+			"intended_primary_subject_id": "STU-0001",
+			"intended_data_class": "assessment",
+			"intended_purpose": "assessment_submission",
+			"intended_retention_policy": "until_school_exit_plus_6m",
+			"intended_slot": "submission",
+			"secondary_subjects": [],
+		}
+	)
+	task_submission = FakeDoc(
+		{
+			"name": "TSUB-0001",
+			"student": "STU-0001",
+			"school": "SCH-0001",
+			"task": "TASK-0001",
+			"check_permission": lambda permission_type=None: None,
+		}
+	)
+	_install_fake_frappe(
+		exists_map={("Task Submission", "TSUB-0001"): True},
+		value_map={("School", "SCH-0001", "organization"): "ORG-0001"},
+		docs_map={
+			("Drive Upload Session", "DUS-0001"): session_doc,
+			("Task Submission", "TSUB-0001"): task_submission,
+		},
+		now=now,
+	)
+	sys.modules["magic"] = types.SimpleNamespace(
+		from_buffer=lambda content, mime=True: "application/x-dosexec"
+	)
+	module = _load_module("ifitwala_drive.services.uploads.finalize")
+
+	class FakeStorage:
+		backend_name = "gcs"
+
+		def temporary_object_exists(self, *, object_key: str) -> bool:
+			return True
+
+		def read_temporary_object_head(self, *, object_key: str, max_bytes: int) -> bytes:
+			return b"MZdanger"
+
+		def finalize_temporary_object(self, *, object_key: str, final_key: str):
+			raise AssertionError("finalize_temporary_object should not run for dangerous MIME.")
+
+	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
+
+	try:
+		module.finalize_upload_session_service({"upload_session_id": "DUS-0001"})
+	except RuntimeError as exc:
+		assert "not allowed for governed files" in str(exc)
+	else:
+		raise AssertionError("Expected finalize_upload_session_service to reject dangerous MIME types.")
+
+
+def test_finalize_rejects_mime_hint_mismatch(monkeypatch):
+	_purge_modules(
+		"frappe",
+		"ifitwala_ed",
+		"magic",
+		"ifitwala_drive.services.integration.ifitwala_ed_tasks",
+		"ifitwala_drive.services.uploads.finalize",
+		"ifitwala_drive.services.uploads.validation",
+	)
+	now = datetime(2026, 3, 17, 9, 0, 0)
+	session_doc = FakeDoc(
+		{
+			"name": "DUS-0001",
+			"status": "created",
+			"expires_on": now + timedelta(hours=2),
+			"tmp_object_key": "tmp/DUS-0001/essay.pdf",
+			"storage_backend": "gcs",
+			"attached_doctype": "Task Submission",
+			"attached_name": "TSUB-0001",
+			"owner_doctype": "Task Submission",
+			"owner_name": "TSUB-0001",
+			"organization": "ORG-0001",
+			"school": "SCH-0001",
+			"upload_source": "SPA",
+			"filename_original": "essay.pdf",
+			"mime_type_hint": "application/pdf",
+			"is_private": 1,
+			"intended_primary_subject_type": "Student",
+			"intended_primary_subject_id": "STU-0001",
+			"intended_data_class": "assessment",
+			"intended_purpose": "assessment_submission",
+			"intended_retention_policy": "until_school_exit_plus_6m",
+			"intended_slot": "submission",
+			"secondary_subjects": [],
+		}
+	)
+	task_submission = FakeDoc(
+		{
+			"name": "TSUB-0001",
+			"student": "STU-0001",
+			"school": "SCH-0001",
+			"task": "TASK-0001",
+			"check_permission": lambda permission_type=None: None,
+		}
+	)
+	_install_fake_frappe(
+		exists_map={("Task Submission", "TSUB-0001"): True},
+		value_map={("School", "SCH-0001", "organization"): "ORG-0001"},
+		docs_map={
+			("Drive Upload Session", "DUS-0001"): session_doc,
+			("Task Submission", "TSUB-0001"): task_submission,
+		},
+		now=now,
+	)
+	sys.modules["magic"] = types.SimpleNamespace(from_buffer=lambda content, mime=True: "text/plain")
+	module = _load_module("ifitwala_drive.services.uploads.finalize")
+
+	class FakeStorage:
+		backend_name = "gcs"
+
+		def temporary_object_exists(self, *, object_key: str) -> bool:
+			return True
+
+		def read_temporary_object_head(self, *, object_key: str, max_bytes: int) -> bytes:
+			return b"hello world"
+
+		def finalize_temporary_object(self, *, object_key: str, final_key: str):
+			raise AssertionError("finalize_temporary_object should not run for MIME mismatch.")
+
+	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
+
+	try:
+		module.finalize_upload_session_service({"upload_session_id": "DUS-0001"})
+	except RuntimeError as exc:
+		assert "does not match the claimed MIME type" in str(exc)
+	else:
+		raise AssertionError("Expected finalize_upload_session_service to reject MIME mismatch.")
+
+
+def test_upload_session_blob_accepts_proxy_post(monkeypatch):
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.api.uploads",
+		"ifitwala_drive.services.uploads.sessions",
+	)
+	session_doc = FakeDoc(
+		{
+			"name": "DUS-0001",
+			"session_key": "sess-0001",
+			"status": "created",
+			"tmp_object_key": "tmp/DUS-0001/essay.txt",
+			"storage_backend": "local",
+			"owner_doctype": "Task Submission",
+			"owner_name": "TSUB-0001",
+			"intended_slot": "submission",
+			"upload_contract_json": '{"upload_strategy":"proxy_post","upload_target":{"method":"POST","url":"/proxy","headers":{}}}',
+		}
+	)
+	_install_fake_frappe(docs_map={("Drive Upload Session", "DUS-0001"): session_doc})
+	import frappe
+
+	frappe.request = types.SimpleNamespace(files={}, get_data=lambda: b"hello")
+	module = _load_module("ifitwala_drive.api.uploads")
+	writes: list[tuple[str, bytes]] = []
+
+	class FakeStorage:
+		def write_temporary_object(self, *, object_key: str, content: bytes):
+			writes.append((object_key, content))
+			return {"object_key": object_key, "size_bytes": len(content)}
+
+	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
+
+	response = module.upload_session_blob(upload_session_id="DUS-0001")
+
+	assert response == {
+		"upload_session_id": "DUS-0001",
+		"status": "uploaded",
+		"received_size_bytes": 5,
+	}
+	assert writes == [("tmp/DUS-0001/essay.txt", b"hello")]
+
+
+def test_upload_session_blob_rejects_non_proxy_strategy():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.api.uploads",
+		"ifitwala_drive.services.uploads.sessions",
+	)
+	session_doc = FakeDoc(
+		{
+			"name": "DUS-0001",
+			"session_key": "sess-0001",
+			"status": "created",
+			"tmp_object_key": "tmp/DUS-0001/essay.txt",
+			"storage_backend": "gcs",
+			"owner_doctype": "Task Submission",
+			"owner_name": "TSUB-0001",
+			"intended_slot": "submission",
+			"upload_contract_json": '{"upload_strategy":"resumable_put","upload_target":{"method":"PUT","url":"https://upload.invalid/session","headers":{}}}',
+		}
+	)
+	_install_fake_frappe(docs_map={("Drive Upload Session", "DUS-0001"): session_doc})
+	module = _load_module("ifitwala_drive.api.uploads")
+
+	try:
+		module.upload_session_blob(upload_session_id="DUS-0001")
+	except RuntimeError as exc:
+		assert "only allowed for proxy_post sessions" in str(exc)
+	else:
+		raise AssertionError("Expected upload_session_blob to reject non-proxy strategies.")
 
 
 def test_create_drive_file_artifacts_recovers_from_duplicate_inserts():

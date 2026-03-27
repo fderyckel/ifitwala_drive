@@ -9,6 +9,8 @@ readme = "README.md"
 dynamic = ["version"]
 dependencies = [
     # "frappe~=16.0.0" # Installed and managed by bench.
+    "google-cloud-storage>=2.19,<4",
+    "python-magic>=0.4.27,<1",
 ]
 
 [build-system]

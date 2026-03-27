@@ -156,6 +156,7 @@ Create an upload session before any governed file is finalized.
 * validates owner context
 * validates slot presence
 * creates `Drive Upload Session`
+* persists the negotiated upload contract on `Drive Upload Session`
 * returns upload session info + temporary upload target/grant
 
 ### Response shape
@@ -166,14 +167,19 @@ Create an upload session before any governed file is finalized.
   "session_key": "opaque-session-key",
   "status": "created",
   "expires_on": "2026-03-17 10:00:00",
-  "upload_strategy": "signed_put",
+  "upload_strategy": "resumable_put",
   "upload_target": {
     "method": "PUT",
-    "url": "short-lived-signed-url-or-proxy-endpoint",
+    "url": "provider-issued-resumable-session-uri-or-proxy-endpoint",
     "headers": {}
   }
 }
 ```
+
+Notes:
+
+* `proxy_post` remains the local-only fallback.
+* `upload_session_blob` must reject any session whose persisted `upload_strategy` is not `proxy_post`.
 
 ---
 
@@ -197,6 +203,9 @@ Confirm upload completion and create the governed file record.
 
 * verifies session is valid and not expired
 * verifies upload receipt
+* verifies the temporary object exists in storage
+* inspects the uploaded head bytes before governed finalization
+* rejects dangerous executable/script MIME types and hint mismatches
 * creates authoritative governed file record
 * creates initial version
 * queues heavy async work if needed

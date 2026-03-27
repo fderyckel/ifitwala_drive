@@ -36,7 +36,12 @@ Public media is the exception and still must use canonical managed references.
 
 UI hiding is not security.
 
-### 6. Minimal retained audit for erasure
+### 6. Synchronous byte validation before governance
+
+`mime_type_hint` is advisory only.
+Before a governed file is finalized, Drive should inspect the uploaded bytes, reject dangerous executable/script payloads, and fail closed on MIME mismatches. Deeper scans can still run async later.
+
+### 7. Minimal retained audit for erasure
 
 Your GDPR model is already clear:
 
@@ -53,6 +58,7 @@ For high concurrency, keep synchronous paths cheap.
 * authorize user
 * validate owning context
 * create upload session
+* validate uploaded bytes / MIME
 * finalize session
 * create governed record
 * return canonical reference
@@ -110,4 +116,5 @@ Use basic rate limiting / WAF posture at the edge as soon as public upload/downl
 * don’t transcode unless user-facing value is proven
 * store metadata in DB, blobs in object storage
 * keep uploads resumable to reduce failed restarts and support unstable networks
+* keep proxy uploads local-only; remote storage flows should stay direct-to-object-storage
 * use template/workspace model instead of naive mass duplication

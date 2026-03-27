@@ -48,6 +48,7 @@ def test_local_storage_backend_round_trip():
 	)
 	assert write_result["size_bytes"] == 11
 	assert backend.temporary_object_exists(object_key=target["object_key"]) is True
+	assert backend.read_temporary_object_head(object_key=target["object_key"], max_bytes=5) == b"hello"
 
 	artifact = backend.finalize_temporary_object(
 		object_key=target["object_key"],
