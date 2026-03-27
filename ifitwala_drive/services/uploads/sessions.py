@@ -7,9 +7,7 @@ from frappe import _
 from frappe.utils import now_datetime
 
 from ifitwala_drive.services.concurrency import drive_lock, is_duplicate_entry_error
-from ifitwala_drive.services.integration.ifitwala_ed_tasks import (
-	reconcile_task_submission_session_payload,
-)
+from ifitwala_drive.services.integration.ifitwala_ed_bridge import reconcile_upload_session_payload
 from ifitwala_drive.services.logging import log_drive_event
 from ifitwala_drive.services.storage.base import get_storage_backend
 from ifitwala_drive.services.uploads.keys import build_upload_object_key, build_upload_session_key
@@ -57,7 +55,7 @@ def _load_existing_session_response(session_key: str) -> dict[str, Any] | None:
 
 
 def create_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
-	payload = reconcile_task_submission_session_payload(payload)
+	payload = reconcile_upload_session_payload(payload)
 	validate_create_session_payload(payload)
 
 	session_key = build_upload_session_key(payload, user=getattr(frappe.session, "user", None))

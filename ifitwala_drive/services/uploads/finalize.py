@@ -10,25 +10,9 @@ from frappe.utils import get_datetime, now_datetime
 
 from ifitwala_drive.services.concurrency import drive_lock
 from ifitwala_drive.services.files.creation import create_drive_file_artifacts
-from ifitwala_drive.services.integration.ifitwala_ed_admissions import (
-	get_admissions_attached_field_override,
-	run_admissions_post_finalize,
-	validate_applicant_document_finalize_context,
-	validate_applicant_guardian_image_finalize_context,
-	validate_applicant_health_finalize_context,
-	validate_applicant_profile_image_finalize_context,
-)
-from ifitwala_drive.services.integration.ifitwala_ed_media import (
-	get_attached_field_override,
-	run_media_post_finalize,
-	validate_media_finalize_context,
-)
-from ifitwala_drive.services.integration.ifitwala_ed_tasks import (
-	get_task_resource_context_override,
-	get_task_submission_context_override,
-	run_task_post_finalize,
-	validate_task_resource_finalize_context,
-	validate_task_submission_finalize_context,
+from ifitwala_drive.services.integration.ifitwala_ed_bridge import (
+	resolve_finalize_contract,
+	run_post_finalize,
 )
 from ifitwala_drive.services.logging import log_drive_event
 from ifitwala_drive.services.storage.base import get_storage_backend
@@ -87,9 +71,13 @@ def _build_final_object_key(doc) -> str:
 	)
 
 
-def _build_file_kwargs(doc, storage_artifact: dict[str, Any]) -> dict[str, Any]:
+def _build_file_kwargs(
+	doc,
+	storage_artifact: dict[str, Any],
+	finalize_contract: dict[str, Any] | None = None,
+) -> dict[str, Any]:
 	file_url = storage_artifact.get("file_url") or storage_artifact.get("object_key")
-	attached_field = get_admissions_attached_field_override(doc) or get_attached_field_override(doc)
+	attached_field = (finalize_contract or {}).get("attached_field_override")
 
 	file_kwargs = {
 		"attached_to_doctype": doc.attached_doctype,
@@ -116,15 +104,6 @@ def _build_classification(doc) -> dict[str, Any]:
 		"school": doc.school,
 		"upload_source": doc.upload_source,
 	}
-
-
-def _get_context_override(doc) -> dict[str, Any] | None:
-	if doc.owner_doctype == "Task Submission":
-		return get_task_submission_context_override(doc.owner_name)
-	if doc.owner_doctype == "Task":
-		return get_task_resource_context_override(doc.owner_name, doc.intended_slot)
-
-	return None
 
 
 def _coerce_datetime(value: Any) -> datetime | None:
@@ -176,16 +155,6 @@ def _completed_response(doc, extra: dict[str, Any] | None = None) -> dict[str, A
 	return response
 
 
-def _validate_finalize_context(doc) -> None:
-	validate_task_submission_finalize_context(doc)
-	validate_task_resource_finalize_context(doc)
-	validate_media_finalize_context(doc)
-	validate_applicant_document_finalize_context(doc)
-	validate_applicant_profile_image_finalize_context(doc)
-	validate_applicant_guardian_image_finalize_context(doc)
-	validate_applicant_health_finalize_context(doc)
-
-
 def _is_stale_finalizing(doc) -> bool:
 	if getattr(doc, "status", None) != "finalizing":
 		return False
@@ -230,12 +199,12 @@ def _claim_upload_session_for_finalize(payload: dict[str, Any]):
 			)
 
 		if doc.status == "completed":
-			return doc, "completed"
+			return doc, "completed", None
 
 		if doc.status == "finalizing" and not _is_stale_finalizing(doc):
-			return doc, "wait"
+			return doc, "wait", None
 
-		_validate_finalize_context(doc)
+		finalize_contract = resolve_finalize_contract(doc)
 		doc.status = "finalizing"
 		doc.received_size_bytes = payload.get("received_size_bytes") or doc.received_size_bytes
 		doc.content_hash = payload.get("content_hash") or doc.content_hash
@@ -249,12 +218,12 @@ def _claim_upload_session_for_finalize(payload: dict[str, Any]):
 			owner_name=doc.owner_name,
 			slot=doc.intended_slot,
 		)
-		return doc, "claimed"
+		return doc, "claimed", finalize_contract
 
 
 def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 	validate_finalize_session_payload(payload)
-	doc, claim_state = _claim_upload_session_for_finalize(payload)
+	doc, claim_state, finalize_contract = _claim_upload_session_for_finalize(payload)
 	if claim_state == "completed":
 		return _completed_response(doc)
 	if claim_state == "wait":
@@ -270,15 +239,16 @@ def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 			final_key=_build_final_object_key(doc),
 		)
 		created = _call_authoritative_create_and_classify_file(
-			file_kwargs=_build_file_kwargs(doc, storage_artifact),
+			file_kwargs=_build_file_kwargs(doc, storage_artifact, finalize_contract),
 			classification=_build_classification(doc),
 			secondary_subjects=_get_secondary_subjects(doc),
-			context_override=_get_context_override(doc),
+			context_override=(finalize_contract or {}).get("context_override"),
 		)
 		drive_artifacts = create_drive_file_artifacts(
 			upload_session_doc=doc,
 			file_id=created.name,
 			storage_artifact=storage_artifact,
+			binding_role=(finalize_contract or {}).get("binding_role"),
 		)
 	except Exception as exc:
 		_mark_session_failed(doc, exc)
@@ -299,10 +269,7 @@ def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 			refreshed.save(ignore_permissions=True)
 			doc = refreshed
 
-	extra_response = {}
-	extra_response.update(run_task_post_finalize(doc, created))
-	extra_response.update(run_media_post_finalize(doc, created))
-	extra_response.update(run_admissions_post_finalize(doc, created))
+	extra_response = run_post_finalize(doc, created)
 
 	log_drive_event(
 		"upload_session_finalized",

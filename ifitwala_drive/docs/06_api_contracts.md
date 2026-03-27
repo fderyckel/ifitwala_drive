@@ -1,9 +1,12 @@
+# Canonical API Contracts
 
-* all new governed uploads go through Drive services,
-* no file becomes meaningful without governance metadata,
-* context first, Drive second,
-* Ifitwala_Ed remains workflow authority,
-* Ifitwala_drive remains file authority.
+Core rules:
+
+* all new governed uploads go through Drive services
+* no file becomes meaningful without governance metadata
+* context first, Drive second
+* Ifitwala_Ed remains the business, permission, and workflow authority
+* Ifitwala_drive remains the file-platform authority
 
 ---
 
@@ -16,7 +19,7 @@
 This contract defines the initial API surface between:
 
 * **Ifitwala_Ed** as workflow/domain authority
-* **Ifitwala_drive** as governed file authority
+* **Ifitwala_drive** as governed file-platform boundary
 
 This is the contract Ifitwala_Ed should code against.
 This is **not** a generic public API design.
@@ -26,9 +29,18 @@ It is a tight internal product boundary.
 
 ## 1. API design principles
 
-### 1.1 Drive APIs are workflow-aware, not raw file endpoints
+### 1.1 Drive APIs are governed-contract endpoints, not raw file endpoints
 
 Ifitwala_Ed should not call low-level file mechanics directly.
+
+The core Drive APIs should stay generic:
+
+* `create_upload_session`
+* `finalize_upload_session`
+* `abort_upload_session`
+* grant / browse APIs
+
+Workflow-specific wrapper exports may still exist for Ed ergonomics, but they are compatibility shims only. They must not own the business semantics they carry.
 
 Bad:
 
@@ -43,7 +55,7 @@ Good:
 * issue preview grant for organization media
 * list files for lesson context
 
-This matches your coupling note: Ifitwala_Ed should stop thinking in raw `File`, raw attachment path, and generic upload widgets, and start thinking in Drive resources, submission artifacts, media refs, upload sessions, and canonical refs.
+This matches the coupling note: Ifitwala_Ed should stop thinking in raw `File`, raw attachment path, and generic upload widgets, and start thinking in Drive resources, submission artifacts, media refs, upload sessions, and canonical refs.
 
 ### 1.2 Fail closed
 
@@ -66,6 +78,12 @@ Every create/finalize call must carry enough context to resolve one authoritativ
 
 Uploader is audit only.
 Subject is not owner.
+
+Business meaning still belongs to Ed:
+
+* Ed builds the governed contract
+* Drive stores and executes against that contract
+* Drive does not become a second admissions, tasks, or media rules engine
 
 ---
 
@@ -329,9 +347,19 @@ Replace the current version of a governed file in a version-safe way.
 
 # 5. Domain wrapper APIs
 
-These exist so Ifitwala_Ed does not have to reconstruct governance payloads everywhere.
+These exist so Ifitwala_Ed does not have to reconstruct request envelopes everywhere.
 
-They are thin workflow-aware wrappers around the canonical Drive services.
+They are thin Ed-facing compatibility wrappers around the canonical Drive services.
+They must delegate to Ed-owned contract builders and must not author workflow meaning inside Drive.
+
+Wrapper contract:
+
+* every documented wrapper must exist as an exported callable in the relevant `ifitwala_drive.api.*` module
+* every exported wrapper must delegate to one authoritative service function
+* tests must cover both layers:
+  * service contract tests
+  * API export/delegation tests
+* adding a new wrapper is incomplete until the exported API surface is deployed and verified in the running site
 
 ## 5.1 `upload_task_resource`
 

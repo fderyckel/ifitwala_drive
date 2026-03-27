@@ -55,6 +55,12 @@ Everything above the adapter should work in terms of:
 - signed grants
 - delete / purge operations
 
+The adapter boundary is storage-only:
+
+- business permissions still come from Ed owning documents
+- workflow meaning still comes from Ed contracts
+- the storage adapter never decides admissions, task, or media semantics
+
 ### 2.2 Press owns environment storage configuration
 
 Ifitwala_Press already models tenant environment storage provider and quota.
@@ -99,6 +105,11 @@ The database remains the truth for:
 - browse projections
 - preview state
 - processing state
+
+More specifically:
+
+- Ed remains the source of business meaning and permission inheritance
+- Drive remains the source of storage/access/read-model state
 
 Object storage remains the truth for:
 

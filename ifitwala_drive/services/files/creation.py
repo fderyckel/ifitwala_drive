@@ -12,18 +12,6 @@ def _build_canonical_ref(*, organization: str | None, drive_file_id: str) -> str
 	return f"drv:{scope}:{drive_file_id}"
 
 
-def _resolve_binding_role(upload_session_doc) -> str | None:
-	if upload_session_doc.owner_doctype == "Task" and str(
-		getattr(upload_session_doc, "intended_slot", "") or ""
-	).startswith("supporting_material__"):
-		return "task_resource"
-
-	if upload_session_doc.owner_doctype == "Organization":
-		return "organization_media"
-
-	return None
-
-
 def _build_drive_file_doc(upload_session_doc, *, file_id: str, storage_artifact: dict[str, Any]):
 	return frappe.get_doc(
 		{
@@ -68,8 +56,13 @@ def _build_primary_binding_key(*, drive_file_id: str, upload_session_doc, bindin
 	return "|".join(str(part or "").strip() for part in parts)
 
 
-def _create_primary_binding(*, drive_file_id: str, file_id: str, upload_session_doc) -> str | None:
-	binding_role = _resolve_binding_role(upload_session_doc)
+def _create_primary_binding(
+	*,
+	drive_file_id: str,
+	file_id: str,
+	upload_session_doc,
+	binding_role: str | None = None,
+) -> str | None:
 	if not binding_role:
 		return None
 
@@ -140,11 +133,18 @@ def _create_primary_binding(*, drive_file_id: str, file_id: str, upload_session_
 		return binding.name
 
 
-def _existing_drive_file_response(*, drive_file_id: str, upload_session_doc, file_id: str) -> dict[str, Any]:
+def _existing_drive_file_response(
+	*,
+	drive_file_id: str,
+	upload_session_doc,
+	file_id: str,
+	binding_role: str | None = None,
+) -> dict[str, Any]:
 	binding_id = _create_primary_binding(
 		drive_file_id=drive_file_id,
 		file_id=file_id,
 		upload_session_doc=upload_session_doc,
+		binding_role=binding_role,
 	)
 	canonical_ref = frappe.db.get_value("Drive File", drive_file_id, "canonical_ref")
 	return {
@@ -160,6 +160,7 @@ def create_drive_file_artifacts(
 	upload_session_doc,
 	file_id: str,
 	storage_artifact: dict[str, Any],
+	binding_role: str | None = None,
 ) -> dict[str, Any]:
 	with drive_lock(f"drive_file_artifacts:{upload_session_doc.name}", timeout=30):
 		existing_drive_file_id = frappe.db.get_value(
@@ -172,6 +173,7 @@ def create_drive_file_artifacts(
 				drive_file_id=existing_drive_file_id,
 				upload_session_doc=upload_session_doc,
 				file_id=file_id,
+				binding_role=binding_role,
 			)
 
 		drive_file = _build_drive_file_doc(
@@ -196,6 +198,7 @@ def create_drive_file_artifacts(
 				drive_file_id=existing_drive_file_id,
 				upload_session_doc=upload_session_doc,
 				file_id=file_id,
+				binding_role=binding_role,
 			)
 
 		drive_file.current_version = None
@@ -210,6 +213,7 @@ def create_drive_file_artifacts(
 			drive_file_id=drive_file.name,
 			file_id=file_id,
 			upload_session_doc=upload_session_doc,
+			binding_role=binding_role,
 		)
 
 		return {

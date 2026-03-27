@@ -412,6 +412,56 @@ def resolve_employee_image_folder(*, employee: str, organization: str, school: s
 	)
 
 
+def _ensure_guardian_root(*, guardian: str, organization: str) -> str:
+	guardians_root = _ensure_folder(
+		title="Guardians",
+		parent_drive_folder=None,
+		owner_doctype="Organization",
+		owner_name=organization,
+		organization=organization,
+		school=None,
+		folder_kind="system_bound",
+		context_doctype="Guardian",
+	)
+	return _ensure_folder(
+		title=guardian,
+		parent_drive_folder=guardians_root,
+		owner_doctype="Guardian",
+		owner_name=guardian,
+		organization=organization,
+		school=None,
+		folder_kind="guardian_workspace",
+		context_doctype="Guardian",
+		context_name=guardian,
+	)
+
+
+def resolve_guardian_image_folder(*, guardian: str, organization: str) -> str:
+	guardian_root = _ensure_guardian_root(guardian=guardian, organization=organization)
+	profile_root = _ensure_folder(
+		title="Profile",
+		parent_drive_folder=guardian_root,
+		owner_doctype="Guardian",
+		owner_name=guardian,
+		organization=organization,
+		school=None,
+		folder_kind="guardian_workspace",
+		context_doctype="Guardian",
+		context_name=guardian,
+	)
+	return _ensure_folder(
+		title="Guardian Image",
+		parent_drive_folder=profile_root,
+		owner_doctype="Guardian",
+		owner_name=guardian,
+		organization=organization,
+		school=None,
+		folder_kind="guardian_workspace",
+		context_doctype="Guardian",
+		context_name=guardian,
+	)
+
+
 def resolve_task_submission_folder(
 	*,
 	student: str,

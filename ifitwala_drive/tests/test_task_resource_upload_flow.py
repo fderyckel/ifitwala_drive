@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import sys
 import types
+from pathlib import Path
 from typing import ClassVar
 
 
@@ -58,11 +59,22 @@ def _normalize_key_part(value):
 
 def _purge_modules(*prefixes: str) -> None:
 	for module_name in list(sys.modules):
-		if any(
-			module_name == prefix or module_name.startswith(f"{prefix}.") for prefix in prefixes
-		) or module_name.startswith("ifitwala_drive.services.folders"):
+		if (
+			any(module_name == prefix or module_name.startswith(f"{prefix}.") for prefix in prefixes)
+			or module_name.startswith("ifitwala_drive.services.folders")
+			or module_name.startswith("ifitwala_drive.services.integration.ifitwala_ed_")
+			or module_name.startswith("ifitwala_ed.integrations.drive")
+		):
 			sys.modules.pop(module_name, None)
 	FakeDoc._insert_counters = {}
+
+
+def _ensure_ed_repo_on_path() -> None:
+	ed_repo_root = Path(__file__).resolve().parents[2].parent / "ifitwala_ed"
+	if ed_repo_root.exists():
+		ed_repo_root_text = str(ed_repo_root)
+		if ed_repo_root_text not in sys.path:
+			sys.path.insert(0, ed_repo_root_text)
 
 
 def _install_fake_frappe(*, exists_map=None, value_map=None, docs_map=None):
@@ -140,6 +152,7 @@ def _install_fake_sessions(recorder):
 
 
 def _load_module(module_name: str):
+	_ensure_ed_repo_on_path()
 	return importlib.import_module(module_name)
 
 

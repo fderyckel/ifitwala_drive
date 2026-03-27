@@ -1,44 +1,29 @@
 from __future__ import annotations
 
+import importlib
+from collections.abc import Callable
 from typing import Any
 
 import frappe
 
-from ifitwala_drive.services.integration.ifitwala_ed_media import (
-	upload_employee_image_service,
-	upload_organization_logo_service,
-	upload_organization_media_asset_service,
-	upload_school_gallery_image_service,
-	upload_school_logo_service,
-	upload_student_image_service,
-)
+ifitwala_ed_media = importlib.import_module("ifitwala_drive.services.integration.ifitwala_ed_media")
 
 
-@frappe.whitelist()
-def upload_employee_image(**kwargs: Any) -> dict[str, Any]:
-	return upload_employee_image_service(kwargs)
+def _build_api_wrapper(
+	method_name: str,
+	service_callable: Callable[[dict[str, Any]], dict[str, Any]],
+) -> Callable[..., dict[str, Any]]:
+	@frappe.whitelist()
+	def _wrapper(**kwargs: Any) -> dict[str, Any]:
+		return service_callable(kwargs)
+
+	_wrapper.__name__ = method_name
+	_wrapper.__qualname__ = method_name
+	_wrapper.__doc__ = f"Workflow-aware wrapper for `{method_name}`."
+	return _wrapper
 
 
-@frappe.whitelist()
-def upload_student_image(**kwargs: Any) -> dict[str, Any]:
-	return upload_student_image_service(kwargs)
+for _method_name, _service_callable in ifitwala_ed_media.MEDIA_API_SERVICE_EXPORTS.items():
+	globals()[_method_name] = _build_api_wrapper(_method_name, _service_callable)
 
-
-@frappe.whitelist()
-def upload_organization_logo(**kwargs: Any) -> dict[str, Any]:
-	return upload_organization_logo_service(kwargs)
-
-
-@frappe.whitelist()
-def upload_school_logo(**kwargs: Any) -> dict[str, Any]:
-	return upload_school_logo_service(kwargs)
-
-
-@frappe.whitelist()
-def upload_school_gallery_image(**kwargs: Any) -> dict[str, Any]:
-	return upload_school_gallery_image_service(kwargs)
-
-
-@frappe.whitelist()
-def upload_organization_media_asset(**kwargs: Any) -> dict[str, Any]:
-	return upload_organization_media_asset_service(kwargs)
+__all__ = tuple(ifitwala_ed_media.MEDIA_API_SERVICE_EXPORTS)

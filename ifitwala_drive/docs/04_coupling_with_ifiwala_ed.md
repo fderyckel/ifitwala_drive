@@ -6,9 +6,16 @@ Ifitwala_drive is separate as an app boundary, but **tightly coupled to Ifitwala
 
 That means:
 
-* Ifitwala_Ed remains the workflow authority.
-* Ifitwala_drive remains the file authority.
+* Ifitwala_Ed remains the business, permission, and workflow authority.
+* Ifitwala_drive remains the file-platform authority.
 * Neither should drift into the other’s job.
+
+In practical terms:
+
+* Ed decides what a file means.
+* Ed decides whether the user can act on the owning record.
+* Drive decides how the file is uploaded, stored, secured, granted, previewed, and browsed.
+* Drive folder trees are browse projections, not governance truth.
 
 ## Integration rule
 
@@ -25,6 +32,31 @@ And start thinking in:
 * Drive media reference
 * Drive upload session
 * Drive canonical file/ref URL
+
+Important boundary:
+
+* Ifitwala_Ed builds the governed upload contract
+* Ifitwala_drive validates contract completeness at the boundary
+* Ifitwala_drive must not become the place where admissions, task, or media workflow rules are authored
+
+Cross-app deployment rule:
+
+* if `Ifitwala_Ed` starts calling a new `ifitwala_drive.api.*` wrapper, that wrapper export is part of the runtime contract
+* the thin API export and the underlying integration service must ship together
+* `bench clear-cache` is not sufficient for new Python exports; running app processes must be restarted after deploy
+* browser testing is not valid until the deployed module surface is verified from bench console
+
+Recommended verification:
+
+```python
+import ifitwala_drive.api.media as m
+hasattr(m, "upload_guardian_image")
+m.__file__
+
+import ifitwala_drive.services.integration.ifitwala_ed_media as i
+hasattr(i, "upload_guardian_image_service")
+i.__file__
+```
 
 ## Example integrations
 
@@ -103,6 +135,12 @@ Provide a Drive browser for:
 * course/shared resources
 * admin search/retrieval
 * organization media management
+
+But keep the ownership rule clear:
+
+* the folder tree is a Drive read model
+* permission still roots in the owning Ed document
+* folder membership is never the legal source of file visibility
 
 ---
 

@@ -12,6 +12,12 @@ Execute this in order:
 
 Do not start the true Drive UI before the storage and concurrency foundations are stable.
 
+Current alignment rule:
+
+- Ed owns business semantics, workflow rules, document permissions, and post-finalize mutations
+- Drive owns upload/session execution, storage, grants, preview state, and browse read models
+- Press owns runtime storage profile publication and tenant environment operations
+
 ---
 
 ## 1. Outcome To Reach
@@ -134,7 +140,8 @@ Stop carrying workflow semantics in both repos.
 
 Primary areas:
 
-- new `ifitwala_ed.integrations.drive` contract registry
+- `ifitwala_ed.integrations.drive.bridge`
+- Ed-owned helpers under `ifitwala_ed.integrations.drive.*`
 - `/Users/francois.de/Documents/ifitwala_ed/ifitwala_ed/utilities/file_dispatcher.py`
 - `/Users/francois.de/Documents/ifitwala_ed/ifitwala_ed/utilities/governed_uploads.py`
 - `/Users/francois.de/Documents/ifitwala_ed/ifitwala_ed/admission/admissions_portal.py`
@@ -145,6 +152,7 @@ Work:
 
 - centralize workflow-specific Drive upload contract building in Ed
 - centralize post-finalize business mutations in Ed
+- centralize finalize validation, attached-field overrides, context overrides, and binding-role hints behind one Ed bridge entrypoint
 - keep `file_dispatcher.create_and_classify_file(...)` as the authoritative governed writer
 - migrate remaining legacy exceptions such as applicant desk image upload onto the same bridge or explicitly quarantine them
 
@@ -159,7 +167,7 @@ Primary areas:
 Work:
 
 - reduce these modules from workflow-authoritative logic to thin compatibility wrappers
-- move toward one generic upload-session/finalize contract bridge
+- keep Drive core on one generic upload-session/finalize bridge into Ed
 
 ### Deliverable
 
@@ -286,6 +294,7 @@ This plan is only complete when all of these are true:
 - the main Drive UI is a folder/file navigator, not a card launcher
 - Ed deep-links land inside the same Drive tree
 - permissions are inherited from owning records, not folder membership
+- folder trees remain browse projections, not governance truth
 
 ---
 

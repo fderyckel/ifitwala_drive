@@ -92,3 +92,22 @@ def test_drive_folder_autoname_uses_scoped_identifier_instead_of_title():
 	assert student_profile.name != employee_profile.name
 	assert student_profile.name != "Profile"
 	assert employee_profile.name != "Profile"
+
+
+def test_drive_folder_accepts_guardian_workspace_folder_kind():
+	_purge_modules("frappe", "ifitwala_drive.ifitwala_drive.doctype.drive_folder.drive_folder")
+	_install_fake_frappe()
+	module = _load_module("ifitwala_drive.ifitwala_drive.doctype.drive_folder.drive_folder")
+
+	guardian_profile = _build_folder(
+		module,
+		title="Guardian Image",
+		parent_drive_folder="DRF-GUARDIAN-ROOT",
+		owner_doctype="Guardian",
+		owner_name="GRD-0001",
+		organization="ORG-0001",
+		school=None,
+		folder_kind="guardian_workspace",
+	)
+
+	guardian_profile._validate_folder_kind()

@@ -6,19 +6,31 @@ import importlib
 import sys
 import types
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import ClassVar
 
 
 def _purge_modules(*prefixes: str) -> None:
 	for module_name in list(sys.modules):
-		if any(
-			module_name == prefix or module_name.startswith(f"{prefix}.") for prefix in prefixes
-		) or module_name.startswith("ifitwala_drive.services.folders"):
+		if (
+			any(module_name == prefix or module_name.startswith(f"{prefix}.") for prefix in prefixes)
+			or module_name.startswith("ifitwala_drive.services.folders")
+			or module_name.startswith("ifitwala_drive.services.integration.ifitwala_ed_")
+			or module_name.startswith("ifitwala_ed.integrations.drive")
+		):
 			sys.modules.pop(module_name, None)
 	FakeDoc._insert_counters = {}
 	FakeDoc._docs_map = {}
 	FakeDoc._duplicate_insert_once = {}
 	FakeDoc._duplicate_insert_materialized_docs = {}
+
+
+def _ensure_ed_repo_on_path() -> None:
+	ed_repo_root = Path(__file__).resolve().parents[2].parent / "ifitwala_ed"
+	if ed_repo_root.exists():
+		ed_repo_root_text = str(ed_repo_root)
+		if ed_repo_root_text not in sys.path:
+			sys.path.insert(0, ed_repo_root_text)
 
 
 class FakeDoc:
@@ -234,6 +246,7 @@ def _install_fake_ifitwala_ed(*, dispatcher_recorder: dict):
 
 
 def _load_module(module_name: str):
+	_ensure_ed_repo_on_path()
 	return importlib.import_module(module_name)
 
 
@@ -693,6 +706,49 @@ def test_create_drive_file_artifacts_recovers_from_duplicate_inserts():
 		"canonical_ref": "drv:ORG-0001:DF-0099",
 		"drive_binding_id": None,
 	}
+
+
+def test_create_drive_file_artifacts_creates_primary_binding_when_ed_requests_one():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.files.creation",
+	)
+	_install_fake_frappe(docs_map={})
+	module = _load_module("ifitwala_drive.services.files.creation")
+	upload_session_doc = FakeDoc(
+		{
+			"name": "DUS-0002",
+			"attached_doctype": "Organization",
+			"attached_name": "ORG-0001",
+			"owner_doctype": "Organization",
+			"owner_name": "ORG-0001",
+			"organization": "ORG-0001",
+			"school": None,
+			"upload_source": "Desk",
+			"filename_original": "logo.png",
+			"is_private": 0,
+			"intended_primary_subject_type": "Organization",
+			"intended_primary_subject_id": "ORG-0001",
+			"intended_data_class": "branding",
+			"intended_purpose": "organization_logo_display",
+			"intended_retention_policy": "until_replaced",
+			"intended_slot": "organization_logo__main",
+		}
+	)
+
+	response = module.create_drive_file_artifacts(
+		upload_session_doc=upload_session_doc,
+		file_id="FILE-0002",
+		storage_artifact={
+			"storage_backend": "gcs",
+			"object_key": "files/aa/bb/object.png",
+		},
+		binding_role="organization_media",
+	)
+
+	assert response["drive_file_id"] == "DF-0001"
+	assert response["canonical_ref"] == "drv:ORG-0001:DF-0001"
+	assert response["drive_binding_id"] == "DB-0001"
 
 
 def test_folder_resolution_recovers_from_duplicate_folder_insert():

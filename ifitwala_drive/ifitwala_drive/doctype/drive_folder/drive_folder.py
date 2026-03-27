@@ -16,6 +16,7 @@ _ALLOWED_FOLDER_KINDS = {
 	"organization_media",
 	"system_bound",
 	"student_workspace",
+	"guardian_workspace",
 	"applicant_documents",
 	"staff_documents",
 	"general_resource",

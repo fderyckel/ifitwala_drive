@@ -234,7 +234,7 @@ And derive server-side:
 * slot = `submission`
 * organization and school from task submission context
 
-This keeps the wrapper workflow-aware and avoids repeating raw payload assembly all over Ifitwala_Ed.
+This keeps the Ed-facing wrapper contract-aware and avoids repeating raw payload assembly all over Ifitwala_Ed while keeping workflow meaning in Ed.
 
 ---
 

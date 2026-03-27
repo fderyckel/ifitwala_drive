@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import sys
 import types
+from pathlib import Path
 from typing import ClassVar
 
 
@@ -55,11 +56,22 @@ def _normalize_key_part(value):
 
 def _purge_modules(*prefixes: str) -> None:
 	for module_name in list(sys.modules):
-		if any(
-			module_name == prefix or module_name.startswith(f"{prefix}.") for prefix in prefixes
-		) or module_name.startswith("ifitwala_drive.services.folders"):
+		if (
+			any(module_name == prefix or module_name.startswith(f"{prefix}.") for prefix in prefixes)
+			or module_name.startswith("ifitwala_drive.services.folders")
+			or module_name.startswith("ifitwala_drive.services.integration.ifitwala_ed_")
+			or module_name.startswith("ifitwala_ed.integrations.drive")
+		):
 			sys.modules.pop(module_name, None)
 	FakeDoc._insert_counters = {}
+
+
+def _ensure_ed_repo_on_path() -> None:
+	ed_repo_root = Path(__file__).resolve().parents[2].parent / "ifitwala_ed"
+	if ed_repo_root.exists():
+		ed_repo_root_text = str(ed_repo_root)
+		if ed_repo_root_text not in sys.path:
+			sys.path.insert(0, ed_repo_root_text)
 
 
 def _install_fake_frappe(*, exists_map=None, value_map=None, docs_map=None):
@@ -146,7 +158,52 @@ def _install_fake_sessions(recorder):
 
 
 def _load_module(module_name: str):
+	_ensure_ed_repo_on_path()
 	return importlib.import_module(module_name)
+
+
+def test_media_api_exports_expected_wrappers_and_delegates():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.api.media",
+		"ifitwala_drive.services.integration.ifitwala_ed_media",
+	)
+	_install_fake_frappe()
+	recorder = []
+
+	def _service(name):
+		def _inner(payload):
+			recorder.append((name, payload))
+			return {"status": "ok", "wrapper": name}
+
+		return _inner
+
+	integration_module = types.ModuleType("ifitwala_drive.services.integration.ifitwala_ed_media")
+	integration_module.MEDIA_API_SERVICE_EXPORTS = {}
+	for method_name in [
+		"upload_employee_image",
+		"upload_guardian_image",
+		"upload_student_image",
+		"upload_organization_logo",
+		"upload_school_logo",
+		"upload_school_gallery_image",
+		"upload_organization_media_asset",
+	]:
+		service_callable = _service(method_name)
+		setattr(integration_module, f"{method_name}_service", service_callable)
+		integration_module.MEDIA_API_SERVICE_EXPORTS[method_name] = service_callable
+	sys.modules["ifitwala_drive.services.integration.ifitwala_ed_media"] = integration_module
+
+	module = _load_module("ifitwala_drive.api.media")
+
+	expected_methods = list(integration_module.MEDIA_API_SERVICE_EXPORTS)
+	for method_name in expected_methods:
+		assert hasattr(module, method_name), method_name
+		response = getattr(module, method_name)(test_key=method_name)
+		assert response["wrapper"] == method_name
+
+	assert [entry[0] for entry in recorder] == expected_methods
+	assert all(payload["test_key"] == name for name, payload in recorder)
 
 
 def test_upload_student_image_uses_authoritative_contract():
@@ -215,6 +272,45 @@ def test_upload_employee_image_uses_employee_folder_tree():
 	assert recorder["payload"]["primary_subject_id"] == "EMP-0001"
 	assert recorder["payload"]["organization"] == "ORG-0001"
 	assert recorder["payload"]["school"] == "SCH-0001"
+	assert recorder["payload"]["slot"] == "profile_image"
+	assert recorder["payload"]["is_private"] == 0
+	assert recorder["payload"]["folder"].startswith("DRF-")
+
+
+def test_upload_guardian_image_uses_guardian_org_contract():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.integration.ifitwala_ed_media",
+		"ifitwala_drive.services.uploads.sessions",
+	)
+	guardian = FakeDoc({"name": "GRD-0001", "organization": "ORG-0001"})
+	_install_fake_frappe(
+		exists_map={("Guardian", "GRD-0001"): True},
+		docs_map={("Guardian", "GRD-0001"): guardian},
+	)
+	recorder = {}
+	_install_fake_sessions(recorder)
+	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_media")
+
+	response = module.upload_guardian_image_service(
+		{
+			"guardian": "GRD-0001",
+			"filename_original": "guardian.jpg",
+			"mime_type_hint": "image/jpeg",
+			"expected_size_bytes": 222,
+		}
+	)
+
+	assert response["upload_session_id"] == "DUS-0001"
+	assert recorder["payload"]["owner_doctype"] == "Guardian"
+	assert recorder["payload"]["owner_name"] == "GRD-0001"
+	assert recorder["payload"]["attached_doctype"] == "Guardian"
+	assert recorder["payload"]["attached_name"] == "GRD-0001"
+	assert recorder["payload"]["primary_subject_type"] == "Guardian"
+	assert recorder["payload"]["primary_subject_id"] == "GRD-0001"
+	assert recorder["payload"]["organization"] == "ORG-0001"
+	assert recorder["payload"]["school"] is None
+	assert recorder["payload"]["purpose"] == "guardian_profile_display"
 	assert recorder["payload"]["slot"] == "profile_image"
 	assert recorder["payload"]["is_private"] == 0
 	assert recorder["payload"]["folder"].startswith("DRF-")

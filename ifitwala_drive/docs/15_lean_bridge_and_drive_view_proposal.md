@@ -16,6 +16,11 @@
 
 It should stop acting like a second governance database.
 
+Boundary rule:
+
+- `ifitwala_ed` owns business semantics, document permissions, workflow rules, and post-upload business mutations
+- `ifitwala_drive` owns upload/session execution, storage, grants, preview state, and browse UI/read models
+
 ---
 
 ## 1. Current Diagnosis
@@ -208,7 +213,7 @@ Recommended flow:
 1. Ed resolves the authoritative governed upload contract for a workflow.
 2. Ed sends that contract to Drive when creating the upload session.
 3. Drive stores the contract snapshot on the session.
-4. On finalize, Drive calls one Ed bridge hook to revalidate the contract and run post-finalize business mutations.
+4. On finalize, Drive calls one Ed bridge entrypoint to revalidate the contract and run post-finalize business mutations.
 5. Drive then persists only storage/access/read-model state.
 
 ### 3.3 Contract contents
@@ -223,7 +228,7 @@ The contract should contain only what Drive needs:
 - integration key
 - optional post-finalize action hints
 
-This lets Ed own business semantics while Drive owns upload/storage mechanics.
+This lets Ed own business semantics while Drive owns upload/storage mechanics and browse projections.
 
 ### 3.4 Where the code should live
 
@@ -231,13 +236,9 @@ Move workflow-specific contract building and post-finalize business mutation int
 
 Good target shape:
 
-- `ifitwala_ed.integrations.drive.contracts`
-- registry keyed by workflow type, for example:
-  - `task_submission_artifact`
-  - `task_resource`
-  - `applicant_document`
-  - `applicant_profile_image`
-  - `organization_media`
+- `ifitwala_ed.integrations.drive.bridge`
+- Ed-owned helpers under `ifitwala_ed.integrations.drive.*` for tasks, media, admissions, and future flows
+- one Ed bridge entrypoint that resolves finalize validation, attached-field overrides, context overrides, binding-role hints, and post-finalize mutations
 
 Drive then only needs:
 
@@ -379,6 +380,8 @@ Folders are browse UX, not governance truth.
 Permissions still come from the owning document and governance rules.
 
 The folder tree is only a readable projection of governed files the user already has permission to see.
+
+It is useful for navigation and reuse, but it is never the legal source of ownership, permission, retention, or slot meaning.
 
 ### 4.3 For current scope, prefer virtual folders over many persisted folder rows
 
