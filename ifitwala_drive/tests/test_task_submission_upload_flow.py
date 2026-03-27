@@ -976,7 +976,7 @@ def test_finalize_rejects_mime_hint_mismatch(monkeypatch):
 		raise AssertionError("Expected finalize_upload_session_service to reject MIME mismatch.")
 
 
-def test_finalize_allows_jpeg_signature_fallback_when_magic_is_unavailable(monkeypatch):
+def test_finalize_requires_python_magic_runtime_dependency(monkeypatch):
 	_purge_modules(
 		"frappe",
 		"ifitwala_ed",
@@ -1001,8 +1001,8 @@ def test_finalize_allows_jpeg_signature_fallback_when_magic_is_unavailable(monke
 			"organization": "ORG-0001",
 			"school": "SCH-0001",
 			"upload_source": "SPA",
-			"filename_original": "guardian.jpg",
-			"mime_type_hint": "image/jpeg",
+			"filename_original": "upload.bin",
+			"mime_type_hint": "application/octet-stream",
 			"is_private": 1,
 			"intended_primary_subject_type": "Student",
 			"intended_primary_subject_id": "STU-0001",
@@ -1049,30 +1049,25 @@ def test_finalize_allows_jpeg_signature_fallback_when_magic_is_unavailable(monke
 			return True
 
 		def read_temporary_object_head(self, *, object_key: str, max_bytes: int) -> bytes:
-			return b"\xff\xd8\xff\xe0JFIF\x00guardian-photo"
+			return b"opaque-upload"
 
 		def finalize_temporary_object(self, *, object_key: str, final_key: str):
-			return {
-				"object_key": final_key,
-				"file_url": f"https://storage.ifitwala.invalid/object/{final_key}",
-			}
+			raise AssertionError("finalize_temporary_object should not run without python-magic.")
 
 		def abort_temporary_object(self, *, object_key: str) -> None:
 			raise AssertionError("abort_temporary_object should not be called during finalize.")
 
 	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
 
-	response = module.finalize_upload_session_service({"upload_session_id": "DUS-0001"})
-
-	assert response["status"] == "completed"
-	assert session_doc.status == "completed"
-	assert session_doc.file == "FILE-0001"
-	assert session_doc.drive_file == "DF-0001"
-	assert dispatcher_recorder["call"]["classification"]["slot"] == "submission"
-	assert dispatcher_recorder["call"]["file_kwargs"]["file_name"] == "guardian.jpg"
+	try:
+		module.finalize_upload_session_service({"upload_session_id": "DUS-0001"})
+	except RuntimeError as exc:
+		assert "python-magic and libmagic" in str(exc)
+	else:
+		raise AssertionError("Expected finalize_upload_session_service to require python-magic.")
 
 
-def test_finalize_rejects_unknown_signature_when_magic_is_unavailable(monkeypatch):
+def test_finalize_rejects_unknown_detected_mime(monkeypatch):
 	_purge_modules(
 		"frappe",
 		"ifitwala_ed",
@@ -1129,12 +1124,7 @@ def test_finalize_rejects_unknown_signature_when_magic_is_unavailable(monkeypatc
 	)
 	_install_fake_ifitwala_ed(dispatcher_recorder={})
 	module = _load_module("ifitwala_drive.services.uploads.finalize")
-	inspection_module = _load_module("ifitwala_drive.services.uploads.inspection")
-
-	def _raise_missing_magic():
-		raise ImportError("magic is unavailable")
-
-	monkeypatch.setattr(inspection_module, "_load_magic_module", _raise_missing_magic)
+	sys.modules["magic"] = types.SimpleNamespace(from_buffer=lambda content, mime=True: "")
 
 	class FakeStorage:
 		backend_name = "gcs"
@@ -1143,19 +1133,21 @@ def test_finalize_rejects_unknown_signature_when_magic_is_unavailable(monkeypatc
 			return True
 
 		def read_temporary_object_head(self, *, object_key: str, max_bytes: int) -> bytes:
-			return b"unknown-binary-format"
+			return b"mystery-content"
 
 		def finalize_temporary_object(self, *, object_key: str, final_key: str):
-			raise AssertionError("finalize_temporary_object should not run for unknown MIME.")
+			raise AssertionError("finalize_temporary_object should not run for unknown detected MIME.")
 
 	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
 
 	try:
 		module.finalize_upload_session_service({"upload_session_id": "DUS-0001"})
 	except RuntimeError as exc:
-		assert "Unable to validate uploaded content type" in str(exc)
+		assert "could not be determined" in str(exc)
 	else:
-		raise AssertionError("Expected finalize_upload_session_service to fail closed on unknown bytes.")
+		raise AssertionError(
+			"Expected finalize_upload_session_service to fail closed on unknown detected MIME."
+		)
 
 
 def test_upload_session_blob_accepts_proxy_post(monkeypatch):
