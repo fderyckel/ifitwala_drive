@@ -200,6 +200,75 @@ def test_upload_task_resource_uses_task_contract_and_course_folder():
 	assert recorder["payload"]["folder"].startswith("DRF-")
 
 
+def test_upload_supporting_material_uses_material_contract_and_course_folder():
+	_purge_modules(
+		"frappe",
+		"ifitwala_ed.integrations.drive.materials",
+		"ifitwala_drive.services.integration.ifitwala_ed_materials",
+		"ifitwala_drive.services.uploads.sessions",
+	)
+	material = FakeDoc({"name": "MAT-0001", "course": "COURSE-0001"})
+	_install_fake_frappe(
+		exists_map={
+			("Supporting Material", "MAT-0001"): True,
+		},
+		value_map={
+			("Course", "COURSE-0001", "school"): "SCH-0001",
+			("School", "SCH-0001", "organization"): "ORG-0001",
+		},
+		docs_map={("Supporting Material", "MAT-0001"): material},
+	)
+	recorder = {}
+	_install_fake_sessions(recorder)
+	_ensure_ed_repo_on_path()
+	importlib.import_module("ifitwala_ed")
+	importlib.import_module("ifitwala_ed.integrations")
+	importlib.import_module("ifitwala_ed.integrations.drive")
+	materials_delegate = types.ModuleType("ifitwala_ed.integrations.drive.materials")
+	materials_delegate.assert_supporting_material_upload_access = (
+		lambda material_name, permission_type="write": material
+	)
+	materials_delegate.build_supporting_material_upload_contract = lambda material_doc: {
+		"owner_doctype": "Supporting Material",
+		"owner_name": material_doc.name,
+		"attached_doctype": "Supporting Material",
+		"attached_name": material_doc.name,
+		"organization": "ORG-0001",
+		"school": "SCH-0001",
+		"primary_subject_type": "Organization",
+		"primary_subject_id": "ORG-0001",
+		"data_class": "academic",
+		"purpose": "general_reference",
+		"retention_policy": "until_program_end_plus_1y",
+		"slot": "material_file",
+		"course": material_doc.course,
+	}
+	sys.modules["ifitwala_ed.integrations.drive.materials"] = materials_delegate
+	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_materials")
+
+	response = module.upload_supporting_material_service(
+		{
+			"material": "MAT-0001",
+			"filename_original": "worksheet.pdf",
+			"mime_type_hint": "application/pdf",
+			"expected_size_bytes": 1234,
+		}
+	)
+
+	assert response["upload_session_id"] == "DUS-0001"
+	assert recorder["payload"]["owner_doctype"] == "Supporting Material"
+	assert recorder["payload"]["owner_name"] == "MAT-0001"
+	assert recorder["payload"]["attached_doctype"] == "Supporting Material"
+	assert recorder["payload"]["attached_name"] == "MAT-0001"
+	assert recorder["payload"]["primary_subject_type"] == "Organization"
+	assert recorder["payload"]["primary_subject_id"] == "ORG-0001"
+	assert recorder["payload"]["organization"] == "ORG-0001"
+	assert recorder["payload"]["school"] == "SCH-0001"
+	assert recorder["payload"]["slot"] == "material_file"
+	assert recorder["payload"]["is_private"] == 1
+	assert recorder["payload"]["folder"].startswith("DRF-")
+
+
 def test_run_task_post_finalize_appends_compatibility_attachment_row():
 	_purge_modules(
 		"frappe",

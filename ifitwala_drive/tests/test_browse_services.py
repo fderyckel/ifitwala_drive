@@ -365,6 +365,50 @@ def test_list_context_files_returns_direct_owner_files_without_binding():
 	}
 
 
+def test_list_context_files_derives_general_reference_for_supporting_material():
+	_purge_modules("frappe", "ifitwala_drive.services.folders.browse")
+	material = FakeDoc({"name": "MAT-0001"})
+	_install_fake_frappe(
+		exists_map={("Supporting Material", "MAT-0001"): True},
+		docs_map={
+			("Supporting Material", "MAT-0001"): material,
+		},
+		get_all_handlers={
+			"Drive Binding": lambda **kwargs: [],
+			"Drive File": lambda **kwargs: [
+				{
+					"name": "DF-MAT-0001",
+					"canonical_ref": "drv:ORG-0001:DF-MAT-0001",
+					"slot": "material_file",
+					"display_name": "worksheet.pdf",
+					"current_version_no": 1,
+					"preview_status": "pending",
+					"folder": None,
+					"attached_doctype": "Supporting Material",
+					"attached_name": "MAT-0001",
+					"owner_doctype": "Supporting Material",
+					"owner_name": "MAT-0001",
+				}
+			],
+		},
+	)
+	module = _load_module("ifitwala_drive.services.folders.browse")
+
+	response = module.list_context_files_service(
+		{
+			"doctype": "Supporting Material",
+			"name": "MAT-0001",
+			"binding_role": "general_reference",
+		}
+	)
+
+	assert response["context"] == {"doctype": "Supporting Material", "name": "MAT-0001"}
+	assert response["folders"] == []
+	assert len(response["files"]) == 1
+	assert response["files"][0]["binding_role"] == "general_reference"
+	assert response["items"][0]["binding_role"] == "general_reference"
+
+
 def test_list_folder_items_returns_child_folders_and_files():
 	_purge_modules("frappe", "ifitwala_drive.services.folders.browse")
 	folder_doc = FakeDoc(

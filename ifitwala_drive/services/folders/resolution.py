@@ -519,13 +519,7 @@ def _ensure_courses_root(*, organization: str) -> str:
 	)
 
 
-def resolve_task_resource_folder(
-	*,
-	task: str,
-	course: str,
-	organization: str,
-	school: str,
-) -> str:
+def _ensure_course_root(*, course: str, organization: str, school: str) -> str:
 	courses_root = _ensure_courses_root(organization=organization)
 	school_root = _ensure_folder(
 		title=school,
@@ -538,7 +532,7 @@ def resolve_task_resource_folder(
 		context_doctype="School",
 		context_name=school,
 	)
-	course_root = _ensure_folder(
+	return _ensure_folder(
 		title=course,
 		parent_drive_folder=school_root,
 		owner_doctype="Course",
@@ -548,6 +542,56 @@ def resolve_task_resource_folder(
 		folder_kind="course_shared",
 		context_doctype="Course",
 		context_name=course,
+	)
+
+
+def resolve_supporting_material_folder(
+	*,
+	material: str,
+	course: str,
+	organization: str,
+	school: str,
+) -> str:
+	course_root = _ensure_course_root(
+		course=course,
+		organization=organization,
+		school=school,
+	)
+	materials_root = _ensure_folder(
+		title="Materials",
+		parent_drive_folder=course_root,
+		owner_doctype="Course",
+		owner_name=course,
+		organization=organization,
+		school=school,
+		folder_kind="course_shared",
+		context_doctype="Course",
+		context_name=course,
+	)
+	return _ensure_folder(
+		title=material,
+		parent_drive_folder=materials_root,
+		owner_doctype="Supporting Material",
+		owner_name=material,
+		organization=organization,
+		school=school,
+		folder_kind="course_shared",
+		context_doctype="Supporting Material",
+		context_name=material,
+	)
+
+
+def resolve_task_resource_folder(
+	*,
+	task: str,
+	course: str,
+	organization: str,
+	school: str,
+) -> str:
+	course_root = _ensure_course_root(
+		course=course,
+		organization=organization,
+		school=school,
 	)
 	tasks_root = _ensure_folder(
 		title="Tasks",
