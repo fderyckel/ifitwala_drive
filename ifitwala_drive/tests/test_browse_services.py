@@ -1314,6 +1314,47 @@ def test_list_folder_items_exposes_organization_logo_upload_for_logo_folder():
 	]
 
 
+def test_list_context_files_exposes_applicant_profile_upload_action():
+	_purge_modules("frappe", "ifitwala_drive.services.folders.browse")
+	applicant = FakeDoc({"name": "APP-0001"})
+	_install_fake_frappe(
+		exists_map={("Student Applicant", "APP-0001"): True},
+		docs_map={
+			("Student Applicant", "APP-0001"): applicant,
+		},
+		get_all_handlers={
+			"Drive Binding": lambda **kwargs: [],
+			"Drive File": lambda **kwargs: [],
+			"Drive Folder": lambda **kwargs: [],
+		},
+	)
+	module = _load_module("ifitwala_drive.services.folders.browse")
+
+	response = module.list_context_files_service(
+		{
+			"doctype": "Student Applicant",
+			"name": "APP-0001",
+		}
+	)
+
+	assert response["context"] == {"doctype": "Student Applicant", "name": "APP-0001"}
+	assert response["files"] == []
+	assert response["items"] == []
+	assert response["upload_actions"] == [
+		{
+			"id": "applicant_profile_image",
+			"label": "Upload Applicant Image",
+			"description": "Create or replace the governed applicant profile image.",
+			"api_method": "ifitwala_drive.api.admissions.upload_applicant_profile_image",
+			"payload": {
+				"student_applicant": "APP-0001",
+				"upload_source": "SPA",
+			},
+			"destination_label": "Applicant Profile",
+		}
+	]
+
+
 def test_list_workspace_home_prioritizes_review_targets_then_personal_contexts():
 	_purge_modules("frappe", "ifitwala_drive.services.folders.browse")
 	applicant_doc = FakeDoc({"name": "APP-0001"})

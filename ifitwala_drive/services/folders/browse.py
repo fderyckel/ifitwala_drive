@@ -300,6 +300,18 @@ def _get_upload_actions_for_context(
 			)
 		)
 
+	if doctype == "Student Applicant" and _can_write("Student Applicant", name):
+		actions.append(
+			_build_upload_action(
+				action_id="applicant_profile_image",
+				label=_("Upload Applicant Image"),
+				description=_("Create or replace the governed applicant profile image."),
+				api_method="ifitwala_drive.api.admissions.upload_applicant_profile_image",
+				payload={"student_applicant": name, "upload_source": "SPA"},
+				destination_label=_("Applicant Profile"),
+			)
+		)
+
 	if getattr(folder_doc, "folder_kind", None) != "organization_media":
 		return actions
 
