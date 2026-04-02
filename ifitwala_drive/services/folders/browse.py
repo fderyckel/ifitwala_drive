@@ -30,20 +30,34 @@ def _current_user() -> str | None:
 	return user or None
 
 
-def _assert_can_read(doctype: str, name: str) -> None:
+def _assert_has_permission(doctype: str, name: str, permission_type: str = "read") -> None:
 	if not frappe.db.exists(doctype, name):
 		frappe.throw(_("{0} does not exist: {1}").format(doctype, name))
 
 	doc = frappe.get_doc(doctype, name)
 	if hasattr(doc, "check_permission"):
-		doc.check_permission("read")
+		doc.check_permission(permission_type)
+
+
+def _assert_can_read(doctype: str, name: str) -> None:
+	_assert_has_permission(doctype, name, "read")
 
 
 def _can_read(doctype: str | None, name: str | None) -> bool:
 	if not doctype or not name:
 		return False
 	try:
-		_assert_can_read(doctype, name)
+		_assert_has_permission(doctype, name, "read")
+	except Exception:
+		return False
+	return True
+
+
+def _can_write(doctype: str | None, name: str | None) -> bool:
+	if not doctype or not name:
+		return False
+	try:
+		_assert_has_permission(doctype, name, "write")
 	except Exception:
 		return False
 	return True
@@ -159,6 +173,215 @@ def _context_href(doctype: str, name: str, binding_role: str | None = None) -> s
 	if binding_role:
 		href += f"&binding_role={quote(str(binding_role).strip())}"
 	return href
+
+
+def _build_upload_field(
+	*,
+	name: str,
+	label: str,
+	required: bool = False,
+	placeholder: str | None = None,
+	help_text: str | None = None,
+) -> dict[str, Any]:
+	field = {
+		"name": name,
+		"label": label,
+		"required": required,
+	}
+	if placeholder:
+		field["placeholder"] = placeholder
+	if help_text:
+		field["help"] = help_text
+	return field
+
+
+def _build_upload_action(
+	*,
+	action_id: str,
+	label: str,
+	description: str,
+	api_method: str,
+	payload: dict[str, Any],
+	destination_label: str,
+	fields: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+	action = {
+		"id": action_id,
+		"label": label,
+		"description": description,
+		"api_method": api_method,
+		"payload": payload,
+		"destination_label": destination_label,
+	}
+	if fields:
+		action["fields"] = fields
+	return action
+
+
+def _get_upload_actions_for_context(
+	doctype: str | None,
+	name: str | None,
+	*,
+	folder_doc=None,
+) -> list[dict[str, Any]]:
+	if not doctype or not name:
+		return []
+
+	actions: list[dict[str, Any]] = []
+	if doctype == "Task" and _can_write("Task", name):
+		actions.append(
+			_build_upload_action(
+				action_id="task_resource",
+				label=_("Upload Resource"),
+				description=_("Add a governed file to this Task's Resources folder."),
+				api_method="ifitwala_drive.api.resources.upload_task_resource",
+				payload={"task": name, "upload_source": "SPA"},
+				destination_label=_("Task Resources"),
+			)
+		)
+
+	if doctype == "Supporting Material" and _can_write("Supporting Material", name):
+		actions.append(
+			_build_upload_action(
+				action_id="supporting_material",
+				label=_("Upload Material File"),
+				description=_("Add the governed file for this Supporting Material record."),
+				api_method="ifitwala_drive.api.materials.upload_supporting_material",
+				payload={"material": name, "upload_source": "SPA"},
+				destination_label=_("Course Materials"),
+			)
+		)
+
+	if doctype == "Task Submission" and _can_write("Task Submission", name):
+		actions.append(
+			_build_upload_action(
+				action_id="task_submission_artifact",
+				label=_("Upload Submission Artifact"),
+				description=_("Add a governed artifact to this Task Submission."),
+				api_method="ifitwala_drive.api.submissions.upload_task_submission_artifact",
+				payload={"task_submission": name, "upload_source": "SPA"},
+				destination_label=_("Submission Artifacts"),
+			)
+		)
+
+	if doctype == "Employee" and _can_write("Employee", name):
+		actions.append(
+			_build_upload_action(
+				action_id="employee_image",
+				label=_("Upload Employee Image"),
+				description=_("Create or replace the governed employee profile image."),
+				api_method="ifitwala_drive.api.media.upload_employee_image",
+				payload={"employee": name, "upload_source": "SPA"},
+				destination_label=_("Employee Image"),
+			)
+		)
+
+	if doctype == "Student" and _can_write("Student", name):
+		actions.append(
+			_build_upload_action(
+				action_id="student_image",
+				label=_("Upload Student Image"),
+				description=_("Create or replace the governed student profile image."),
+				api_method="ifitwala_drive.api.media.upload_student_image",
+				payload={"student": name, "upload_source": "SPA"},
+				destination_label=_("Student Image"),
+			)
+		)
+
+	if doctype == "Guardian" and _can_write("Guardian", name):
+		actions.append(
+			_build_upload_action(
+				action_id="guardian_image",
+				label=_("Upload Guardian Image"),
+				description=_("Create or replace the governed guardian profile image."),
+				api_method="ifitwala_drive.api.media.upload_guardian_image",
+				payload={"guardian": name, "upload_source": "SPA"},
+				destination_label=_("Guardian Image"),
+			)
+		)
+
+	if getattr(folder_doc, "folder_kind", None) != "organization_media":
+		return actions
+
+	folder_title = str(getattr(folder_doc, "title", None) or "").strip().lower()
+	organization = str(
+		getattr(folder_doc, "organization", None) or getattr(folder_doc, "owner_name", None) or ""
+	).strip()
+
+	if doctype == "Organization" and _can_write("Organization", name):
+		if folder_title == "logos":
+			actions.append(
+				_build_upload_action(
+					action_id="organization_logo",
+					label=_("Upload Organization Logo"),
+					description=_("Replace the governed organization logo used across Ifitwala_Ed."),
+					api_method="ifitwala_drive.api.media.upload_organization_logo",
+					payload={"organization": name, "upload_source": "SPA"},
+					destination_label=_("Organization Logos"),
+				)
+			)
+		else:
+			actions.append(
+				_build_upload_action(
+					action_id="organization_media_asset",
+					label=_("Upload Media Asset"),
+					description=_("Add a governed organization media asset for reuse across Ed surfaces."),
+					api_method="ifitwala_drive.api.media.upload_organization_media_asset",
+					payload={
+						"organization": name,
+						"scope": "organization",
+						"upload_source": "SPA",
+					},
+					destination_label=_("Organization Media"),
+					fields=[
+						_build_upload_field(
+							name="media_key",
+							label=_("Media Key"),
+							placeholder="homepage-hero",
+							help_text=_("Optional stable key used for reuse and replacement."),
+						)
+					],
+				)
+			)
+
+	if doctype == "School" and _can_write("School", name) and organization:
+		if folder_title == "logos":
+			actions.append(
+				_build_upload_action(
+					action_id="school_logo",
+					label=_("Upload School Logo"),
+					description=_("Replace the governed school logo used across Ifitwala_Ed."),
+					api_method="ifitwala_drive.api.media.upload_school_logo",
+					payload={"school": name, "upload_source": "SPA"},
+					destination_label=_("School Logos"),
+				)
+			)
+		else:
+			actions.append(
+				_build_upload_action(
+					action_id="school_media_asset",
+					label=_("Upload School Media"),
+					description=_("Add a governed school-scoped media asset for reuse across Ed surfaces."),
+					api_method="ifitwala_drive.api.media.upload_organization_media_asset",
+					payload={
+						"organization": organization,
+						"school": name,
+						"scope": "school",
+						"upload_source": "SPA",
+					},
+					destination_label=_("School Media"),
+					fields=[
+						_build_upload_field(
+							name="media_key",
+							label=_("Media Key"),
+							placeholder="campus-banner",
+							help_text=_("Optional stable key used for reuse and replacement."),
+						)
+					],
+				)
+			)
+
+	return actions
 
 
 def _safe_get_all(
@@ -747,10 +970,18 @@ def list_folder_items_service(payload: dict[str, Any]) -> dict[str, Any]:
 				)
 			)
 
-	return {
+	response = {
 		"folder": _serialize_folder_summary(folder_doc, folder_cache),
 		"items": items,
 	}
+	upload_actions = _get_upload_actions_for_context(
+		getattr(folder_doc, "context_doctype", None),
+		getattr(folder_doc, "context_name", None),
+		folder_doc=folder_doc,
+	)
+	if upload_actions:
+		response["upload_actions"] = upload_actions
+	return response
 
 
 def list_workspace_roots_service(payload: dict[str, Any]) -> dict[str, Any]:
@@ -941,7 +1172,7 @@ def list_context_files_service(payload: dict[str, Any]) -> dict[str, Any]:
 	items = list(context_folders)
 	items.extend({**file, "item_type": "file"} for file in files)
 
-	return {
+	response = {
 		"context": {
 			"doctype": doctype,
 			"name": name,
@@ -950,3 +1181,7 @@ def list_context_files_service(payload: dict[str, Any]) -> dict[str, Any]:
 		"files": files,
 		"items": items,
 	}
+	upload_actions = _get_upload_actions_for_context(doctype, name)
+	if upload_actions:
+		response["upload_actions"] = upload_actions
+	return response

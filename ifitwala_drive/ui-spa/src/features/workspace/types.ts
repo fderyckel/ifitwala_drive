@@ -4,6 +4,24 @@ export type FolderBreadcrumb = {
 	path_cache?: string | null
 }
 
+export type UploadActionField = {
+	name: string
+	label: string
+	required?: boolean
+	placeholder?: string | null
+	help?: string | null
+}
+
+export type UploadAction = {
+	id: string
+	label: string
+	description: string
+	api_method: string
+	payload: Record<string, unknown>
+	destination_label: string
+	fields?: UploadActionField[]
+}
+
 export type FolderSummary = {
 	id: string
 	title: string
@@ -46,6 +64,7 @@ export type FolderItem = (FolderSummary & { item_type: 'folder' }) | (FileSummar
 export type FolderBrowseResponse = {
 	folder: FolderSummary
 	items: FolderItem[]
+	upload_actions?: UploadAction[]
 }
 
 export type WorkspaceRootsResponse = {
@@ -86,6 +105,7 @@ export type ContextBrowseResponse = {
 	folders?: FolderSummary[]
 	files: FileSummary[]
 	items?: FolderItem[]
+	upload_actions?: UploadAction[]
 }
 
 export type GrantResponse = {

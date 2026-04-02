@@ -17,6 +17,9 @@ class FakeDoc:
 			setattr(self, key, value)
 
 	def check_permission(self, permission_type=None):
+		permission_errors = getattr(self, "permission_errors", None)
+		if isinstance(permission_errors, dict) and permission_errors.get(permission_type):
+			raise RuntimeError("Permission denied")
 		if getattr(self, "permission_error", False):
 			raise RuntimeError("Permission denied")
 		return None
@@ -277,6 +280,19 @@ def test_list_context_files_returns_bound_drive_files():
 				"item_type": "file",
 			}
 		],
+		"upload_actions": [
+			{
+				"id": "task_submission_artifact",
+				"label": "Upload Submission Artifact",
+				"description": "Add a governed artifact to this Task Submission.",
+				"api_method": "ifitwala_drive.api.submissions.upload_task_submission_artifact",
+				"payload": {
+					"task_submission": "TSUB-0001",
+					"upload_source": "SPA",
+				},
+				"destination_label": "Submission Artifacts",
+			}
+		],
 	}
 
 
@@ -362,6 +378,19 @@ def test_list_context_files_returns_direct_owner_files_without_binding():
 				"item_type": "file",
 			}
 		],
+		"upload_actions": [
+			{
+				"id": "task_submission_artifact",
+				"label": "Upload Submission Artifact",
+				"description": "Add a governed artifact to this Task Submission.",
+				"api_method": "ifitwala_drive.api.submissions.upload_task_submission_artifact",
+				"payload": {
+					"task_submission": "TSUB-0002",
+					"upload_source": "SPA",
+				},
+				"destination_label": "Submission Artifacts",
+			}
+		],
 	}
 
 
@@ -407,6 +436,19 @@ def test_list_context_files_derives_general_reference_for_supporting_material():
 	assert len(response["files"]) == 1
 	assert response["files"][0]["binding_role"] == "general_reference"
 	assert response["items"][0]["binding_role"] == "general_reference"
+	assert response["upload_actions"] == [
+		{
+			"id": "supporting_material",
+			"label": "Upload Material File",
+			"description": "Add the governed file for this Supporting Material record.",
+			"api_method": "ifitwala_drive.api.materials.upload_supporting_material",
+			"payload": {
+				"material": "MAT-0001",
+				"upload_source": "SPA",
+			},
+			"destination_label": "Course Materials",
+		}
+	]
 
 
 def test_list_folder_items_returns_child_folders_and_files():
@@ -1125,7 +1167,151 @@ def test_list_context_files_returns_employee_child_folders_when_no_files_exist()
 				"item_type": "folder",
 			}
 		],
+		"upload_actions": [
+			{
+				"id": "employee_image",
+				"label": "Upload Employee Image",
+				"description": "Create or replace the governed employee profile image.",
+				"api_method": "ifitwala_drive.api.media.upload_employee_image",
+				"payload": {
+					"employee": "EMP-0001",
+					"upload_source": "SPA",
+				},
+				"destination_label": "Employee Image",
+			}
+		],
 	}
+
+
+def test_list_context_files_omits_upload_actions_when_context_is_not_writable():
+	_purge_modules("frappe", "ifitwala_drive.services.folders.browse")
+	material = FakeDoc({"name": "MAT-READONLY", "permission_errors": {"write": True}})
+	_install_fake_frappe(
+		exists_map={("Supporting Material", "MAT-READONLY"): True},
+		docs_map={
+			("Supporting Material", "MAT-READONLY"): material,
+		},
+		get_all_handlers={
+			"Drive Binding": lambda **kwargs: [],
+			"Drive File": lambda **kwargs: [],
+			"Drive Folder": lambda **kwargs: [],
+		},
+	)
+	module = _load_module("ifitwala_drive.services.folders.browse")
+
+	response = module.list_context_files_service(
+		{
+			"doctype": "Supporting Material",
+			"name": "MAT-READONLY",
+		}
+	)
+
+	assert response["context"] == {"doctype": "Supporting Material", "name": "MAT-READONLY"}
+	assert response["files"] == []
+	assert response["items"] == []
+	assert "upload_actions" not in response
+
+
+def test_list_folder_items_exposes_task_resource_upload_action_for_task_folders():
+	_purge_modules("frappe", "ifitwala_drive.services.folders.browse")
+	task_doc = FakeDoc({"name": "TASK-0001"})
+	resources_folder = FakeDoc(
+		{
+			"name": "DRF-TASK-RESOURCES",
+			"title": "Resources",
+			"path_cache": "courses/course-0001/tasks/task-0001/resources",
+			"owner_doctype": "Task",
+			"owner_name": "TASK-0001",
+			"folder_kind": "course_shared",
+			"context_doctype": "Task",
+			"context_name": "TASK-0001",
+			"is_system_managed": 1,
+			"is_private": 1,
+		}
+	)
+	_install_fake_frappe(
+		exists_map={
+			("Drive Folder", "DRF-TASK-RESOURCES"): True,
+			("Task", "TASK-0001"): True,
+		},
+		docs_map={
+			("Drive Folder", "DRF-TASK-RESOURCES"): resources_folder,
+			("Task", "TASK-0001"): task_doc,
+		},
+		get_all_handlers={
+			"Drive Folder": lambda **kwargs: [],
+			"Drive File": lambda **kwargs: [],
+		},
+	)
+	module = _load_module("ifitwala_drive.services.folders.browse")
+
+	response = module.list_folder_items_service({"folder": "DRF-TASK-RESOURCES"})
+
+	assert response["folder"]["id"] == "DRF-TASK-RESOURCES"
+	assert response["upload_actions"] == [
+		{
+			"id": "task_resource",
+			"label": "Upload Resource",
+			"description": "Add a governed file to this Task's Resources folder.",
+			"api_method": "ifitwala_drive.api.resources.upload_task_resource",
+			"payload": {
+				"task": "TASK-0001",
+				"upload_source": "SPA",
+			},
+			"destination_label": "Task Resources",
+		}
+	]
+
+
+def test_list_folder_items_exposes_organization_logo_upload_for_logo_folder():
+	_purge_modules("frappe", "ifitwala_drive.services.folders.browse")
+	organization_doc = FakeDoc({"name": "ORG-0001"})
+	logos_folder = FakeDoc(
+		{
+			"name": "DRF-ORG-LOGOS",
+			"title": "Logos",
+			"path_cache": "organization-media/logos",
+			"owner_doctype": "Organization",
+			"owner_name": "ORG-0001",
+			"folder_kind": "organization_media",
+			"context_doctype": "Organization",
+			"context_name": "ORG-0001",
+			"is_system_managed": 1,
+			"is_private": 0,
+		}
+	)
+	_install_fake_frappe(
+		exists_map={
+			("Drive Folder", "DRF-ORG-LOGOS"): True,
+			("Organization", "ORG-0001"): True,
+		},
+		docs_map={
+			("Drive Folder", "DRF-ORG-LOGOS"): logos_folder,
+			("Organization", "ORG-0001"): organization_doc,
+		},
+		get_all_handlers={
+			"Drive Folder": lambda **kwargs: [],
+			"Drive File": lambda **kwargs: [],
+		},
+	)
+	module = _load_module("ifitwala_drive.services.folders.browse")
+
+	response = module.list_folder_items_service({"folder": "DRF-ORG-LOGOS"})
+
+	assert response["folder"]["id"] == "DRF-ORG-LOGOS"
+	assert response["upload_actions"] == [
+		{
+			"id": "organization_logo",
+			"label": "Upload Organization Logo",
+			"description": "Replace the governed organization logo used across Ifitwala_Ed.",
+			"api_method": "ifitwala_drive.api.media.upload_organization_logo",
+			"payload": {
+				"organization": "ORG-0001",
+				"upload_source": "SPA",
+			},
+			"destination_label": "Organization Logos",
+		}
+	]
 
 
 def test_list_workspace_home_prioritizes_review_targets_then_personal_contexts():
