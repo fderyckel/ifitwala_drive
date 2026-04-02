@@ -1,6 +1,8 @@
 export type FolderBreadcrumb = {
 	id: string
 	title: string
+	display_title?: string | null
+	display_code?: string | null
 	path_cache?: string | null
 }
 
@@ -25,8 +27,12 @@ export type UploadAction = {
 export type FolderSummary = {
 	id: string
 	title: string
+	display_title?: string | null
+	display_code?: string | null
 	path_cache?: string | null
 	context_path?: string | null
+	display_path?: string | null
+	display_caption?: string | null
 	folder_kind?: string | null
 	parent_folder?: string | null
 	breadcrumbs?: FolderBreadcrumb[]
@@ -45,6 +51,7 @@ export type FileSummary = {
 	id: string
 	drive_file_id?: string
 	title?: string | null
+	display_title?: string | null
 	canonical_ref?: string | null
 	slot?: string | null
 	current_version_no?: number | null
@@ -53,6 +60,7 @@ export type FileSummary = {
 	folder?: FolderSummary | null
 	folder_path?: string | null
 	context_path?: string | null
+	display_path?: string | null
 	attached_to?: AttachedTo
 	can_preview?: boolean
 	can_download?: boolean
@@ -76,6 +84,7 @@ export type WorkspaceHomeTarget = {
 	target_kind: 'folder' | 'context'
 	label: string
 	caption?: string | null
+	display_code?: string | null
 	badge?: string | null
 	href: string
 	folder?: string | null
@@ -97,11 +106,15 @@ export type WorkspaceHomeResponse = {
 	suggested_target?: WorkspaceHomeTarget | null
 }
 
+export type ContextSummary = {
+	doctype: string
+	name: string
+	display_title?: string | null
+	display_code?: string | null
+}
+
 export type ContextBrowseResponse = {
-	context: {
-		doctype: string
-		name: string
-	}
+	context: ContextSummary
 	folders?: FolderSummary[]
 	files: FileSummary[]
 	items?: FolderItem[]

@@ -11,6 +11,7 @@ import {
 } from "@/features/workspace/api";
 import { performGovernedUpload } from "@/features/workspace/uploads";
 import type {
+	ContextSummary,
 	FileSummary,
 	FolderBreadcrumb,
 	FolderItem,
@@ -44,6 +45,7 @@ const subheading = ref("Browse governed files with record-based access.");
 const statusMessage = ref("");
 const statusTone = ref<StatusTone>("neutral");
 const breadcrumbs = ref<FolderBreadcrumb[]>([]);
+const contextSummary = ref<ContextSummary | null>(null);
 const folderSummary = ref<FolderSummary | null>(null);
 const items = ref<FolderItem[]>([]);
 const homeSections = ref<WorkspaceHomeSection[]>([]);
@@ -72,15 +74,39 @@ const orderedItems = computed(() =>
 		return left.item_type === "folder" ? -1 : 1;
 	})
 );
+
+function joinMeta(parts: Array<string | null | undefined>): string {
+	return parts
+		.map((part) => (part || "").trim())
+		.filter(Boolean)
+		.join(" · ");
+}
+
 const scopeTitle = computed(() => {
+	if (folderSummary.value?.display_title) return folderSummary.value.display_title;
 	if (folderSummary.value?.title) return folderSummary.value.title;
+	if (contextSummary.value?.display_title) return contextSummary.value.display_title;
 	if (query.doctype && query.name) return `${query.doctype} · ${query.name}`;
 	return "Workspace";
 });
 const scopeDetail = computed(() => {
-	if (folderSummary.value?.context_path) return folderSummary.value.context_path;
-	if (folderSummary.value?.path_cache) return folderSummary.value.path_cache;
+	const folderPath =
+		folderSummary.value?.display_path ||
+		folderSummary.value?.display_caption ||
+		folderSummary.value?.context_path ||
+		folderSummary.value?.path_cache;
+	if (folderPath || folderSummary.value?.display_code) {
+		return (
+			joinMeta([folderSummary.value?.display_code, folderPath]) || "Governed folder browser"
+		);
+	}
 	if (query.bindingRole) return `Filtered to ${query.bindingRole}`;
+	if (contextSummary.value?.display_code) {
+		return joinMeta([
+			contextSummary.value.display_code,
+			"Open the folders or files governed by this record.",
+		]);
+	}
 	if (query.doctype && query.name) return "Open the folders or files governed by this record.";
 	if (homeLocationCount.value) return "Open a governed location to browse or upload files.";
 	return "No governed files are available to this account yet.";
@@ -132,7 +158,10 @@ const sidebarSections = computed<SidebarSection[]>(() => {
 			items: section.items.map((target) => ({
 				id: target.id,
 				label: target.label,
-				caption: target.caption || target.badge || section.description || "",
+				caption: joinMeta([
+					target.display_code,
+					target.caption || target.badge || section.description || "",
+				]),
 				href: target.href,
 				kind: target.target_kind === "folder" ? "folder" : "context",
 				isActive: currentLocationHref.value === target.href,
@@ -180,7 +209,7 @@ function folderLink(folderId: string): string {
 }
 
 function titleForFile(file: FileSummary): string {
-	return file.title || file.id || "Untitled file";
+	return file.display_title || file.title || "Untitled file";
 }
 
 function itemKindLabel(item: FolderItem): string {
@@ -189,8 +218,10 @@ function itemKindLabel(item: FolderItem): string {
 }
 
 function itemLocationLabel(item: FolderItem): string {
-	if (item.item_type === "folder") return item.context_path || item.path_cache || "Folder";
-	return item.context_path || item.folder_path || "Governed file";
+	if (item.item_type === "folder") {
+		return item.display_path || item.context_path || item.path_cache || "Folder";
+	}
+	return item.display_path || item.context_path || item.folder_path || "Governed file";
 }
 
 function rowHref(item: FolderItem): string | undefined {
@@ -199,16 +230,23 @@ function rowHref(item: FolderItem): string | undefined {
 }
 
 function titleForItem(item: FolderItem): string {
-	if (item.item_type === "folder") return item.title;
+	if (item.item_type === "folder") return item.display_title || item.title || "Folder";
 	return titleForFile(item);
 }
 
 function descriptionForItem(item: FolderItem): string {
-	if (item.item_type === "folder") return item.context_path || item.path_cache || "Folder";
+	if (item.item_type === "folder") {
+		return (
+			joinMeta([
+				item.display_code,
+				item.display_path || item.context_path || item.path_cache,
+			]) || "Folder"
+		);
+	}
 	if (item.attached_to?.doctype && item.attached_to?.name) {
 		return `Attached to ${item.attached_to.doctype} · ${item.attached_to.name}`;
 	}
-	return item.folder_path || item.context_path || "Governed file";
+	return item.display_path || item.folder_path || item.context_path || "Governed file";
 }
 
 function iconClass(kind: SidebarNodeKind | "file"): string {
@@ -278,6 +316,7 @@ async function loadWorkspace() {
 			"Open the governed folders and record-owned collections you can already access.";
 		items.value = [];
 		breadcrumbs.value = [];
+		contextSummary.value = null;
 		folderSummary.value = null;
 		locationUploadActions.value = [];
 		return;
@@ -288,12 +327,17 @@ async function loadWorkspace() {
 		if (query.folder) {
 			const response = await browseFolder(query.folder);
 			modeLabel.value = "Folder";
-			heading.value = response.folder.title;
+			heading.value = response.folder.display_title || response.folder.title || "Folder";
 			subheading.value =
-				response.folder.context_path ||
-				response.folder.path_cache ||
-				"Governed folder browser";
+				joinMeta([
+					response.folder.display_code,
+					response.folder.display_path ||
+						response.folder.display_caption ||
+						response.folder.context_path ||
+						response.folder.path_cache,
+				]) || "Governed folder browser";
 			breadcrumbs.value = response.folder.breadcrumbs || [];
+			contextSummary.value = null;
 			folderSummary.value = response.folder;
 			items.value = response.items;
 			locationUploadActions.value = response.upload_actions || [];
@@ -305,10 +349,13 @@ async function loadWorkspace() {
 		const name = query.name as string;
 		const response = await browseContext(doctype, name, query.bindingRole);
 		modeLabel.value = "Context";
-		heading.value = `${doctype} · ${name}`;
-		subheading.value = query.bindingRole
-			? `Governed files filtered to ${query.bindingRole}`
-			: "Governed files anchored to this record.";
+		heading.value = response.context.display_title || `${doctype} · ${name}`;
+		subheading.value = joinMeta([
+			response.context.display_code,
+			query.bindingRole
+				? `Governed files filtered to ${query.bindingRole}`
+				: "Governed files anchored to this record.",
+		]);
 		const normalizedItems: FolderItem[] = response.items?.length
 			? response.items
 			: response.files.map((file) => ({
@@ -323,6 +370,7 @@ async function loadWorkspace() {
 		) as FileSummary | undefined;
 		breadcrumbs.value =
 			firstFolder?.breadcrumbs || firstFileWithFolder?.folder?.breadcrumbs || [];
+		contextSummary.value = response.context;
 		folderSummary.value = firstFolder || firstFileWithFolder?.folder || null;
 		items.value = normalizedItems;
 		locationUploadActions.value = response.upload_actions || [];
@@ -331,6 +379,7 @@ async function loadWorkspace() {
 		const message = error instanceof Error ? error.message : "Unable to load this location.";
 		items.value = [];
 		breadcrumbs.value = [];
+		contextSummary.value = null;
 		folderSummary.value = null;
 		locationUploadActions.value = [];
 		setStatus(message, "error");
@@ -505,7 +554,7 @@ onMounted(() => {
 						class="drive-crumb"
 						:href="folderLink(crumb.id)"
 					>
-						{{ crumb.title || crumb.id }}
+						{{ crumb.display_title || crumb.title || "Folder" }}
 					</a>
 				</nav>
 
@@ -575,9 +624,12 @@ onMounted(() => {
 											>
 											<p class="drive-browser-row__description">
 												{{
-													target.caption ||
-													section.description ||
-													"Governed location"
+													joinMeta([
+														target.display_code,
+														target.caption ||
+															section.description ||
+															"Governed location",
+													])
 												}}
 											</p>
 										</div>

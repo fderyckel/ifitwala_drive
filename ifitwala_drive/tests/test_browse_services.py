@@ -6,8 +6,15 @@ import types
 
 
 def _purge_modules(*prefixes: str) -> None:
+	internal_prefixes = (
+		"ifitwala_drive.services.integration.ifitwala_ed_bridge",
+		"ifitwala_drive.services.integration._ed_delegate",
+	)
 	for module_name in list(sys.modules):
-		if any(module_name == prefix or module_name.startswith(f"{prefix}.") for prefix in prefixes):
+		if any(
+			module_name == prefix or module_name.startswith(f"{prefix}.")
+			for prefix in (*prefixes, *internal_prefixes)
+		):
 			sys.modules.pop(module_name, None)
 
 
@@ -196,6 +203,7 @@ def test_list_context_files_returns_bound_drive_files():
 							"id": "DRF-TASK",
 							"title": "TASK-0001",
 							"path_cache": "student/task-0001",
+							"display_title": "Task",
 						},
 						{
 							"id": "DRF-0001",
@@ -213,9 +221,12 @@ def test_list_context_files_returns_bound_drive_files():
 					},
 					"is_system_managed": 1,
 					"is_private": 1,
+					"display_path": "Student / Task / Submissions",
+					"display_caption": "Student / Task / Submissions",
 				},
 				"folder_path": "student/task-0001/submissions",
 				"context_path": "Student / TASK-0001 / Submissions",
+				"display_path": "Student / Task / Submissions",
 				"attached_to": {
 					"doctype": "Task Submission",
 					"name": "TSUB-0001",
@@ -251,6 +262,7 @@ def test_list_context_files_returns_bound_drive_files():
 							"id": "DRF-TASK",
 							"title": "TASK-0001",
 							"path_cache": "student/task-0001",
+							"display_title": "Task",
 						},
 						{
 							"id": "DRF-0001",
@@ -268,9 +280,12 @@ def test_list_context_files_returns_bound_drive_files():
 					},
 					"is_system_managed": 1,
 					"is_private": 1,
+					"display_path": "Student / Task / Submissions",
+					"display_caption": "Student / Task / Submissions",
 				},
 				"folder_path": "student/task-0001/submissions",
 				"context_path": "Student / TASK-0001 / Submissions",
+				"display_path": "Student / Task / Submissions",
 				"attached_to": {
 					"doctype": "Task Submission",
 					"name": "TSUB-0001",
@@ -294,6 +309,112 @@ def test_list_context_files_returns_bound_drive_files():
 			}
 		],
 	}
+
+
+def test_list_context_files_uses_semantic_task_titles_in_submission_paths():
+	_purge_modules("frappe", "ifitwala_drive.services.folders.browse")
+	task_submission = FakeDoc({"name": "TSUB-0001"})
+	student_doc = FakeDoc({"name": "STU-0001", "student_full_name": "Jane Doe"})
+	task_doc = FakeDoc({"name": "TASK-0001", "title": "Biology Quiz 3"})
+	student_root = FakeDoc(
+		{
+			"name": "DRF-STUDENT",
+			"title": "Student",
+			"path_cache": "student",
+			"owner_doctype": "Student",
+			"owner_name": "STU-0001",
+			"folder_kind": "system_bound",
+			"context_doctype": "Student",
+			"context_name": "STU-0001",
+			"is_system_managed": 1,
+			"is_private": 1,
+		}
+	)
+	task_root = FakeDoc(
+		{
+			"name": "DRF-TASK",
+			"title": "TASK-0001",
+			"path_cache": "student/task-0001",
+			"parent_drive_folder": "DRF-STUDENT",
+			"owner_doctype": "Student",
+			"owner_name": "STU-0001",
+			"folder_kind": "student_workspace",
+			"context_doctype": "Student",
+			"context_name": "STU-0001",
+			"is_system_managed": 1,
+			"is_private": 1,
+		}
+	)
+	submissions_folder = FakeDoc(
+		{
+			"name": "DRF-0001",
+			"title": "Submissions",
+			"path_cache": "student/task-0001/submissions",
+			"parent_drive_folder": "DRF-TASK",
+			"owner_doctype": "Student",
+			"owner_name": "STU-0001",
+			"folder_kind": "student_workspace",
+			"context_doctype": "Student",
+			"context_name": "STU-0001",
+			"is_system_managed": 1,
+			"is_private": 1,
+		}
+	)
+	_install_fake_frappe(
+		exists_map={
+			("Task Submission", "TSUB-0001"): True,
+			("Student", "STU-0001"): True,
+			("Task", "TASK-0001"): True,
+		},
+		docs_map={
+			("Task Submission", "TSUB-0001"): task_submission,
+			("Student", "STU-0001"): student_doc,
+			("Task", "TASK-0001"): task_doc,
+			("Drive Folder", "DRF-STUDENT"): student_root,
+			("Drive Folder", "DRF-TASK"): task_root,
+			("Drive Folder", "DRF-0001"): submissions_folder,
+		},
+		get_all_handlers={
+			"Drive Binding": lambda **kwargs: [
+				{
+					"drive_file": "DF-0001",
+					"binding_role": "submission_artifact",
+					"slot": "submission",
+					"is_primary": 1,
+					"modified": "2026-03-18 10:00:00",
+				}
+			],
+			"Drive File": lambda **kwargs: [
+				{
+					"name": "DF-0001",
+					"canonical_ref": "drv:ORG-0001:DF-0001",
+					"slot": "submission",
+					"display_name": "essay.docx",
+					"current_version_no": 1,
+					"preview_status": "pending",
+					"folder": "DRF-0001",
+					"attached_doctype": "Task Submission",
+					"attached_name": "TSUB-0001",
+				}
+			],
+		},
+	)
+	module = _load_module("ifitwala_drive.services.folders.browse")
+
+	response = module.list_context_files_service(
+		{
+			"doctype": "Task Submission",
+			"name": "TSUB-0001",
+			"binding_role": "submission_artifact",
+		}
+	)
+
+	folder = response["files"][0]["folder"]
+	assert folder["display_path"] == "Jane Doe / Biology Quiz 3 / Submissions"
+	assert folder["breadcrumbs"][0]["display_title"] == "Jane Doe"
+	assert folder["breadcrumbs"][0]["display_code"] == "STU-0001"
+	assert folder["breadcrumbs"][1]["display_title"] == "Biology Quiz 3"
+	assert folder["breadcrumbs"][1]["display_code"] == "TASK-0001"
 
 
 def test_list_context_files_returns_direct_owner_files_without_binding():
@@ -781,6 +902,86 @@ def test_list_workspace_roots_returns_only_accessible_root_folders():
 	}
 
 
+def test_list_workspace_roots_masks_opaque_root_titles():
+	_purge_modules("frappe", "ifitwala_drive.services.folders.browse")
+	organization_doc = FakeDoc({"name": "ORG-0001"})
+	opaque_root = FakeDoc(
+		{
+			"name": "DRF-ROOT-EMP",
+			"title": "DRF-06B68124933A03E9",
+			"path_cache": "drf-06b68124933a03e9",
+			"owner_doctype": "Organization",
+			"owner_name": "ORG-0001",
+			"folder_kind": "system_bound",
+			"context_doctype": "Employee",
+			"context_name": None,
+			"is_system_managed": 1,
+			"is_private": 1,
+		}
+	)
+	_install_fake_frappe(
+		exists_map={
+			("Organization", "ORG-0001"): True,
+			("Drive Folder", "DRF-ROOT-EMP"): True,
+		},
+		docs_map={
+			("Organization", "ORG-0001"): organization_doc,
+			("Drive Folder", "DRF-ROOT-EMP"): opaque_root,
+		},
+		get_all_handlers={
+			"Drive Folder": lambda **kwargs: [
+				{
+					"name": "DRF-ROOT-EMP",
+					"title": "DRF-06B68124933A03E9",
+					"path_cache": "drf-06b68124933a03e9",
+					"parent_drive_folder": None,
+					"owner_doctype": "Organization",
+					"owner_name": "ORG-0001",
+					"folder_kind": "system_bound",
+					"context_doctype": "Employee",
+					"context_name": None,
+					"is_system_managed": 1,
+					"is_private": 1,
+					"modified": "2026-03-19 09:00:00",
+				}
+			],
+		},
+	)
+	module = _load_module("ifitwala_drive.services.folders.browse")
+
+	response = module.list_workspace_roots_service({})
+
+	assert response == {
+		"roots": [
+			{
+				"id": "DRF-ROOT-EMP",
+				"title": "DRF-06B68124933A03E9",
+				"display_title": "Employee",
+				"path_cache": "drf-06b68124933a03e9",
+				"context_path": "DRF-06B68124933A03E9",
+				"display_path": "Employee",
+				"folder_kind": "system_bound",
+				"parent_folder": None,
+				"breadcrumbs": [
+					{
+						"id": "DRF-ROOT-EMP",
+						"title": "DRF-06B68124933A03E9",
+						"display_title": "Employee",
+						"path_cache": "drf-06b68124933a03e9",
+					}
+				],
+				"owner": {
+					"doctype": "Organization",
+					"name": "ORG-0001",
+				},
+				"context": None,
+				"is_system_managed": 1,
+				"is_private": 1,
+			}
+		]
+	}
+
+
 def test_list_folder_items_filters_unreadable_children_and_files():
 	_purge_modules("frappe", "ifitwala_drive.services.folders.browse")
 	root_doc = FakeDoc(
@@ -928,6 +1129,83 @@ def test_list_folder_items_filters_unreadable_children_and_files():
 	response = module.list_folder_items_service({"folder": "DRF-EMP-ROOT"})
 
 	assert [item["id"] for item in response["items"]] == ["DRF-EMP-0001", "DF-EMP-0001"]
+
+
+def test_list_folder_items_exposes_semantic_employee_titles_with_codes():
+	_purge_modules("frappe", "ifitwala_drive.services.folders.browse")
+	root_doc = FakeDoc(
+		{
+			"name": "DRF-EMP-ROOT",
+			"title": "Employees",
+			"path_cache": "employees",
+			"owner_doctype": "Organization",
+			"owner_name": "ORG-0001",
+			"folder_kind": "system_bound",
+			"context_doctype": "Employee",
+			"is_system_managed": 1,
+			"is_private": 1,
+		}
+	)
+	employee_doc = FakeDoc({"name": "EMP-0001", "employee_full_name": "Ada Lovelace"})
+	child_visible = FakeDoc(
+		{
+			"name": "DRF-EMP-0001",
+			"title": "EMP-0001",
+			"path_cache": "employees/emp-0001",
+			"parent_drive_folder": "DRF-EMP-ROOT",
+			"owner_doctype": "Employee",
+			"owner_name": "EMP-0001",
+			"folder_kind": "staff_documents",
+			"context_doctype": "Employee",
+			"context_name": "EMP-0001",
+			"is_system_managed": 1,
+			"is_private": 1,
+		}
+	)
+	organization_doc = FakeDoc({"name": "ORG-0001"})
+	_install_fake_frappe(
+		exists_map={
+			("Drive Folder", "DRF-EMP-ROOT"): True,
+			("Drive Folder", "DRF-EMP-0001"): True,
+			("Organization", "ORG-0001"): True,
+			("Employee", "EMP-0001"): True,
+		},
+		docs_map={
+			("Drive Folder", "DRF-EMP-ROOT"): root_doc,
+			("Drive Folder", "DRF-EMP-0001"): child_visible,
+			("Organization", "ORG-0001"): organization_doc,
+			("Employee", "EMP-0001"): employee_doc,
+		},
+		get_all_handlers={
+			"Drive Folder": lambda **kwargs: [
+				{
+					"name": "DRF-EMP-0001",
+					"title": "EMP-0001",
+					"path_cache": "employees/emp-0001",
+					"parent_drive_folder": "DRF-EMP-ROOT",
+					"owner_doctype": "Employee",
+					"owner_name": "EMP-0001",
+					"folder_kind": "staff_documents",
+					"context_doctype": "Employee",
+					"context_name": "EMP-0001",
+					"is_system_managed": 1,
+					"is_private": 1,
+					"modified": "2026-03-20 10:00:00",
+				}
+			],
+			"Drive File": lambda **kwargs: [],
+		},
+	)
+	module = _load_module("ifitwala_drive.services.folders.browse")
+
+	response = module.list_folder_items_service({"folder": "DRF-EMP-ROOT"})
+
+	folder = response["items"][0]
+	assert folder["display_title"] == "Ada Lovelace"
+	assert folder["display_code"] == "EMP-0001"
+	assert folder["display_path"] == "Employees / Ada Lovelace"
+	assert folder["breadcrumbs"][1]["display_title"] == "Ada Lovelace"
+	assert folder["breadcrumbs"][1]["display_code"] == "EMP-0001"
 
 
 def test_list_context_files_returns_employee_child_folders_when_no_files_exist():
@@ -1088,99 +1366,163 @@ def test_list_context_files_returns_employee_child_folders_when_no_files_exist()
 
 	response = module.list_context_files_service({"doctype": "Employee", "name": "EMP-0001"})
 
-	assert response == {
-		"context": {"doctype": "Employee", "name": "EMP-0001"},
-		"folders": [
-			{
-				"id": "DRF-EMP-PROFILE",
-				"title": "Profile",
-				"path_cache": "employees/emp-0001/profile",
-				"context_path": "Employees / EMP-0001 / Profile",
-				"folder_kind": "staff_documents",
-				"parent_folder": "DRF-EMP-0001",
-				"breadcrumbs": [
+	assert response["context"] == {"doctype": "Employee", "name": "EMP-0001"}
+	assert response["files"] == []
+	assert [folder["id"] for folder in response["folders"]] == ["DRF-EMP-PROFILE"]
+	assert response["folders"][0]["context_path"] == "Employees / EMP-0001 / Profile"
+	assert response["items"][0]["id"] == "DRF-EMP-PROFILE"
+	assert response["upload_actions"] == [
+		{
+			"id": "employee_image",
+			"label": "Upload Employee Image",
+			"description": "Create or replace the governed employee profile image.",
+			"api_method": "ifitwala_drive.api.media.upload_employee_image",
+			"payload": {
+				"employee": "EMP-0001",
+				"upload_source": "SPA",
+			},
+			"destination_label": "Employee Image",
+		}
+	]
+
+
+def test_list_context_files_exposes_semantic_employee_context_metadata():
+	_purge_modules("frappe", "ifitwala_drive.services.folders.browse")
+	employee_doc = FakeDoc(
+		{
+			"name": "EMP-0001",
+			"employee_full_name": "Ada Lovelace",
+			"organization": "ORG-0001",
+			"school": "SCH-0001",
+		}
+	)
+	organization_doc = FakeDoc({"name": "ORG-0001"})
+	employee_root = FakeDoc(
+		{
+			"name": "DRF-EMP-0001",
+			"title": "EMP-0001",
+			"path_cache": "employees/emp-0001",
+			"parent_drive_folder": "DRF-EMP-ROOT",
+			"owner_doctype": "Employee",
+			"owner_name": "EMP-0001",
+			"folder_kind": "staff_documents",
+			"context_doctype": "Employee",
+			"context_name": "EMP-0001",
+			"is_system_managed": 1,
+			"is_private": 1,
+		}
+	)
+	profile_folder = FakeDoc(
+		{
+			"name": "DRF-EMP-PROFILE",
+			"title": "Profile",
+			"path_cache": "employees/emp-0001/profile",
+			"parent_drive_folder": "DRF-EMP-0001",
+			"owner_doctype": "Employee",
+			"owner_name": "EMP-0001",
+			"folder_kind": "staff_documents",
+			"context_doctype": "Employee",
+			"context_name": "EMP-0001",
+			"is_system_managed": 1,
+			"is_private": 1,
+		}
+	)
+	employees_root = FakeDoc(
+		{
+			"name": "DRF-EMP-ROOT",
+			"title": "Employees",
+			"path_cache": "employees",
+			"owner_doctype": "Organization",
+			"owner_name": "ORG-0001",
+			"folder_kind": "system_bound",
+			"context_doctype": "Employee",
+			"context_name": None,
+			"is_system_managed": 1,
+			"is_private": 1,
+		}
+	)
+	_install_fake_frappe(
+		exists_map={
+			("Employee", "EMP-0001"): True,
+			("Organization", "ORG-0001"): True,
+			("Drive Folder", "DRF-EMP-ROOT"): True,
+			("Drive Folder", "DRF-EMP-0001"): True,
+			("Drive Folder", "DRF-EMP-PROFILE"): True,
+		},
+		docs_map={
+			("Employee", "EMP-0001"): employee_doc,
+			("Organization", "ORG-0001"): organization_doc,
+			("Drive Folder", "DRF-EMP-ROOT"): employees_root,
+			("Drive Folder", "DRF-EMP-0001"): employee_root,
+			("Drive Folder", "DRF-EMP-PROFILE"): profile_folder,
+		},
+		get_all_handlers={
+			"Drive Folder": lambda **kwargs: (
+				[
 					{
-						"id": "DRF-EMP-ROOT",
-						"title": "Employees",
-						"path_cache": "employees",
-					},
-					{
-						"id": "DRF-EMP-0001",
+						"name": "DRF-EMP-0001",
 						"title": "EMP-0001",
 						"path_cache": "employees/emp-0001",
+						"parent_drive_folder": "DRF-EMP-ROOT",
+						"owner_doctype": "Employee",
+						"owner_name": "EMP-0001",
+						"folder_kind": "staff_documents",
+						"context_doctype": "Employee",
+						"context_name": "EMP-0001",
+						"is_system_managed": 1,
+						"is_private": 1,
+						"modified": "2026-03-20 10:00:00",
 					},
 					{
-						"id": "DRF-EMP-PROFILE",
+						"name": "DRF-EMP-PROFILE",
 						"title": "Profile",
 						"path_cache": "employees/emp-0001/profile",
+						"parent_drive_folder": "DRF-EMP-0001",
+						"owner_doctype": "Employee",
+						"owner_name": "EMP-0001",
+						"folder_kind": "staff_documents",
+						"context_doctype": "Employee",
+						"context_name": "EMP-0001",
+						"is_system_managed": 1,
+						"is_private": 1,
+						"modified": "2026-03-20 09:00:00",
 					},
-				],
-				"owner": {
-					"doctype": "Employee",
-					"name": "EMP-0001",
-				},
-				"context": {
-					"doctype": "Employee",
-					"name": "EMP-0001",
-				},
-				"is_system_managed": 1,
-				"is_private": 1,
-				"item_type": "folder",
-			}
-		],
-		"files": [],
-		"items": [
-			{
-				"id": "DRF-EMP-PROFILE",
-				"title": "Profile",
-				"path_cache": "employees/emp-0001/profile",
-				"context_path": "Employees / EMP-0001 / Profile",
-				"folder_kind": "staff_documents",
-				"parent_folder": "DRF-EMP-0001",
-				"breadcrumbs": [
+				]
+				if kwargs["filters"].get("context_name") == "EMP-0001"
+				else [
 					{
-						"id": "DRF-EMP-ROOT",
-						"title": "Employees",
-						"path_cache": "employees",
-					},
-					{
-						"id": "DRF-EMP-0001",
-						"title": "EMP-0001",
-						"path_cache": "employees/emp-0001",
-					},
-					{
-						"id": "DRF-EMP-PROFILE",
+						"name": "DRF-EMP-PROFILE",
 						"title": "Profile",
 						"path_cache": "employees/emp-0001/profile",
-					},
-				],
-				"owner": {
-					"doctype": "Employee",
-					"name": "EMP-0001",
-				},
-				"context": {
-					"doctype": "Employee",
-					"name": "EMP-0001",
-				},
-				"is_system_managed": 1,
-				"is_private": 1,
-				"item_type": "folder",
-			}
-		],
-		"upload_actions": [
-			{
-				"id": "employee_image",
-				"label": "Upload Employee Image",
-				"description": "Create or replace the governed employee profile image.",
-				"api_method": "ifitwala_drive.api.media.upload_employee_image",
-				"payload": {
-					"employee": "EMP-0001",
-					"upload_source": "SPA",
-				},
-				"destination_label": "Employee Image",
-			}
-		],
+						"parent_drive_folder": "DRF-EMP-0001",
+						"owner_doctype": "Employee",
+						"owner_name": "EMP-0001",
+						"folder_kind": "staff_documents",
+						"context_doctype": "Employee",
+						"context_name": "EMP-0001",
+						"is_system_managed": 1,
+						"is_private": 1,
+						"modified": "2026-03-20 09:00:00",
+					}
+				]
+			),
+			"Drive Binding": lambda **kwargs: [],
+			"Drive File": lambda **kwargs: [],
+		},
+	)
+	module = _load_module("ifitwala_drive.services.folders.browse")
+
+	response = module.list_context_files_service({"doctype": "Employee", "name": "EMP-0001"})
+
+	assert response["context"] == {
+		"doctype": "Employee",
+		"name": "EMP-0001",
+		"display_title": "Ada Lovelace",
+		"display_code": "EMP-0001",
 	}
+	assert response["folders"][0]["display_path"] == "Employees / Ada Lovelace / Profile"
+	assert response["folders"][0]["breadcrumbs"][1]["display_title"] == "Ada Lovelace"
+	assert response["folders"][0]["breadcrumbs"][1]["display_code"] == "EMP-0001"
 
 
 def test_list_context_files_omits_upload_actions_when_context_is_not_writable():
@@ -1453,7 +1795,7 @@ def test_list_workspace_home_prioritizes_review_targets_then_personal_contexts()
 
 def test_list_workspace_home_includes_hr_employee_directory_targets():
 	_purge_modules("frappe", "ifitwala_drive.services.folders.browse")
-	readable_employee = FakeDoc({"name": "EMP-0001"})
+	readable_employee = FakeDoc({"name": "EMP-0001", "employee_full_name": "Ada Lovelace"})
 	forbidden_employee = FakeDoc({"name": "EMP-0002", "permission_error": True})
 	_install_fake_frappe(
 		exists_map={
@@ -1502,6 +1844,7 @@ def test_list_workspace_home_includes_hr_employee_directory_targets():
 			"target_kind": "context",
 			"label": "Ada Lovelace",
 			"caption": "EMP-0001 \u00b7 SCH-0001",
+			"display_code": "EMP-0001",
 			"badge": "Employee",
 			"href": "/drive_workspace?doctype=Employee&name=EMP-0001",
 			"folder": None,
