@@ -103,6 +103,26 @@ Drive stores:
 
 This preserves your locked rule that deleting student files must not break grades or analytics.
 
+### Org Communication attachment
+
+Org Communication stores:
+
+* the authored class announcement
+* attachment rows shown in archive/detail
+* external links when the teacher shares a URL instead of uploading a file
+
+Drive stores:
+
+* the governed class-communication file
+* one deterministic attachment slot per row
+* folder placement under the authoritative course and student-group context
+* preview/download grants for archive/history access
+
+Boundary rule:
+
+* Ed owns who can see the communication and whether the author can still access their own archive copy
+* Drive owns upload, classification, binding, storage, preview, and grant issuance
+
 ### Admissions
 
 Student Applicant stores:

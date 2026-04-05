@@ -52,6 +52,7 @@ _PARENT_TITLE_HINTS = {
 
 _BINDING_ROLE_DISPLAY_LABELS = {
 	"applicant_document": "Applicant document",
+	"communication_attachment": "Communication attachment",
 	"employee_image": "Employee image",
 	"general_reference": "Reference file",
 	"guardian_image": "Guardian image",

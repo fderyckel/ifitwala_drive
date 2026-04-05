@@ -116,6 +116,7 @@ Create an upload session before any governed file is finalized.
 * task submission UI
 * applicant document upload UI
 * organization media upload UI
+* class announcement attachment upload UI
 * future lesson/portfolio flows
 
 ### Required request shape
@@ -396,6 +397,7 @@ This rule applies to the current picture-oriented wrappers:
 * `ifitwala_drive.api.media.upload_employee_image`
 * `ifitwala_drive.api.admissions.upload_applicant_profile_image`
 * `ifitwala_drive.api.admissions.upload_applicant_guardian_image`
+* `ifitwala_drive.api.communications.upload_org_communication_attachment`
 
 For these wrappers:
 
@@ -404,6 +406,35 @@ For these wrappers:
 * callers in `ifitwala_ed` must derive `mime_type_hint` from the uploaded file object when available, or from `filename_original` as a fallback
 * transport-envelope MIME values such as `multipart/form-data` are invalid and must never be forwarded to Drive
 * Drive still performs authoritative byte inspection during finalize and must reject mismatches
+
+## 5.2 `upload_org_communication_attachment`
+
+### Purpose
+
+Upload a governed file attached to a class-context `Org Communication`.
+
+### Required request shape
+
+```json
+{
+  "org_communication": "COMM-0001",
+  "row_name": "optional-existing-attached-document-row",
+  "filename_original": "announcement.pdf",
+  "mime_type_hint": "application/pdf",
+  "expected_size_bytes": 123456
+}
+```
+
+### Governance implied by wrapper
+
+* owner_doctype = `Org Communication`
+* attached_doctype/name = `Org Communication` / communication id
+* primary_subject_type = `Organization`
+* data_class = `administrative`
+* purpose = `administrative`
+* retention_policy = `fixed_7y`
+* slot prefix = `communication_attachment__`
+* folder placement derives from Ed-owned course + student-group context
 
 ## 5.1 `upload_task_resource`
 

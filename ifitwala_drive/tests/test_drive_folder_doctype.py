@@ -111,3 +111,33 @@ def test_drive_folder_accepts_guardian_workspace_folder_kind():
 	)
 
 	guardian_profile._validate_folder_kind()
+
+
+def test_drive_folder_compacts_long_system_key_parts_to_stay_within_data_limit():
+	_purge_modules("frappe", "ifitwala_drive.ifitwala_drive.doctype.drive_folder.drive_folder")
+	_install_fake_frappe()
+	module = _load_module("ifitwala_drive.ifitwala_drive.doctype.drive_folder.drive_folder")
+
+	school_media_folder = _build_folder(
+		module,
+		title="Ifitwala Secondary School",
+		parent_drive_folder="DRF-A63C9A951F077AB2",
+		owner_doctype="Organization",
+		owner_name="Ifitwala Roots Campus",
+		organization="Ifitwala Roots Campus",
+		school="Ifitwala Secondary School",
+		folder_kind="organization_media",
+	)
+
+	school_media_folder.autoname()
+
+	assert len(school_media_folder.system_key) <= 140
+	assert "Ifitwala Roots Campus" not in school_media_folder.system_key
+	assert "Ifitwala Secondary School" not in school_media_folder.system_key
+	assert "Organization" in school_media_folder.system_key
+	assert "organization_media" not in school_media_folder.system_key
+	assert "organiz_" in school_media_folder.system_key
+	assert "DRF-A63C9A951F077AB2" in school_media_folder.system_key
+	assert school_media_folder.name == (
+		f"DRF-{hashlib.sha1(school_media_folder.system_key.encode('utf-8')).hexdigest()[:16].upper()}"
+	)

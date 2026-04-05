@@ -87,7 +87,7 @@
    "fieldname": "binding_role",
    "fieldtype": "Select",
    "label": "Binding Role",
-   "options": "task_resource\nsubmission_artifact\nfeedback_attachment\napplicant_document\nportfolio_evidence\norganization_media\nemployee_image\nstudent_image\nlesson_resource\nlesson_activity_resource\ngeneral_reference",
+   "options": "task_resource\nsubmission_artifact\nfeedback_attachment\napplicant_document\nportfolio_evidence\norganization_media\nemployee_image\nstudent_image\nlesson_resource\nlesson_activity_resource\ngeneral_reference\ncommunication_attachment",
    "reqd": 1
   },
   {
@@ -142,7 +142,7 @@
  "is_submittable": 0,
  "issingle": 0,
  "links": [],
- "modified": "2026-03-16 00:00:00.000000",
+ "modified": "2026-04-05 15:17:58.369493",
  "modified_by": "Administrator",
  "module": "Ifitwala Drive",
  "name": "Drive Binding",

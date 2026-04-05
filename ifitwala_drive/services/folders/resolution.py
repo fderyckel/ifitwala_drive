@@ -1,17 +1,9 @@
 from __future__ import annotations
 
-import re
-
 import frappe
 
 from ifitwala_drive.services.concurrency import drive_lock, is_duplicate_entry_error
-
-
-def _slugify(value: str | None) -> str:
-	value = (value or "").strip().lower()
-	value = re.sub(r"[^a-z0-9]+", "-", value)
-	value = re.sub(r"-{2,}", "-", value).strip("-")
-	return value or "folder"
+from ifitwala_drive.services.folders.key_builder import build_folder_system_key, slugify_folder_title
 
 
 def _folder_lookup_filters(
@@ -48,16 +40,15 @@ def _build_system_key(
 	school: str | None,
 	folder_kind: str,
 ) -> str:
-	parts = (
-		organization,
-		school or "no-school",
-		owner_doctype,
-		owner_name,
-		parent_drive_folder or "root",
-		folder_kind,
-		_slugify(title),
+	return build_folder_system_key(
+		title=title,
+		parent_drive_folder=parent_drive_folder,
+		owner_doctype=owner_doctype,
+		owner_name=owner_name,
+		organization=organization,
+		school=school,
+		folder_kind=folder_kind,
 	)
-	return "|".join(str(part or "").strip() for part in parts)
 
 
 def _ensure_folder(
@@ -99,7 +90,7 @@ def _ensure_folder(
 			owner_name,
 			parent_drive_folder or "root",
 			folder_kind,
-			_slugify(title),
+			slugify_folder_title(title),
 			school or "no-school",
 		]
 	)
@@ -112,7 +103,7 @@ def _ensure_folder(
 			{
 				"doctype": "Drive Folder",
 				"title": title,
-				"slug": _slugify(title),
+				"slug": slugify_folder_title(title),
 				"status": "active",
 				"is_system_managed": 1,
 				"system_key": system_key,
@@ -625,6 +616,65 @@ def resolve_task_resource_folder(
 		folder_kind="course_shared",
 		context_doctype="Task",
 		context_name=task,
+	)
+
+
+def resolve_org_communication_attachment_folder(
+	*,
+	org_communication: str,
+	course: str,
+	student_group: str,
+	organization: str,
+	school: str,
+) -> str:
+	course_root = _ensure_course_root(
+		course=course,
+		organization=organization,
+		school=school,
+	)
+	communications_root = _ensure_folder(
+		title="Communications",
+		parent_drive_folder=course_root,
+		owner_doctype="Course",
+		owner_name=course,
+		organization=organization,
+		school=school,
+		folder_kind="course_shared",
+		context_doctype="Course",
+		context_name=course,
+	)
+	student_group_root = _ensure_folder(
+		title=student_group,
+		parent_drive_folder=communications_root,
+		owner_doctype="Student Group",
+		owner_name=student_group,
+		organization=organization,
+		school=school,
+		folder_kind="course_shared",
+		context_doctype="Student Group",
+		context_name=student_group,
+	)
+	org_communication_root = _ensure_folder(
+		title=org_communication,
+		parent_drive_folder=student_group_root,
+		owner_doctype="Org Communication",
+		owner_name=org_communication,
+		organization=organization,
+		school=school,
+		folder_kind="course_shared",
+		context_doctype="Org Communication",
+		context_name=org_communication,
+	)
+	return _ensure_folder(
+		title="Attachments",
+		parent_drive_folder=org_communication_root,
+		owner_doctype="Org Communication",
+		owner_name=org_communication,
+		organization=organization,
+		school=school,
+		folder_kind="course_shared",
+		context_doctype="Org Communication",
+		context_name=org_communication,
 	)
 
 
