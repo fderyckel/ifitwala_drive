@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import sys
 import types
+from datetime import datetime
 
 from ifitwala_drive.services.storage.base import StorageRuntimeProfile
 
@@ -11,6 +12,13 @@ def _purge_modules(*prefixes: str) -> None:
 	for module_name in list(sys.modules):
 		if any(module_name == prefix or module_name.startswith(f"{prefix}.") for prefix in prefixes):
 			sys.modules.pop(module_name, None)
+
+
+def _install_fake_frappe():
+	frappe = types.ModuleType("frappe")
+	frappe.conf = {}
+	frappe.get_site_path = lambda *parts: "/tmp/ifitwala_drive_test"
+	sys.modules["frappe"] = frappe
 
 
 def _install_fake_google_cloud_storage(*, objects: dict[str, bytes]):
@@ -38,6 +46,18 @@ def _install_fake_google_cloud_storage(*, objects: dict[str, bytes]):
 				return content[start:]
 			return content[start : end + 1]
 
+		def generate_signed_url(self, version=None, expiration=None, method=None, response_disposition=None):
+			self.bucket.signed_requests.append(
+				{
+					"name": self.name,
+					"version": version,
+					"expiration": expiration,
+					"method": method,
+					"response_disposition": response_disposition,
+				}
+			)
+			return f"https://signed.invalid/{self.name}?method={method}"
+
 		def delete(self):
 			self.bucket.objects.pop(self.name, None)
 
@@ -46,6 +66,7 @@ def _install_fake_google_cloud_storage(*, objects: dict[str, bytes]):
 			self.name = name
 			self.objects = objects
 			self.sessions: list[dict[str, object]] = []
+			self.signed_requests: list[dict[str, object]] = []
 
 		def blob(self, name: str):
 			return FakeBlob(self, name)
@@ -54,9 +75,16 @@ def _install_fake_google_cloud_storage(*, objects: dict[str, bytes]):
 			target_bucket.objects[new_name] = self.objects[source_blob.name]
 			return target_bucket.blob(new_name)
 
+	class FakeCredentials:
+		def __init__(self, *, source_path: str):
+			self.source_path = source_path
+			self.project_id = "credential-project"
+
 	class FakeClient:
 		def __init__(self):
 			self.buckets: dict[str, FakeBucket] = {}
+			self.init_calls: list[dict[str, object]] = []
+			self.credential_file_calls: list[str] = []
 
 		def bucket(self, name: str):
 			if name not in self.buckets:
@@ -64,22 +92,53 @@ def _install_fake_google_cloud_storage(*, objects: dict[str, bytes]):
 			return self.buckets[name]
 
 	client = FakeClient()
+
+	def client_factory(project=None, credentials=None):
+		client.init_calls.append(
+			{
+				"project": project,
+				"credentials": credentials,
+			}
+		)
+		return client
+
+	class FakeCredentialsFactory:
+		@classmethod
+		def from_service_account_file(cls, path: str):
+			client.credential_file_calls.append(path)
+			return FakeCredentials(source_path=path)
+
 	storage_module = types.ModuleType("google.cloud.storage")
-	storage_module.Client = lambda: client
+	storage_module.Client = client_factory
 	cloud_module = types.ModuleType("google.cloud")
 	cloud_module.storage = storage_module
 	google_module = types.ModuleType("google")
 	google_module.cloud = cloud_module
+	oauth2_module = types.ModuleType("google.oauth2")
+	service_account_module = types.ModuleType("google.oauth2.service_account")
+	service_account_module.Credentials = FakeCredentialsFactory
+	oauth2_module.service_account = service_account_module
 	sys.modules["google"] = google_module
 	sys.modules["google.cloud"] = cloud_module
 	sys.modules["google.cloud.storage"] = storage_module
+	sys.modules["google.oauth2"] = oauth2_module
+	sys.modules["google.oauth2.service_account"] = service_account_module
 	return client
 
 
 def test_gcs_storage_backend_resumable_round_trip():
-	_purge_modules("google", "google.cloud", "google.cloud.storage", "ifitwala_drive.services.storage.gcs")
+	_purge_modules(
+		"frappe",
+		"google",
+		"google.cloud",
+		"google.cloud.storage",
+		"google.oauth2",
+		"google.oauth2.service_account",
+		"ifitwala_drive.services.storage.gcs",
+	)
 	objects = {"tmp/session-1/essay.pdf": b"%PDF-1.4 test payload"}
 	client = _install_fake_google_cloud_storage(objects=objects)
+	_install_fake_frappe()
 	module = importlib.import_module("ifitwala_drive.services.storage.gcs")
 	backend = module.GCSStorageBackend(
 		profile=StorageRuntimeProfile(
@@ -126,3 +185,126 @@ def test_gcs_storage_backend_resumable_round_trip():
 	}
 	assert "tmp/session-1/essay.pdf" not in objects
 	assert objects["files/ab/cd/essay.pdf"] == b"%PDF-1.4 test payload"
+
+
+def test_gcs_storage_backend_download_grant_defaults_to_signed_url():
+	_purge_modules(
+		"frappe",
+		"google",
+		"google.cloud",
+		"google.cloud.storage",
+		"google.oauth2",
+		"google.oauth2.service_account",
+		"ifitwala_drive.services.storage.gcs",
+	)
+	client = _install_fake_google_cloud_storage(objects={})
+	_install_fake_frappe()
+	module = importlib.import_module("ifitwala_drive.services.storage.gcs")
+	backend = module.GCSStorageBackend(
+		profile=StorageRuntimeProfile(
+			backend_name="gcs",
+			provider_family="gcs",
+			bucket_or_container="drive-bucket",
+			signing_mode="gcs_signed_url",
+		)
+	)
+
+	grant = backend.issue_download_grant(
+		object_key="files/ab/cd/essay.pdf",
+		file_url=None,
+		expires_on=datetime(2026, 4, 13, 10, 0, 0),
+		filename="essay.pdf",
+	)
+
+	assert grant == {
+		"grant_type": "signed_url",
+		"url": "https://signed.invalid/files/ab/cd/essay.pdf?method=GET",
+	}
+	assert client.bucket("drive-bucket").signed_requests == [
+		{
+			"name": "files/ab/cd/essay.pdf",
+			"version": "v4",
+			"expiration": datetime(2026, 4, 13, 10, 0, 0),
+			"method": "GET",
+			"response_disposition": "attachment; filename=\"essay.pdf\"; filename*=UTF-8''essay.pdf",
+		}
+	]
+
+
+def test_gcs_storage_backend_service_account_file_credentials():
+	_purge_modules(
+		"frappe",
+		"google",
+		"google.cloud",
+		"google.cloud.storage",
+		"google.oauth2",
+		"google.oauth2.service_account",
+		"ifitwala_drive.services.storage.gcs",
+	)
+	client = _install_fake_google_cloud_storage(objects={})
+	_install_fake_frappe()
+	module = importlib.import_module("ifitwala_drive.services.storage.gcs")
+	backend = module.GCSStorageBackend(
+		profile=StorageRuntimeProfile(
+			backend_name="gcs",
+			provider_family="gcs",
+			bucket_or_container="drive-bucket",
+			project_id="project-a",
+			credential_source="service_account_file",
+			service_account_file_path="/secrets/gcs.json",
+		)
+	)
+
+	backend.temporary_object_exists(object_key="files/ab/cd/missing.pdf")
+
+	assert client.credential_file_calls == ["/secrets/gcs.json"]
+	assert len(client.init_calls) == 1
+	assert client.init_calls[0]["project"] == "project-a"
+	assert client.init_calls[0]["credentials"].source_path == "/secrets/gcs.json"
+
+
+def test_gcs_storage_backend_uses_configured_urls_when_requested():
+	_purge_modules(
+		"frappe",
+		"google",
+		"google.cloud",
+		"google.cloud.storage",
+		"google.oauth2",
+		"google.oauth2.service_account",
+		"ifitwala_drive.services.storage.gcs",
+	)
+	_install_fake_google_cloud_storage(objects={})
+	_install_fake_frappe()
+	module = importlib.import_module("ifitwala_drive.services.storage.gcs")
+	backend = module.GCSStorageBackend(
+		profile=StorageRuntimeProfile(
+			backend_name="gcs",
+			provider_family="gcs",
+			bucket_or_container="drive-bucket",
+			signing_mode="configured_urls",
+			download_url_base="https://cdn.invalid/download",
+			preview_url_base="https://cdn.invalid/preview",
+		)
+	)
+
+	download_grant = backend.issue_download_grant(
+		object_key="files/ab/cd/essay.pdf",
+		file_url=None,
+		expires_on=datetime(2026, 4, 13, 10, 0, 0),
+		filename="essay.pdf",
+	)
+	preview_grant = backend.issue_preview_grant(
+		object_key="files/ab/cd/essay.pdf",
+		file_url=None,
+		expires_on=datetime(2026, 4, 13, 10, 0, 0),
+		filename="essay.pdf",
+	)
+
+	assert download_grant == {
+		"grant_type": "signed_url",
+		"url": "https://cdn.invalid/download/files/ab/cd/essay.pdf",
+	}
+	assert preview_grant == {
+		"grant_type": "signed_url",
+		"url": "https://cdn.invalid/preview/files/ab/cd/essay.pdf",
+	}

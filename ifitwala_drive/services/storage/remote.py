@@ -97,7 +97,7 @@ class ConfiguredRemoteStorageBackend(LocalStorageBackend):
 		expires_on: datetime,
 		filename: str | None = None,
 	) -> dict[str, Any]:
-		if not self._remote_upload_enabled():
+		if not self._remote_download_enabled():
 			return super().issue_download_grant(
 				object_key=object_key,
 				file_url=file_url,
@@ -118,7 +118,7 @@ class ConfiguredRemoteStorageBackend(LocalStorageBackend):
 		expires_on: datetime,
 		filename: str | None = None,
 	) -> dict[str, Any]:
-		if not self._remote_upload_enabled():
+		if not self._remote_preview_enabled():
 			return super().issue_preview_grant(
 				object_key=object_key,
 				file_url=file_url,
@@ -134,6 +134,21 @@ class ConfiguredRemoteStorageBackend(LocalStorageBackend):
 	def _remote_upload_enabled(self) -> bool:
 		return bool(
 			getattr(self.profile, "upload_url_base", None) or getattr(self.profile, "object_url_base", None)
+		)
+
+	def _remote_download_enabled(self) -> bool:
+		return bool(
+			getattr(self.profile, "download_url_base", None)
+			or getattr(self.profile, "object_url_base", None)
+			or getattr(self.profile, "endpoint", None)
+		)
+
+	def _remote_preview_enabled(self) -> bool:
+		return bool(
+			getattr(self.profile, "preview_url_base", None)
+			or getattr(self.profile, "download_url_base", None)
+			or getattr(self.profile, "object_url_base", None)
+			or getattr(self.profile, "endpoint", None)
 		)
 
 	def _build_remote_upload_url(self, object_key: str) -> str:

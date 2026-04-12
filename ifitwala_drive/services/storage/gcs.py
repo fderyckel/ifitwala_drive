@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 from ifitwala_drive.services.storage.base import build_object_key
 from ifitwala_drive.services.storage.remote import ConfiguredRemoteStorageBackend
@@ -85,6 +86,58 @@ class GCSStorageBackend(ConfiguredRemoteStorageBackend):
 	def delete_object(self, *, object_key: str) -> None:
 		self.abort_temporary_object(object_key=object_key)
 
+	def issue_download_grant(
+		self,
+		*,
+		object_key: str,
+		file_url: str | None,
+		expires_on,
+		filename: str | None = None,
+	) -> dict[str, Any]:
+		if self._use_signed_read_urls():
+			return {
+				"grant_type": self.grant_type,
+				"url": self._build_signed_read_url(
+					object_key=object_key,
+					expires_on=expires_on,
+					filename=filename,
+					disposition="attachment",
+				),
+			}
+
+		return super().issue_download_grant(
+			object_key=object_key,
+			file_url=file_url,
+			expires_on=expires_on,
+			filename=filename,
+		)
+
+	def issue_preview_grant(
+		self,
+		*,
+		object_key: str,
+		file_url: str | None,
+		expires_on,
+		filename: str | None = None,
+	) -> dict[str, Any]:
+		if self._use_signed_read_urls():
+			return {
+				"grant_type": self.grant_type,
+				"url": self._build_signed_read_url(
+					object_key=object_key,
+					expires_on=expires_on,
+					filename=filename,
+					disposition="inline",
+				),
+			}
+
+		return super().issue_preview_grant(
+			object_key=object_key,
+			file_url=file_url,
+			expires_on=expires_on,
+			filename=filename,
+		)
+
 	def _artifact_for_key(self, object_key: str) -> dict[str, Any]:
 		return {
 			"object_key": object_key,
@@ -106,4 +159,60 @@ class GCSStorageBackend(ConfiguredRemoteStorageBackend):
 			from google.cloud import storage
 		except ImportError as exc:
 			raise RuntimeError("GCS storage backend requires google-cloud-storage to be installed.") from exc
-		return storage.Client()
+		project = getattr(self.profile, "project_id", None)
+		credential_source = str(getattr(self.profile, "credential_source", None) or "").strip()
+		if credential_source == "service_account_file":
+			file_path = str(getattr(self.profile, "service_account_file_path", None) or "").strip()
+			if not file_path:
+				raise RuntimeError(
+					"GCS storage backend requires service_account_file_path when credential_source is service_account_file."
+				)
+			try:
+				from google.oauth2 import service_account
+			except ImportError as exc:
+				raise RuntimeError(
+					"GCS storage backend requires google-auth service account support."
+				) from exc
+
+			credentials = service_account.Credentials.from_service_account_file(file_path)
+			return storage.Client(
+				project=project or getattr(credentials, "project_id", None), credentials=credentials
+			)
+
+		return storage.Client(project=project or None)
+
+	def _use_signed_read_urls(self) -> bool:
+		signing_mode = str(getattr(self.profile, "signing_mode", None) or "").strip().lower()
+		if signing_mode in {"configured_urls", "configured_url_bases"}:
+			return False
+		if signing_mode in {"signed_url", "gcs_signed_url"}:
+			return True
+
+		return not bool(
+			getattr(self.profile, "download_url_base", None)
+			or getattr(self.profile, "preview_url_base", None)
+			or getattr(self.profile, "object_url_base", None)
+		)
+
+	def _build_signed_read_url(
+		self,
+		*,
+		object_key: str,
+		expires_on,
+		filename: str | None,
+		disposition: str,
+	) -> str:
+		response_disposition = None
+		normalized_filename = str(filename or "").strip()
+		if normalized_filename:
+			safe_filename = normalized_filename.replace("\\", "_").replace('"', "_")
+			response_disposition = (
+				f"{disposition}; filename=\"{safe_filename}\"; filename*=UTF-8''{quote(safe_filename)}"
+			)
+
+		return self._build_blob(object_key).generate_signed_url(
+			version="v4",
+			expiration=expires_on,
+			method="GET",
+			response_disposition=response_disposition,
+		)

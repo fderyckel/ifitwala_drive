@@ -1,0 +1,190 @@
+{
+ "actions": [],
+ "allow_copy": 0,
+ "allow_events_in_timeline": 0,
+ "allow_guest_to_view": 0,
+ "allow_import": 0,
+ "allow_rename": 0,
+ "beta": 0,
+ "creation": "2026-04-13 00:00:00.000000",
+ "custom": 0,
+ "default_view": "Form",
+ "doctype": "DocType",
+ "document_type": "Document",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "section_mode",
+  "backend_name",
+  "storage_mode",
+  "signing_mode",
+  "section_credentials",
+  "bucket_or_container",
+  "base_prefix",
+  "project_id",
+  "credential_source",
+  "service_account_file_path",
+  "section_urls",
+  "endpoint",
+  "upload_url_base",
+  "download_url_base",
+  "preview_url_base",
+  "object_url_base",
+  "probe_url_base",
+  "section_local_fallback",
+  "local_staging_root"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "section_mode",
+   "fieldtype": "Section Break",
+   "label": "Mode"
+  },
+  {
+   "default": "local",
+   "fieldname": "backend_name",
+   "fieldtype": "Select",
+   "label": "Storage Backend",
+   "options": "local\ngcs",
+   "reqd": 1
+  },
+  {
+   "default": "local_only",
+   "description": "Use local_only to prepare GCS settings without cutting over request paths yet.",
+   "fieldname": "storage_mode",
+   "fieldtype": "Select",
+   "label": "Storage Mode",
+   "options": "local_only\ngcs_for_new_writes\ngcs_primary_with_local_fallback",
+   "reqd": 1
+  },
+  {
+   "default": "gcs_signed_url",
+   "description": "For GCS, signed URLs keep private reads off the app server hot path.",
+   "fieldname": "signing_mode",
+   "fieldtype": "Select",
+   "label": "Read Grant Mode",
+   "options": "gcs_signed_url\nconfigured_urls",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_credentials",
+   "fieldtype": "Section Break",
+   "label": "Bucket And Credentials"
+  },
+  {
+   "fieldname": "bucket_or_container",
+   "fieldtype": "Data",
+   "label": "Bucket / Container"
+  },
+  {
+   "description": "Recommended shape: sites/<site_name>",
+   "fieldname": "base_prefix",
+   "fieldtype": "Data",
+   "label": "Base Prefix"
+  },
+  {
+   "fieldname": "project_id",
+   "fieldtype": "Data",
+   "label": "Project ID"
+  },
+  {
+   "default": "adc_or_workload_identity",
+   "description": "Prefer ADC / Workload Identity in production. Use service_account_file only when a secret file is mounted on the server.",
+   "fieldname": "credential_source",
+   "fieldtype": "Select",
+   "label": "Credential Source",
+   "options": "adc_or_workload_identity\nservice_account_file",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:doc.credential_source===\"service_account_file\"",
+   "fieldname": "service_account_file_path",
+   "fieldtype": "Data",
+   "label": "Service Account File Path"
+  },
+  {
+   "fieldname": "section_urls",
+   "fieldtype": "Section Break",
+   "label": "Optional URL Bases"
+  },
+  {
+   "fieldname": "endpoint",
+   "fieldtype": "Data",
+   "label": "Endpoint"
+  },
+  {
+   "fieldname": "upload_url_base",
+   "fieldtype": "Data",
+   "label": "Upload URL Base"
+  },
+  {
+   "fieldname": "download_url_base",
+   "fieldtype": "Data",
+   "label": "Download URL Base"
+  },
+  {
+   "fieldname": "preview_url_base",
+   "fieldtype": "Data",
+   "label": "Preview URL Base"
+  },
+  {
+   "fieldname": "object_url_base",
+   "fieldtype": "Data",
+   "label": "Object URL Base"
+  },
+  {
+   "fieldname": "probe_url_base",
+   "fieldtype": "Data",
+   "label": "Probe URL Base"
+  },
+  {
+   "fieldname": "section_local_fallback",
+   "fieldtype": "Section Break",
+   "label": "Local Fallback"
+  },
+  {
+   "description": "Optional local staging root for proxy_post or fallback paths.",
+   "fieldname": "local_staging_root",
+   "fieldtype": "Data",
+   "label": "Local Staging Root"
+  }
+ ],
+ "grid_page_length": 50,
+ "hide_toolbar": 0,
+ "index_web_pages_for_search": 0,
+ "is_submittable": 0,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-04-13 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Ifitwala Drive",
+ "name": "Drive Storage Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "read_only": 0,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1,
+ "track_seen": 0
+}

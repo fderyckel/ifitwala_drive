@@ -8,6 +8,7 @@ from typing import Any, Protocol
 
 DEFAULT_STORAGE_BACKEND = "local"
 _PROFILE_ENV_KEY = "IFITWALA_DRIVE_STORAGE_PROFILE"
+_SETTINGS_DOCTYPE = "Drive Storage Settings"
 
 
 def normalize_storage_backend_name(backend_name: str | None) -> str:
@@ -29,13 +30,16 @@ def normalize_storage_backend_name(backend_name: str | None) -> str:
 class StorageRuntimeProfile:
 	backend_name: str
 	provider_family: str
+	storage_mode: str | None = None
 	bucket_or_container: str | None = None
 	base_prefix: str = ""
 	region: str | None = None
 	endpoint: str | None = None
+	project_id: str | None = None
 	signing_mode: str | None = None
 	quota_scope: str | None = None
 	credential_source: str | None = None
+	service_account_file_path: str | None = None
 	upload_strategy: str | None = None
 	upload_url_base: str | None = None
 	download_url_base: str | None = None
@@ -64,12 +68,9 @@ def _get_legacy_conf_value(key: str) -> Any:
 		return None
 
 
-def _read_raw_profile() -> dict[str, Any]:
-	profile_value: Any = _get_legacy_conf_value("ifitwala_drive_storage_profile")
+def _parse_profile_value(profile_value: Any) -> dict[str, Any]:
 	if profile_value in (None, ""):
-		env_value = os.environ.get(_PROFILE_ENV_KEY)
-		if env_value:
-			profile_value = env_value
+		return {}
 
 	if isinstance(profile_value, str):
 		profile_value = profile_value.strip()
@@ -85,6 +86,89 @@ def _read_raw_profile() -> dict[str, Any]:
 		return dict(profile_value)
 
 	return {}
+
+
+def _read_env_override_profile() -> dict[str, Any]:
+	return _parse_profile_value(os.environ.get(_PROFILE_ENV_KEY))
+
+
+def _get_settings_doc():
+	try:
+		import frappe
+	except Exception:
+		return None
+
+	for loader_name in ("get_cached_doc", "get_single", "get_doc"):
+		loader = getattr(frappe, loader_name, None)
+		if not callable(loader):
+			continue
+		try:
+			return loader(_SETTINGS_DOCTYPE)
+		except TypeError:
+			try:
+				return loader(_SETTINGS_DOCTYPE, _SETTINGS_DOCTYPE)
+			except Exception:
+				continue
+		except Exception:
+			continue
+
+	return None
+
+
+def _read_settings_profile() -> dict[str, Any] | None:
+	doc = _get_settings_doc()
+	if not doc:
+		return None
+
+	enabled = int(bool(getattr(doc, "enabled", 0) or 0))
+	if not enabled:
+		return None
+
+	configured_backend = normalize_storage_backend_name(getattr(doc, "backend_name", None) or "local")
+	storage_mode = _clean_optional(getattr(doc, "storage_mode", None)) or "local_only"
+	if storage_mode == "local_only":
+		return {
+			"backend_name": "local",
+			"provider_family": "local",
+			"storage_mode": storage_mode,
+		}
+
+	return {
+		"backend_name": configured_backend,
+		"provider_family": configured_backend,
+		"storage_mode": storage_mode,
+		"bucket_or_container": getattr(doc, "bucket_or_container", None),
+		"base_prefix": getattr(doc, "base_prefix", None),
+		"region": getattr(doc, "region", None),
+		"endpoint": getattr(doc, "endpoint", None),
+		"project_id": getattr(doc, "project_id", None),
+		"signing_mode": getattr(doc, "signing_mode", None),
+		"credential_source": getattr(doc, "credential_source", None),
+		"service_account_file_path": getattr(doc, "service_account_file_path", None),
+		"upload_strategy": getattr(doc, "upload_strategy", None),
+		"upload_url_base": getattr(doc, "upload_url_base", None),
+		"download_url_base": getattr(doc, "download_url_base", None),
+		"preview_url_base": getattr(doc, "preview_url_base", None),
+		"object_url_base": getattr(doc, "object_url_base", None),
+		"probe_url_base": getattr(doc, "probe_url_base", None),
+		"local_staging_root": getattr(doc, "local_staging_root", None),
+	}
+
+
+def _read_legacy_profile() -> dict[str, Any]:
+	return _parse_profile_value(_get_legacy_conf_value("ifitwala_drive_storage_profile"))
+
+
+def _read_raw_profile() -> dict[str, Any]:
+	env_profile = _read_env_override_profile()
+	if env_profile:
+		return env_profile
+
+	settings_profile = _read_settings_profile()
+	if settings_profile is not None:
+		return settings_profile
+
+	return _read_legacy_profile()
 
 
 def resolve_storage_runtime_profile(backend_name: str | None = None) -> StorageRuntimeProfile:
@@ -103,13 +187,16 @@ def resolve_storage_runtime_profile(backend_name: str | None = None) -> StorageR
 	return StorageRuntimeProfile(
 		backend_name=configured_backend,
 		provider_family=provider_family,
+		storage_mode=_clean_optional(raw.get("storage_mode")),
 		bucket_or_container=_clean_optional(raw.get("bucket_or_container") or raw.get("bucket")),
 		base_prefix=_clean_prefix(raw.get("base_prefix")),
 		region=_clean_optional(raw.get("region")),
 		endpoint=_clean_optional(raw.get("endpoint")),
+		project_id=_clean_optional(raw.get("project_id")),
 		signing_mode=_clean_optional(raw.get("signing_mode")),
 		quota_scope=_clean_optional(raw.get("quota_scope")),
 		credential_source=_clean_optional(raw.get("credential_source")),
+		service_account_file_path=_clean_optional(raw.get("service_account_file_path")),
 		upload_strategy=_clean_optional(raw.get("upload_strategy")),
 		upload_url_base=_clean_optional(raw.get("upload_url_base")),
 		download_url_base=_clean_optional(raw.get("download_url_base")),

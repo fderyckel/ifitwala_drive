@@ -1,7 +1,7 @@
 {
  "app": "ifitwala_drive",
  "charts": [],
- "content": "[{\"id\":\"drive-header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Ifitwala Drive</span>\",\"col\":12}},{\"id\":\"drive-shortcut-workspace\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Drive Workspace\",\"col\":3}},{\"id\":\"drive-shortcut-files\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Drive Files\",\"col\":3}},{\"id\":\"drive-shortcut-folders\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Drive Folders\",\"col\":3}},{\"id\":\"drive-shortcut-sessions\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Upload Sessions\",\"col\":3}},{\"id\":\"drive-shortcut-jobs\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Processing Jobs\",\"col\":3}}]",
+ "content": "[{\"id\":\"drive-header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Ifitwala Drive</span>\",\"col\":12}},{\"id\":\"drive-shortcut-workspace\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Drive Workspace\",\"col\":3}},{\"id\":\"drive-shortcut-files\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Drive Files\",\"col\":3}},{\"id\":\"drive-shortcut-folders\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Drive Folders\",\"col\":3}},{\"id\":\"drive-shortcut-sessions\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Upload Sessions\",\"col\":3}},{\"id\":\"drive-shortcut-jobs\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Processing Jobs\",\"col\":3}},{\"id\":\"drive-shortcut-storage-settings\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Storage Settings\",\"col\":3}}]",
  "custom_blocks": [],
  "docstatus": 0,
  "doctype": "Workspace",
@@ -53,6 +53,13 @@
    "doc_view": "List",
    "label": "Processing Jobs",
    "link_to": "Drive Processing Job",
+   "type": "DocType"
+  },
+  {
+   "color": "Cyan",
+   "doc_view": "Form",
+   "label": "Storage Settings",
+   "link_to": "Drive Storage Settings",
    "type": "DocType"
   }
  ],

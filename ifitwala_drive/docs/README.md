@@ -12,6 +12,7 @@ Current docs:
 - `06_api_contracts.md` — active API contracts
 - `14_drive_north_star_v1.md` — current product frame
 - `16_object_storage_adapter_contract.md` — active storage contract
+- `18_gcs_bucket_settings_and_site_offload_proposal.md` — proposed site settings and legacy attachment offload design
 - `audit.md` — current audit and remediation status
 
 Completed Phase 1 planning and proposal notes were removed to keep this directory focused on the current system rather than historical execution scaffolding.
