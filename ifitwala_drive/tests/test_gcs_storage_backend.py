@@ -26,6 +26,8 @@ def _install_fake_google_cloud_storage(*, objects: dict[str, bytes]):
 		def __init__(self, bucket, name: str):
 			self.bucket = bucket
 			self.name = name
+			self.size = None
+			self.md5_hash = None
 
 		def create_resumable_upload_session(self, content_type=None, size=None):
 			self.bucket.sessions.append(
@@ -39,6 +41,13 @@ def _install_fake_google_cloud_storage(*, objects: dict[str, bytes]):
 
 		def exists(self):
 			return self.name in self.bucket.objects
+
+		def reload(self):
+			if self.name not in self.bucket.objects:
+				raise FileNotFoundError(self.name)
+			content = self.bucket.objects[self.name]
+			self.size = len(content)
+			self.md5_hash = f"md5:{self.name}"
 
 		def download_as_bytes(self, start=0, end=None):
 			content = self.bucket.objects[self.name]
@@ -361,3 +370,34 @@ def test_gcs_storage_backend_write_final_object_uploads_bytes():
 			"content_type": "application/pdf",
 		}
 	]
+
+
+def test_gcs_storage_backend_reads_object_metadata():
+	_purge_modules(
+		"frappe",
+		"google",
+		"google.cloud",
+		"google.cloud.storage",
+		"google.oauth2",
+		"google.oauth2.service_account",
+		"ifitwala_drive.services.storage.gcs",
+	)
+	_install_fake_frappe()
+	_install_fake_google_cloud_storage(objects={"legacy/private/files/archive/report.pdf": b"report-bytes"})
+	module = importlib.import_module("ifitwala_drive.services.storage.gcs")
+	backend = module.GCSStorageBackend(
+		profile=StorageRuntimeProfile(
+			backend_name="gcs",
+			provider_family="gcs",
+			bucket_or_container="drive-bucket",
+		)
+	)
+
+	metadata = backend.read_object_metadata(object_key="legacy/private/files/archive/report.pdf")
+
+	assert metadata == {
+		"exists": True,
+		"size_bytes": 12,
+		"checksum": "md5:legacy/private/files/archive/report.pdf",
+		"verifiable": True,
+	}

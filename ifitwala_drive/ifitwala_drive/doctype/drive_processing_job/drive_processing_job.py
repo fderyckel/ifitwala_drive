@@ -16,6 +16,7 @@ _ALLOWED_JOB_TYPES = {
 	"index",
 	"reconcile",
 	"offload",
+	"prune_local",
 	"sync_index",
 	"erasure",
 }

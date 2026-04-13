@@ -184,3 +184,25 @@ def enqueue_attachment_offload_jobs(limit: int | None = None) -> dict[str, Any]:
 	from ifitwala_drive.services.storage.offload import enqueue_attachment_offload_jobs_service
 
 	return enqueue_attachment_offload_jobs_service(settings_doc=settings, limit=limit)
+
+
+@frappe.whitelist()
+def dry_run_local_prune(limit: int | None = None) -> dict[str, Any]:
+	settings = frappe.get_cached_doc("Drive Storage Settings")
+	if hasattr(settings, "check_permission"):
+		settings.check_permission("write")
+
+	from ifitwala_drive.services.storage.offload import dry_run_local_prune_service
+
+	return dry_run_local_prune_service(settings_doc=settings, limit=limit)
+
+
+@frappe.whitelist()
+def enqueue_local_prune_jobs(limit: int | None = None) -> dict[str, Any]:
+	settings = frappe.get_cached_doc("Drive Storage Settings")
+	if hasattr(settings, "check_permission"):
+		settings.check_permission("write")
+
+	from ifitwala_drive.services.storage.offload import enqueue_local_prune_jobs_service
+
+	return enqueue_local_prune_jobs_service(settings_doc=settings, limit=limit)

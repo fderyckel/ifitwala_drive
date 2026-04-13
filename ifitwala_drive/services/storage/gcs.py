@@ -65,6 +65,24 @@ class GCSStorageBackend(ConfiguredRemoteStorageBackend):
 		)
 		return self._artifact_for_key(object_key)
 
+	def read_object_metadata(self, *, object_key: str) -> dict[str, Any]:
+		blob = self._build_blob(object_key)
+		if not blob.exists():
+			return {
+				"exists": False,
+				"size_bytes": None,
+				"checksum": None,
+				"verifiable": True,
+			}
+		if hasattr(blob, "reload"):
+			blob.reload()
+		return {
+			"exists": True,
+			"size_bytes": getattr(blob, "size", None),
+			"checksum": getattr(blob, "md5_hash", None),
+			"verifiable": True,
+		}
+
 	def read_temporary_object_head(self, *, object_key: str, max_bytes: int) -> bytes:
 		if max_bytes <= 0:
 			return b""

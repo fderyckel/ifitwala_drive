@@ -11,16 +11,20 @@ Implemented now:
 - `Test Connection`
 - `Dry Run Attachment Offload`
 - `Queue Offload Jobs`
+- `Dry Run Local Prune`
+- `Queue Local Prune Jobs`
 - background `offload` jobs that copy eligible local blobs into the active storage backend
 - governed `Drive File` metadata updates after successful offload
 - compatibility read grants for migrated missing local attachments on app-routed `/files/...` and `/private/files/...` requests
 - a `before_request` redirect hook that only activates when the local blob is gone
+- verified local prune for private attachments after remote-object size verification
+- optional immediate local prune during offload when `delete_local_after_verification` is enabled and safety checks pass
 
 Still not implemented:
 
-- local blob deletion / prune after verification
 - scheduler-driven cleanup of expired temp upload objects
 - deployment-level miss routing for static public `/files/...` paths that bypass Python entirely
+- broad public-file local prune for legacy `/files/...` paths
 
 ## Bottom Line
 
@@ -250,6 +254,9 @@ Current implementation:
 - legacy `File` rows are left unchanged for read compatibility
 - `services/files/legacy_access.py` resolves missing local `File.file_url` values to short-lived remote download grants
 - `before_request` redirects app-routed `/files/...` and `/private/files/...` requests to those remote grants when the local blob is missing
+- completed offloads can be scanned again for verified local prune candidates
+- `prune_local` jobs delete only private local blobs whose remote object existence and size can be re-verified
+- public `/files/...` blobs remain blocked from prune until the web tier can route misses into Python safely
 
 ## Read Compatibility Requirement
 
@@ -331,9 +338,10 @@ Status:
 - add optional cleanup/prune of local blobs after verification
 
 Status:
-- partially implemented
+- implemented for private files and partially implemented overall
 - missing-local reads now redirect to remote download grants for app-routed `/files/...` and `/private/files/...` requests
-- local prune is still blocked
+- private local prune now exists after remote-object verification and owner-context checks
+- `delete_local_after_verification` can prune immediately for eligible private offloads
 - public static `/files/...` miss-through still needs deployment support
 
 ## Decision Summary

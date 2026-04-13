@@ -83,6 +83,23 @@ def test_local_storage_backend_abort_deletes_tmp_file():
 	assert backend.temporary_object_exists(object_key=object_key) is False
 
 
+def test_local_storage_backend_reads_object_metadata():
+	root = tempfile.mkdtemp(prefix="ifitwala-drive-local-")
+	_install_fake_frappe(root=root)
+	LocalStorageBackend = _load_local_backend()
+	backend = LocalStorageBackend()
+	backend.write_final_object(object_key="files/aa/bb/report.pdf", content=b"report-bytes")
+
+	metadata = backend.read_object_metadata(object_key="files/aa/bb/report.pdf")
+
+	assert metadata == {
+		"exists": True,
+		"size_bytes": 12,
+		"checksum": None,
+		"verifiable": True,
+	}
+
+
 def test_get_storage_backend_defaults_to_local():
 	from ifitwala_drive.services.storage import base
 

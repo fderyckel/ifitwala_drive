@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
 import os
@@ -66,11 +67,16 @@ def _match_filter(row: dict[str, object], fieldname: str, condition) -> bool:
 	return row.get(fieldname) == condition
 
 
-def _install_fake_frappe(*, file_rows, drive_rows, settings_doc, site_root: str, existing_job_rows=None):
+def _install_fake_frappe(
+	*, file_rows, drive_rows, settings_doc, site_root: str, existing_job_rows=None, extra_docs=None
+):
 	existing_job_rows = existing_job_rows or []
+	extra_docs = extra_docs or {}
+	FakeDoc._insert_counters = {}
 	FakeDoc._docs_map = {
 		("Drive Storage Settings", "Drive Storage Settings"): settings_doc,
 	}
+	FakeDoc._docs_map.update(extra_docs)
 	for row in drive_rows:
 		doc = FakeDoc({"doctype": "Drive File", **row})
 		FakeDoc._docs_map[("Drive File", row["name"])] = doc
@@ -425,10 +431,12 @@ def test_run_offload_job_copies_bytes_and_updates_drive_file(monkeypatch):
 	assert result == {
 		"attachment_kind": "governed_drive_file",
 		"bytes_copied": 14,
+		"source_sha256": hashlib.sha256(b"governed-bytes").hexdigest(),
 		"storage_backend": "gcs",
 		"destination_object_key": "sites/site-a/files/aa/bb/essay.pdf",
 		"destination_file_url": "https://storage.invalid/sites/site-a/files/aa/bb/essay.pdf",
 		"cleanup_eligible": False,
+		"cleanup_performed": False,
 		"drive_file_updated": True,
 	}
 	assert writes == [
@@ -442,3 +450,394 @@ def test_run_offload_job_copies_bytes_and_updates_drive_file(monkeypatch):
 	assert drive_file_doc.storage_backend == "gcs"
 	assert drive_file_doc.storage_object_key == "sites/site-a/files/aa/bb/essay.pdf"
 	assert job_doc.status == "completed"
+
+
+def test_dry_run_local_prune_blocks_public_and_allows_private(monkeypatch):
+	site_root = tempfile.mkdtemp(prefix="ifitwala-drive-prune-")
+	private_dir = Path(site_root, "private", "files", "legacy")
+	public_dir = Path(site_root, "public", "files", "legacy")
+	private_dir.mkdir(parents=True)
+	public_dir.mkdir(parents=True)
+	(private_dir / "report.pdf").write_bytes(b"private-bytes")
+	(public_dir / "cover.jpg").write_bytes(b"public-bytes")
+
+	settings = FakeDoc(
+		{
+			"doctype": "Drive Storage Settings",
+			"name": "Drive Storage Settings",
+			"enabled": 1,
+			"backend_name": "gcs",
+			"storage_mode": "gcs_primary_with_local_fallback",
+			"batch_size": 20,
+			"migrate_public_files": 1,
+			"migrate_private_files": 1,
+		}
+	)
+	file_rows = [
+		{
+			"name": "FILE-1001",
+			"file_url": "/private/files/legacy/report.pdf",
+			"is_private": 1,
+			"file_name": "report.pdf",
+			"attached_to_doctype": "Task Submission",
+			"attached_to_name": "TSUB-1001",
+		},
+		{
+			"name": "FILE-1002",
+			"file_url": "/files/legacy/cover.jpg",
+			"is_private": 0,
+			"file_name": "cover.jpg",
+			"attached_to_doctype": "Task Submission",
+			"attached_to_name": "TSUB-1002",
+		},
+	]
+	existing_job_rows = [
+		{
+			"name": "DPJ-OFFLOAD-1",
+			"file": "FILE-1001",
+			"job_type": "offload",
+			"status": "completed",
+			"payload_json": json.dumps(
+				{
+					"source_path": str(private_dir / "report.pdf"),
+					"destination_object_key": "sites/site-a/legacy/private/files/legacy/report.pdf",
+				},
+				sort_keys=True,
+			),
+			"result_json": json.dumps({"storage_backend": "gcs", "bytes_copied": 13}, sort_keys=True),
+		},
+		{
+			"name": "DPJ-OFFLOAD-2",
+			"file": "FILE-1002",
+			"job_type": "offload",
+			"status": "completed",
+			"payload_json": json.dumps(
+				{
+					"source_path": str(public_dir / "cover.jpg"),
+					"destination_object_key": "sites/site-a/legacy/public/files/legacy/cover.jpg",
+				},
+				sort_keys=True,
+			),
+			"result_json": json.dumps({"storage_backend": "gcs", "bytes_copied": 12}, sort_keys=True),
+		},
+	]
+	_install_fake_frappe(
+		file_rows=file_rows,
+		drive_rows=[],
+		settings_doc=settings,
+		site_root=site_root,
+		existing_job_rows=existing_job_rows,
+		extra_docs={
+			("Task Submission", "TSUB-1001"): FakeDoc({"doctype": "Task Submission", "name": "TSUB-1001"}),
+			("Task Submission", "TSUB-1002"): FakeDoc({"doctype": "Task Submission", "name": "TSUB-1002"}),
+		},
+	)
+	module = _load_module()
+	monkeypatch.setattr(
+		module,
+		"resolve_storage_runtime_profile",
+		lambda: types.SimpleNamespace(
+			backend_name="gcs", storage_mode="gcs_primary_with_local_fallback", base_prefix="sites/site-a"
+		),
+	)
+
+	class FakeStorage:
+		def read_object_metadata(self, *, object_key: str):
+			return {
+				"exists": True,
+				"size_bytes": 13 if object_key.endswith("report.pdf") else 12,
+				"checksum": None,
+				"verifiable": True,
+			}
+
+	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
+
+	response = module.dry_run_local_prune_service(settings_doc=settings)
+
+	assert response["summary"] == {
+		"scanned": 2,
+		"eligible": 1,
+		"blocked": 1,
+		"private_files": 1,
+		"public_files": 1,
+		"public_file_prune_requires_web_tier_miss_routing": 1,
+	}
+	assert response["candidates"][0]["status"] == "eligible"
+	assert response["candidates"][1]["skip_reason"] == "public_file_prune_requires_web_tier_miss_routing"
+
+
+def test_enqueue_local_prune_jobs_creates_jobs_and_skips_existing(monkeypatch):
+	site_root = tempfile.mkdtemp(prefix="ifitwala-drive-prune-")
+	private_dir = Path(site_root, "private", "files", "legacy")
+	private_dir.mkdir(parents=True)
+	(private_dir / "report-a.pdf").write_bytes(b"private-a")
+	(private_dir / "report-b.pdf").write_bytes(b"private-b")
+
+	settings = FakeDoc(
+		{
+			"doctype": "Drive Storage Settings",
+			"name": "Drive Storage Settings",
+			"enabled": 1,
+			"backend_name": "gcs",
+			"storage_mode": "gcs_primary_with_local_fallback",
+			"batch_size": 20,
+			"migrate_public_files": 0,
+			"migrate_private_files": 1,
+		}
+	)
+	file_rows = [
+		{
+			"name": "FILE-2001",
+			"file_url": "/private/files/legacy/report-a.pdf",
+			"is_private": 1,
+			"file_name": "report-a.pdf",
+			"attached_to_doctype": "Task Submission",
+			"attached_to_name": "TSUB-2001",
+		},
+		{
+			"name": "FILE-2002",
+			"file_url": "/private/files/legacy/report-b.pdf",
+			"is_private": 1,
+			"file_name": "report-b.pdf",
+			"attached_to_doctype": "Task Submission",
+			"attached_to_name": "TSUB-2002",
+		},
+	]
+	existing_job_rows = [
+		{
+			"name": "DPJ-OFFLOAD-2001",
+			"file": "FILE-2001",
+			"job_type": "offload",
+			"status": "completed",
+			"payload_json": json.dumps(
+				{
+					"source_path": str(private_dir / "report-a.pdf"),
+					"destination_object_key": "sites/site-a/legacy/private/files/legacy/report-a.pdf",
+				},
+				sort_keys=True,
+			),
+			"result_json": json.dumps({"storage_backend": "gcs", "bytes_copied": 9}, sort_keys=True),
+		},
+		{
+			"name": "DPJ-OFFLOAD-2002",
+			"file": "FILE-2002",
+			"job_type": "offload",
+			"status": "completed",
+			"payload_json": json.dumps(
+				{
+					"source_path": str(private_dir / "report-b.pdf"),
+					"destination_object_key": "sites/site-a/legacy/private/files/legacy/report-b.pdf",
+				},
+				sort_keys=True,
+			),
+			"result_json": json.dumps({"storage_backend": "gcs", "bytes_copied": 9}, sort_keys=True),
+		},
+		{
+			"name": "DPJ-PRUNE-EXISTING",
+			"file": "FILE-2002",
+			"job_type": "prune_local",
+			"status": "queued",
+		},
+	]
+	enqueue_calls = _install_fake_frappe(
+		file_rows=file_rows,
+		drive_rows=[],
+		settings_doc=settings,
+		site_root=site_root,
+		existing_job_rows=existing_job_rows,
+		extra_docs={
+			("Task Submission", "TSUB-2001"): FakeDoc({"doctype": "Task Submission", "name": "TSUB-2001"}),
+			("Task Submission", "TSUB-2002"): FakeDoc({"doctype": "Task Submission", "name": "TSUB-2002"}),
+		},
+	)
+	module = _load_module()
+	monkeypatch.setattr(
+		module,
+		"resolve_storage_runtime_profile",
+		lambda: types.SimpleNamespace(
+			backend_name="gcs", storage_mode="gcs_primary_with_local_fallback", base_prefix="sites/site-a"
+		),
+	)
+
+	class FakeStorage:
+		def read_object_metadata(self, *, object_key: str):
+			return {
+				"exists": True,
+				"size_bytes": 9,
+				"checksum": None,
+				"verifiable": True,
+			}
+
+	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
+
+	response = module.enqueue_local_prune_jobs_service(settings_doc=settings)
+
+	assert response["summary"] == {
+		"eligible": 2,
+		"queued": 1,
+		"skipped_existing": 1,
+	}
+	assert response["queued_jobs"][0]["file_id"] == "FILE-2001"
+	assert enqueue_calls == [
+		{
+			"method": "ifitwala_drive.services.storage.offload.run_prune_job",
+			"queue": "drive_heavy",
+			"job_id": "drive-prune:DPJ-0001",
+			"drive_processing_job_id": "DPJ-0001",
+		}
+	]
+
+
+def test_run_prune_job_deletes_local_file_after_remote_verification(monkeypatch):
+	site_root = tempfile.mkdtemp(prefix="ifitwala-drive-prune-")
+	private_dir = Path(site_root, "private", "files", "legacy")
+	private_dir.mkdir(parents=True)
+	source_path = private_dir / "report.pdf"
+	source_path.write_bytes(b"private-bytes")
+
+	settings = FakeDoc(
+		{
+			"doctype": "Drive Storage Settings",
+			"name": "Drive Storage Settings",
+			"enabled": 1,
+			"backend_name": "gcs",
+			"storage_mode": "gcs_primary_with_local_fallback",
+		}
+	)
+	file_rows = [
+		{
+			"name": "FILE-3001",
+			"file_url": "/private/files/legacy/report.pdf",
+			"is_private": 1,
+			"file_name": "report.pdf",
+			"attached_to_doctype": "Task Submission",
+			"attached_to_name": "TSUB-3001",
+		}
+	]
+	_install_fake_frappe(
+		file_rows=file_rows,
+		drive_rows=[],
+		settings_doc=settings,
+		site_root=site_root,
+		extra_docs={
+			("Task Submission", "TSUB-3001"): FakeDoc({"doctype": "Task Submission", "name": "TSUB-3001"})
+		},
+	)
+	job_doc = FakeDoc(
+		{
+			"doctype": "Drive Processing Job",
+			"name": "DPJ-3001",
+			"file": "FILE-3001",
+			"status": "queued",
+			"payload_json": json.dumps(
+				{
+					"source_path": str(source_path),
+					"destination_object_key": "sites/site-a/legacy/private/files/legacy/report.pdf",
+					"storage_backend": "gcs",
+					"verified_remote_size_bytes": 13,
+				},
+				sort_keys=True,
+			),
+		}
+	)
+	FakeDoc._docs_map[("Drive Processing Job", "DPJ-3001")] = job_doc
+	module = _load_module()
+
+	class FakeStorage:
+		def read_object_metadata(self, *, object_key: str):
+			return {
+				"exists": True,
+				"size_bytes": 13,
+				"checksum": None,
+				"verifiable": True,
+			}
+
+	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
+
+	result = module.run_prune_job(drive_processing_job_id="DPJ-3001")
+
+	assert result["cleanup_performed"] is True
+	assert result["cleanup_blocked_reason"] is None
+	assert not source_path.exists()
+	assert job_doc.status == "completed"
+
+
+def test_run_offload_job_prunes_private_local_file_when_enabled(monkeypatch):
+	site_root = tempfile.mkdtemp(prefix="ifitwala-drive-offload-")
+	source_dir = Path(site_root, "private", "files", "legacy")
+	source_dir.mkdir(parents=True)
+	source_path = source_dir / "report.pdf"
+	source_path.write_bytes(b"private-bytes")
+
+	settings = FakeDoc(
+		{
+			"doctype": "Drive Storage Settings",
+			"name": "Drive Storage Settings",
+			"enabled": 1,
+			"backend_name": "gcs",
+			"storage_mode": "gcs_primary_with_local_fallback",
+		}
+	)
+	file_rows = [
+		{
+			"name": "FILE-4001",
+			"file_url": "/private/files/legacy/report.pdf",
+			"is_private": 1,
+			"file_name": "report.pdf",
+			"attached_to_doctype": "Task Submission",
+			"attached_to_name": "TSUB-4001",
+		}
+	]
+	_install_fake_frappe(
+		file_rows=file_rows,
+		drive_rows=[],
+		settings_doc=settings,
+		site_root=site_root,
+		extra_docs={
+			("Task Submission", "TSUB-4001"): FakeDoc({"doctype": "Task Submission", "name": "TSUB-4001"})
+		},
+	)
+	job_doc = FakeDoc(
+		{
+			"doctype": "Drive Processing Job",
+			"name": "DPJ-4001",
+			"file": "FILE-4001",
+			"status": "queued",
+			"payload_json": json.dumps(
+				{
+					"attachment_kind": "legacy_file_attachment",
+					"source_path": str(source_path),
+					"destination_object_key": "sites/site-a/legacy/private/files/legacy/report.pdf",
+					"delete_local_after_verification": True,
+				},
+				sort_keys=True,
+			),
+		}
+	)
+	FakeDoc._docs_map[("Drive Processing Job", "DPJ-4001")] = job_doc
+	module = _load_module()
+
+	class FakeStorage:
+		def write_final_object(self, *, object_key: str, content: bytes, mime_type: str | None = None):
+			return {
+				"object_key": object_key,
+				"storage_backend": "gcs",
+				"file_url": f"https://storage.invalid/{object_key}",
+			}
+
+		def read_object_metadata(self, *, object_key: str):
+			return {
+				"exists": True,
+				"size_bytes": 13,
+				"checksum": None,
+				"verifiable": True,
+			}
+
+	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
+
+	result = module.run_offload_job(drive_processing_job_id="DPJ-4001")
+
+	assert result["cleanup_eligible"] is True
+	assert result["cleanup_performed"] is True
+	assert result["cleanup_blocked_reason"] is None
+	assert not source_path.exists()

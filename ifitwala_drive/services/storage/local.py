@@ -77,6 +77,22 @@ class LocalStorageBackend:
 			handle.write(content)
 		return self._artifact_for_key(object_key)
 
+	def read_object_metadata(self, *, object_key: str) -> dict[str, Any]:
+		path = self._absolute_path(object_key)
+		if not os.path.exists(path):
+			return {
+				"exists": False,
+				"size_bytes": None,
+				"checksum": None,
+				"verifiable": True,
+			}
+		return {
+			"exists": True,
+			"size_bytes": os.path.getsize(path),
+			"checksum": None,
+			"verifiable": True,
+		}
+
 	def temporary_object_exists(self, *, object_key: str) -> bool:
 		return os.path.exists(self._absolute_path(object_key))
 

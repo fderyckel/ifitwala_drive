@@ -82,6 +82,14 @@ class ConfiguredRemoteStorageBackend(LocalStorageBackend):
 		artifact["file_url"] = self._build_object_url(object_key)
 		return artifact
 
+	def read_object_metadata(self, *, object_key: str) -> dict[str, Any]:
+		return {
+			"exists": False,
+			"size_bytes": None,
+			"checksum": None,
+			"verifiable": False,
+		}
+
 	def read_temporary_object_head(self, *, object_key: str, max_bytes: int) -> bytes:
 		return super().read_temporary_object_head(object_key=object_key, max_bytes=max_bytes)
 
