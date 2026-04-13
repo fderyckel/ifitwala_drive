@@ -33,7 +33,16 @@
   "object_url_base",
   "probe_url_base",
   "section_local_fallback",
-  "local_staging_root"
+  "local_staging_root",
+  "section_migration",
+  "migrate_public_files",
+  "migrate_private_files",
+  "batch_size",
+  "delete_local_after_verification",
+  "migration_status",
+  "last_validation_on",
+  "last_migration_on",
+  "migration_summary_json"
  ],
  "fields": [
   {
@@ -154,6 +163,63 @@
    "fieldname": "local_staging_root",
    "fieldtype": "Data",
    "label": "Local Staging Root"
+  },
+  {
+   "fieldname": "section_migration",
+   "fieldtype": "Section Break",
+   "label": "Attachment Offload"
+  },
+  {
+   "default": "1",
+   "fieldname": "migrate_public_files",
+   "fieldtype": "Check",
+   "label": "Include Public Files"
+  },
+  {
+   "default": "1",
+   "fieldname": "migrate_private_files",
+   "fieldtype": "Check",
+   "label": "Include Private Files"
+  },
+  {
+   "default": "100",
+   "fieldname": "batch_size",
+   "fieldtype": "Int",
+   "label": "Batch Size"
+  },
+  {
+   "default": "0",
+   "description": "Queued jobs only mark cleanup eligibility for now. Local blob deletion is not executed yet.",
+   "fieldname": "delete_local_after_verification",
+   "fieldtype": "Check",
+   "label": "Delete Local After Verification"
+  },
+  {
+   "default": "idle",
+   "fieldname": "migration_status",
+   "fieldtype": "Select",
+   "label": "Migration Status",
+   "options": "idle\ndry_run_ready\nqueued",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_validation_on",
+   "fieldtype": "Datetime",
+   "label": "Last Dry Run On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_migration_on",
+   "fieldtype": "Datetime",
+   "label": "Last Queue On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "migration_summary_json",
+   "fieldtype": "Code",
+   "label": "Migration Summary JSON",
+   "options": "JSON",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,

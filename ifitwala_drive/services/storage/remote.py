@@ -70,6 +70,18 @@ class ConfiguredRemoteStorageBackend(LocalStorageBackend):
 	def temporary_object_exists(self, *, object_key: str) -> bool:
 		return super().temporary_object_exists(object_key=object_key)
 
+	def write_final_object(
+		self,
+		*,
+		object_key: str,
+		content: bytes,
+		mime_type: str | None = None,
+	) -> dict[str, Any]:
+		artifact = super().write_final_object(object_key=object_key, content=content, mime_type=mime_type)
+		artifact["storage_backend"] = self.backend_name
+		artifact["file_url"] = self._build_object_url(object_key)
+		return artifact
+
 	def read_temporary_object_head(self, *, object_key: str, max_bytes: int) -> bytes:
 		return super().read_temporary_object_head(object_key=object_key, max_bytes=max_bytes)
 

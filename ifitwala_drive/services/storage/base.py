@@ -234,6 +234,14 @@ class StorageBackend(Protocol):
 
 	def write_temporary_object(self, *, object_key: str, content: bytes) -> dict[str, Any]: ...
 
+	def write_final_object(
+		self,
+		*,
+		object_key: str,
+		content: bytes,
+		mime_type: str | None = None,
+	) -> dict[str, Any]: ...
+
 	def temporary_object_exists(self, *, object_key: str) -> bool: ...
 
 	def read_temporary_object_head(self, *, object_key: str, max_bytes: int) -> bytes: ...

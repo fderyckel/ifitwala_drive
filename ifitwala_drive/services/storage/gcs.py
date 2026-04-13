@@ -52,6 +52,19 @@ class GCSStorageBackend(ConfiguredRemoteStorageBackend):
 	def temporary_object_exists(self, *, object_key: str) -> bool:
 		return self._build_blob(object_key).exists()
 
+	def write_final_object(
+		self,
+		*,
+		object_key: str,
+		content: bytes,
+		mime_type: str | None = None,
+	) -> dict[str, Any]:
+		self._build_blob(object_key).upload_from_string(
+			content,
+			content_type=mime_type or "application/octet-stream",
+		)
+		return self._artifact_for_key(object_key)
+
 	def read_temporary_object_head(self, *, object_key: str, max_bytes: int) -> bytes:
 		if max_bytes <= 0:
 			return b""

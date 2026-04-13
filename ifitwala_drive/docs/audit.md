@@ -26,10 +26,10 @@ Each feedback item is rated on a 0-1 scale for:
 **Resolution**: Finalization now performs synchronous head-byte inspection before governed file creation. Drive reads the first 2048 bytes from temp storage, detects MIME via `python-magic`, rejects dangerous executable/script payloads, and rejects mismatches against `mime_type_hint`. Async deep scanning remains a later enhancement, not the first line of defense.
 **Implication**: A file no longer becomes meaningful governance state based only on frontend claims; byte validation is now part of the fail-closed finalize gate.
 
-### 4. Ambiguity: Public Media Storage & CDN Caching
+### 4. Public Media Storage & CDN Caching Still Open
 **User Impact: 0.8 | Eng: 0.8**
 **Context**: `03_security_concurrency.md` states "Public media is the exception and still must use canonical managed references."
-**Ambiguity**: `remote.py` does not aggressively differentiate between public and private buckets. `_build_object_url` acts broadly the same for both. If public organizational media (like school logos) utilizes short-lived signed URLs, it entirely bypasses the benefits of Google Cloud CDN. There needs to be a dedicated public GCS bucket with uniform public read access mapped to `is_private=0` blobs.
+**Current State**: Private GCS reads now have a direct signed-URL path in `services/storage/gcs.py`, which removes the old ambiguity around private download delivery. The remaining gap is public-media topology. `remote.py` and the storage profile still do not distinguish public CDN/public-bucket reads from private governed reads strongly enough.
 **Suggested Fix**: Branch the URL building utility found in `remote.py`'s `_build_object_url` to construct unauthenticated Canonical CDN Domain requests distinctly reserved for blobs marked `is_private=0` within Frappe documents. 
 **Rationale**: By pushing organizations' public imagery globally to Google Cloud CDN and removing all Frappe authentication checks specifically for public buckets, critical latency on initial page rendering is vastly minimized while preserving the authoritative Canonical Reference framework for edits or replacements. 
 
@@ -47,10 +47,10 @@ Each feedback item is rated on a 0-1 scale for:
 **Suggested Fix**: Wrap all vital `api/uploads.py` HTTP endpoints using the updated `@frappe.whitelist(allow_guest=False)` and configure explicit route-based thresholds specifically leveraging Frappe's native `Rate Limit` document schemas directly referencing Redis cache keys matching users to max sessions.
 **Rationale**: Explicitly filtering malicious traffic using Redis-managed rate limits ensures DDoS or logic probes block malicious users strictly before creating any internal DB overhead or generating GCS token requests. 
 
-### 7. Code Drift: Generic S3/GCS Abstraction vs Documentation Mandates
+### 7. Documentation Drift Around Storage Adapter Shape
 **User Impact: 0.0 | Eng: 0.5**
 **Context**: Earlier phase-planning notes expected a more provider-specific `services/storage/gcs.py` implementation.
-**Drift**: The actual implementation abstracted this out into `remote.py` and `base.py`, with `gcs.py` being merely a 10-line subclass overriding `backend_name` and `grant_type`. While this is a better abstraction for multicloud, it represents a substantial documentation drift preventing straightforward understanding by newly onboarded developers.
+**Current State**: The code is now clearly hybrid: `remote.py` and `base.py` hold the shared contract, while `gcs.py` owns concrete GCS upload and signed-read behavior. The drift is now mostly documentation, not implementation.
 **Suggested Fix**: Update `02_system_architecture.md` and `AGENTS.md` explicitly defining a unified AWS `S3/GCS` implementation path mapping to `ConfiguredRemoteStorageBackend`. 
 **Rationale**: The Frappe multi-cloud readiness posture requires that any `Ifitwala_Press` abstractions rely fundamentally on an overarching wrapper class interacting securely across clouds. Synchronizing these changes prevents onboarded UI engineers from falsely hunting down nonexistent provider-specific integration codebases while maintaining the exact security boundaries expected.
 
@@ -79,12 +79,17 @@ Each feedback item is rated on a 0-1 scale for:
 
 **Summary for Product Management & Architecture:**
 
-The current implementation securely establishes `ifitwala_drive` as the authoritative execution boundary for file governance, successfully keeping business logic within `ifitwala_ed` while extracting file storage. However, the application currently limits the scalability of Google Cloud Storage and leaves several Frappe-specific API layers loosely protected. 
+The current implementation now has three important storage foundations in place:
 
-To bridge the gap between an MVP and a hardened, enterprise-grade architecture, the following strategic improvements to the Frappe app must be prioritized:
+1. GCS resumable uploads for new governed writes
+2. direct signed GCS reads for private governed downloads/previews
+3. settings-driven dry-run and queued offload jobs for existing local attachments
 
-1. **Shift to Native GCP Resumable Uploads**: Decouple Frappe entirely from the binary upload stream. Refactor `ConfiguredRemoteStorageBackend` to issue `POST` signature requests to GCS for chunked, resumable session URIs. This protects the Frappe Gunicorn/waitress workers from bandwidth saturation and ensures students on slow connections do not experience timeouts.
-2. **Harden the Frappe API Boundary**: Enforce strict rate-limiting on all `api/uploads.py` endpoints using Frappe's `@frappe.whitelist(limit=...)` decorators to prevent DDOS-style session generation. Replace loose `**kwargs` in API controllers (e.g., `submissions.py`) with strongly-typed arguments to leverage Frappe's automatic request validation and provide clear contracts for the SPA UI.
-3. **Enforce Zero-Trust Payload Validation**: Do not blindly trust client assertions. `validation.py` must validate actual file magic numbers (via python-magic or Frappe utilities) upon storage finalization rather than relying on `mime_type_hint`. Furthermore, validate `slot` names against a strict Enum or a locked configuration list to prevent arbitrary governance tags.
-4. **Implement Distinct Public/Private Storage Topologies**: Separate public organizational media from private student assessments at the bucket level. Route the public bucket through Google Cloud CDN, bypassing signed URL generation entirely for public assets, dramatically speeding up the SPA load times.
-5. **Activate Automated Lifecycle Management**: Un-comment `scheduler_events` in `hooks.py` and implement a routine to garbage-collect expired upload sessions and call `abort_temporary_object`. Without this, partial uploads will permanently bloat the GCS bucket, driving up unnecessary storage costs.
+The remaining high-priority work is now narrower and more operational:
+
+1. **Public/Private Storage Split**: Separate public organization media from private governed files so public reads can use CDN/public-bucket delivery without signed URL overhead.
+2. **Lifecycle Cleanup**: Re-enable schedulers in `hooks.py` and clean up expired upload sessions / orphaned `tmp/...` objects automatically.
+3. **API Hardening**: Add rate limits on upload/session endpoints and tighten wrapper contracts that still rely on loose `**kwargs`.
+4. **Slot Registry**: Enforce a canonical slot allowlist in `validation.py` so slot semantics cannot drift into arbitrary strings.
+5. **Migration Completion**: Add compatibility reads for migrated legacy `/files/...` and `/private/files/...` attachments before any local-blob pruning is allowed.
+6. **Ops Documentation**: Document Workload Identity / ADC deployment clearly so production storage auth does not depend on ad hoc operator knowledge.

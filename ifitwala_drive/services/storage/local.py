@@ -64,6 +64,19 @@ class LocalStorageBackend:
 			"size_bytes": len(content),
 		}
 
+	def write_final_object(
+		self,
+		*,
+		object_key: str,
+		content: bytes,
+		mime_type: str | None = None,
+	) -> dict[str, Any]:
+		path = self._absolute_path(object_key)
+		self._ensure_parent(path)
+		with open(path, "wb") as handle:
+			handle.write(content)
+		return self._artifact_for_key(object_key)
+
 	def temporary_object_exists(self, *, object_key: str) -> bool:
 		return os.path.exists(self._absolute_path(object_key))
 

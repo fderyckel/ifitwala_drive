@@ -58,6 +58,16 @@ def _install_fake_google_cloud_storage(*, objects: dict[str, bytes]):
 			)
 			return f"https://signed.invalid/{self.name}?method={method}"
 
+		def upload_from_string(self, content, content_type=None):
+			self.bucket.uploads.append(
+				{
+					"name": self.name,
+					"content": content,
+					"content_type": content_type,
+				}
+			)
+			self.bucket.objects[self.name] = content
+
 		def delete(self):
 			self.bucket.objects.pop(self.name, None)
 
@@ -67,6 +77,7 @@ def _install_fake_google_cloud_storage(*, objects: dict[str, bytes]):
 			self.objects = objects
 			self.sessions: list[dict[str, object]] = []
 			self.signed_requests: list[dict[str, object]] = []
+			self.uploads: list[dict[str, object]] = []
 
 		def blob(self, name: str):
 			return FakeBlob(self, name)
@@ -308,3 +319,45 @@ def test_gcs_storage_backend_uses_configured_urls_when_requested():
 		"grant_type": "signed_url",
 		"url": "https://cdn.invalid/preview/files/ab/cd/essay.pdf",
 	}
+
+
+def test_gcs_storage_backend_write_final_object_uploads_bytes():
+	_purge_modules(
+		"frappe",
+		"google",
+		"google.cloud",
+		"google.cloud.storage",
+		"google.oauth2",
+		"google.oauth2.service_account",
+		"ifitwala_drive.services.storage.gcs",
+	)
+	client = _install_fake_google_cloud_storage(objects={})
+	_install_fake_frappe()
+	module = importlib.import_module("ifitwala_drive.services.storage.gcs")
+	backend = module.GCSStorageBackend(
+		profile=StorageRuntimeProfile(
+			backend_name="gcs",
+			provider_family="gcs",
+			bucket_or_container="drive-bucket",
+			object_url_base="https://objects.invalid",
+		)
+	)
+
+	artifact = backend.write_final_object(
+		object_key="legacy/private/files/archive/report.pdf",
+		content=b"report-bytes",
+		mime_type="application/pdf",
+	)
+
+	assert artifact == {
+		"object_key": "legacy/private/files/archive/report.pdf",
+		"storage_backend": "gcs",
+		"file_url": "https://objects.invalid/legacy/private/files/archive/report.pdf",
+	}
+	assert client.bucket("drive-bucket").uploads == [
+		{
+			"name": "legacy/private/files/archive/report.pdf",
+			"content": b"report-bytes",
+			"content_type": "application/pdf",
+		}
+	]

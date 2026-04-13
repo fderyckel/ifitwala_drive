@@ -22,6 +22,11 @@ _ALLOWED_SIGNING_MODES = {
 	"gcs_signed_url",
 	"configured_urls",
 }
+_ALLOWED_MIGRATION_STATUSES = {
+	"idle",
+	"dry_run_ready",
+	"queued",
+}
 
 
 class DriveStorageSettings(Document):
@@ -31,8 +36,10 @@ class DriveStorageSettings(Document):
 		self._validate_storage_mode()
 		self._validate_credential_source()
 		self._validate_signing_mode()
+		self._validate_migration_status()
 		self._validate_gcs_requirements()
 		self._validate_url_fields()
+		self._validate_batch_size()
 
 	def _set_defaults(self) -> None:
 		if not self.backend_name:
@@ -46,6 +53,12 @@ class DriveStorageSettings(Document):
 
 		if not self.signing_mode:
 			self.signing_mode = "gcs_signed_url"
+
+		if not self.migration_status:
+			self.migration_status = "idle"
+
+		if self.batch_size is None:
+			self.batch_size = 100
 
 	def _validate_backend_name(self) -> None:
 		if self.backend_name not in _ALLOWED_BACKENDS:
@@ -62,6 +75,10 @@ class DriveStorageSettings(Document):
 	def _validate_signing_mode(self) -> None:
 		if self.signing_mode not in _ALLOWED_SIGNING_MODES:
 			frappe.throw(_("Invalid signing mode: {0}").format(self.signing_mode))
+
+	def _validate_migration_status(self) -> None:
+		if self.migration_status not in _ALLOWED_MIGRATION_STATUSES:
+			frappe.throw(_("Invalid migration status: {0}").format(self.migration_status))
 
 	def _validate_gcs_requirements(self) -> None:
 		if not int(bool(self.enabled or 0)):
@@ -103,6 +120,12 @@ class DriveStorageSettings(Document):
 					_("{0} must start with http:// or https://").format(self.meta.get_label(fieldname))
 				)
 
+	def _validate_batch_size(self) -> None:
+		if self.batch_size is None:
+			return
+		if int(self.batch_size) < 1:
+			frappe.throw(_("Batch Size must be at least 1."))
+
 
 @frappe.whitelist()
 def test_storage_connection() -> dict[str, Any]:
@@ -139,3 +162,25 @@ def test_storage_connection() -> dict[str, Any]:
 		response["local_staging_root"] = profile.local_staging_root
 
 	return response
+
+
+@frappe.whitelist()
+def dry_run_attachment_offload(limit: int | None = None) -> dict[str, Any]:
+	settings = frappe.get_cached_doc("Drive Storage Settings")
+	if hasattr(settings, "check_permission"):
+		settings.check_permission("write")
+
+	from ifitwala_drive.services.storage.offload import dry_run_attachment_offload_service
+
+	return dry_run_attachment_offload_service(settings_doc=settings, limit=limit)
+
+
+@frappe.whitelist()
+def enqueue_attachment_offload_jobs(limit: int | None = None) -> dict[str, Any]:
+	settings = frappe.get_cached_doc("Drive Storage Settings")
+	if hasattr(settings, "check_permission"):
+		settings.check_permission("write")
+
+	from ifitwala_drive.services.storage.offload import enqueue_attachment_offload_jobs_service
+
+	return enqueue_attachment_offload_jobs_service(settings_doc=settings, limit=limit)

@@ -2,7 +2,23 @@
 
 ## Status
 
-Proposed working design for the next storage slice.
+Partially implemented.
+
+Implemented now:
+
+- `Drive Storage Settings` Single DocType
+- settings-driven runtime profile resolution
+- `Test Connection`
+- `Dry Run Attachment Offload`
+- `Queue Offload Jobs`
+- background `offload` jobs that copy eligible local blobs into the active storage backend
+- governed `Drive File` metadata updates after successful offload
+
+Still not implemented:
+
+- legacy compatibility reads from GCS for old `/files/...` and `/private/files/...` URLs
+- local blob deletion / prune after verification
+- scheduler-driven cleanup of expired temp upload objects
 
 ## Bottom Line
 
@@ -65,17 +81,17 @@ The form should map closely to the existing runtime profile contract instead of 
   - default shape: `sites/<site_name>`
 - `credential_source`
   - `adc_or_workload_identity` recommended
-  - `service_account_json` fallback
+  - `service_account_file` fallback
 
 ### Secret And Identity Fields
 
 - `project_id` optional
-- `service_account_json` encrypted and only shown when the fallback mode is selected
+- `service_account_file_path` and only used when the fallback mode is selected
 
 The production recommendation should remain:
 
 - Workload Identity / ADC in production
-- embedded JSON only for local dev or single-server fallback
+- mounted service-account file only for local dev or single-server fallback
 
 ### URL And Access Fields
 
@@ -103,12 +119,14 @@ Important:
 ### Form Actions
 
 - `Test Connection`
-- `Save And Enable For New Uploads`
-- `Dry Run Existing Attachment Offload`
-- `Start Offload`
-- `Pause Offload`
-- `Resume Offload`
-- `Reconcile Missing Local Files`
+- `Dry Run Attachment Offload`
+- `Queue Offload Jobs`
+
+The more advanced controls from the original proposal remain future work:
+
+- save-and-cutover workflow actions
+- pause/resume migration controls
+- reconcile-missing-local-files operator flow
 
 ## Runtime Resolution Proposal
 
@@ -202,7 +220,8 @@ This should be idempotent:
 
 ## Async Job Model
 
-Use the existing `Drive Processing Job` with `job_type = reconcile` for per-file or per-batch migration work.
+Use the existing `Drive Processing Job` with `job_type = offload` for per-file or per-batch copy work.
+Use `Drive Processing Job` with `job_type = offload` for per-file copy jobs.
 
 Each job should capture:
 
@@ -219,6 +238,14 @@ Queue recommendation:
 
 - dry run on `drive_default`
 - bulk offload on `drive_heavy`
+
+Current implementation:
+
+- dry run stays synchronous and writes summary data onto `Drive Storage Settings`
+- queueing creates `Drive Processing Job` rows on `drive_heavy`
+- queued jobs copy the local blob into the active storage backend
+- governed `Drive File` rows are updated to the remote `storage_backend` / `storage_object_key`
+- legacy `File` rows are left unchanged for read compatibility
 
 ## Read Compatibility Requirement
 
@@ -265,20 +292,37 @@ Before full private cutover, `gcs.py` should grow a real private-read grant path
 - add cached runtime resolution from the Single DocType
 - add `Test Connection`
 
+Status:
+- implemented
+
 ### Slice 2
 
 - use settings-driven GCS for new governed uploads
 - keep legacy attachments local
 
+Status:
+- implemented
+
 ### Slice 3
 
 - add dry run reporting for existing `File` rows under `public/files` and `private/files`
-- add reconcile jobs for governed and legacy attachment offload
+- add queued `offload` jobs for governed and legacy attachment offload
+
+Status:
+- partially implemented
+- dry run reporting exists
+- queued offload jobs exist
+- execution copies blobs into remote storage
+- governed `Drive File` metadata updates are implemented
+- legacy `File` rows still remain local-first until compatibility reads are added
 
 ### Slice 4
 
 - add compatibility reads for migrated legacy files
 - add optional cleanup/prune of local blobs after verification
+
+Status:
+- not implemented
 
 ## Decision Summary
 
