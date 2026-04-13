@@ -57,23 +57,20 @@ Each feedback item is rated on a 0-1 scale for:
 ### 8. Governance Drift: Loose "Slot" Validation Strings
 **User Impact: 0.1 | Eng: 0.6**
 **Context**: "Slot semantics are law". 
-**Drift**: `validation.py` inside `validate_create_session_payload` utilizes `require_fields` to ensure the `slot` is present, which is good. However, there is no discrete validation matrix confirming that the attached `slot` is actually a canonically valid string (like `submission`, `feedback`, `rubric_evidence`). Accepting unregulated strings effectively renders the "slot" property an undisciplined label, breaking the governance model.
-**Suggested Fix**: Integrate an explicit Python `Tuple` linking immutable slot configurations back directly into `validation.py`: `KNOWN_SLOTS = ("submission", "feedback", "organization_media__logo", ...)`. Cross-check inbound requests explicitly against the tuple prior to authorizing session configurations.
-**Rationale**: Spelling errors passed blindly from the frontend Vue SPA compromises tracking parameters and archival tasks reliant exactly matching on string arrays during bulk Frappe DB iterations. Securing "Slot" references is the ultimate pillar locking system consistency across Ifitwala Ed APIs.
+**Resolution**: `services/uploads/slots.py` now defines the canonical slot registry used by `validate_create_session_payload`. The registry is exact/prefix-based and only admits slot families already present in the repo contracts and tests, such as `submission`, `feedback`, `rubric_evidence`, `supporting_material__*`, `communication_attachment__*`, `identity_*`, `prior_*`, and the organization-media/public-image slot families.
+**Implication**: New governed upload sessions now fail closed on free-form slot strings instead of treating `slot` as an undisciplined label.
 
 ### 9. Ambiguity: Google Workload Identity Documentation
 **User Impact: 0.0 | Eng: 0.8**
 **Context**: Notes explicitly recommend Workload Identity over long-lived keys.
-**Ambiguity**: There is no documentation within `README.md` or `03_security_concurrency.md` explicitly outlining how the Frappe containers on GKE/Cloud Run map to GCP Service Accounts. `ConfiguredRemoteStorageBackend` relies implicitly on Frappe's underlying integrations. Since DevOps is expected to deploy this using Ifitwala_Press, precise configuration docs covering the `gcp-workload-identity-provider` setup are urgently missing.
-**Suggested Fix**: Generate an architectural guide explicitly summarizing deployment logic bridging `Ifitwala_Press` provisioning workflows cleanly alongside standard GCP Kubernetes Workload Identity tokens, highlighting `google-auth` application default credentials instead of legacy json keys.
-**Rationale**: Manual deployment mappings via static `.json` fragments fundamentally compromise large-scale GCP topologies by introducing fatal security exposure points mapped historically inside volume mounts or environment configurations. Leveraging GitOps-native mappings binds container-specific authentication automatically.
+**Resolution**: `20_gcs_ops_runbook.md` now documents the actual adapter behavior for ADC / Workload Identity, service-account-file fallback, the required storage capabilities, the signed-read caveat, expected `Drive Storage Settings` values, and the stale-public-link routing dependency.
+**Implication**: production storage auth no longer depends on undocumented operator memory.
 
 ### 10. UX Drift: `api/submissions.py` Wrapper Lacks Type Contracts
 **User Impact: 0.4 | Eng: 0.5**
 **Context**: The docs mention the creation of a specialized `upload_task_submission_artifact(...)` taking very precise inputs (`student`, `mime_type_hint`, etc.).
-**Drift**: The actual implemented wrapper simply states `upload_task_submission_artifact_service(kwargs)`. Frappe API layers are normally strongly typed in their parameters for auto-documenting what the SPA should send. The loose `kwargs` breaks the deterministic API boundaries required by the new frontend SPA, creating high friction for UI teams trying to submit tasks.
-**Suggested Fix**: Reconfigure `upload_task_submission_artifact` stripping `**kwargs` and rigorously mapping parameter inputs: `def upload_task_submission_artifact(task_submission: str, student: str, filename_original: str, mime_type_hint: str = None) -> dict[str, Any]:`.
-**Rationale**: Python-level Frappe `@frappe.whitelist()` endpoints seamlessly cast properly formatted signatures, isolating UI debugging directly into standard HTTP `400` payload schema validation errors while blocking injection vulnerabilities automatically.
+**Resolution**: upload/session/access/domain wrappers now expose explicit parameters and compact those into the exact payloads consumed by their services. This now covers `api/uploads.py`, `api/access.py`, `api/submissions.py`, `api/resources.py`, `api/materials.py`, `api/admissions.py`, `api/communications.py`, and `api/media.py`.
+**Implication**: SPA and Desk callers now get a more explicit, self-documenting Frappe endpoint contract without changing the underlying service semantics.
 
 ---
 
@@ -90,6 +87,6 @@ The remaining high-priority work is now narrower and more operational:
 1. **Public/Private Storage Split**: Separate public organization media from private governed files so public reads can use CDN/public-bucket delivery without signed URL overhead.
 2. **Lifecycle Cleanup**: Re-enable schedulers in `hooks.py` and clean up expired upload sessions / orphaned `tmp/...` objects automatically.
 3. **API Hardening**: Add rate limits on upload/session endpoints and tighten wrapper contracts that still rely on loose `**kwargs`.
-4. **Slot Registry**: Enforce a canonical slot allowlist in `validation.py` so slot semantics cannot drift into arbitrary strings.
-5. **Migration Completion**: Compatibility reads now exist for app-routed missing local `/files/...` and `/private/files/...` attachments. Verified private-file pruning also exists for completed offloads and for eligible new offloads with `delete_local_after_verification`. Public-file pruning now exists too, because public legacy `File.file_url` values can be rewritten onto canonical remote/proxy URLs before local deletion. The remaining compatibility gap is stale copied old `/files/...` links: static misses still need to route through the app if those old URLs must keep working.
-6. **Ops Documentation**: Document Workload Identity / ADC deployment clearly so production storage auth does not depend on ad hoc operator knowledge.
+4. **Migration Completion**: Compatibility reads now exist for app-routed missing local `/files/...` and `/private/files/...` attachments. Verified private-file pruning also exists for completed offloads and for eligible new offloads with `delete_local_after_verification`. Public-file pruning now exists too, because public legacy `File.file_url` values can be rewritten onto canonical remote/proxy URLs before local deletion. The remaining compatibility gap is stale copied old `/files/...` links: static misses still need to route through the app if those old URLs must keep working.
+5. **Lifecycle Cleanup**: scheduler-driven cleanup of expired upload sessions and stale temp objects is still open.
+6. **Rate Limiting**: upload/session endpoints still need explicit abuse controls.

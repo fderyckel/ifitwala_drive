@@ -78,7 +78,10 @@ def _install_fake_frappe(*, exists_map: dict[tuple[str, object], object] | None 
 
 
 def _load_validation_module():
-	_purge_modules("ifitwala_drive.services.uploads.validation")
+	_purge_modules(
+		"ifitwala_drive.services.uploads.validation",
+		"ifitwala_drive.services.uploads.slots",
+	)
 	return importlib.import_module("ifitwala_drive.services.uploads.validation")
 
 
@@ -131,3 +134,46 @@ def test_invalid_owner_fails():
 
 	with pytest.raises(FrappeError, match="Owner Doctype cannot be User"):
 		validation.validate_create_session_payload(payload)
+
+
+def test_unknown_slot_fails():
+	FrappeError = _install_fake_frappe(
+		exists_map={
+			("Organization", "ORG-0001"): True,
+			("School", "SCH-0001"): True,
+			("Task Submission", "TSUB-0001"): True,
+		}
+	)
+	validation = _load_validation_module()
+	payload = _valid_payload()
+	payload["slot"] = "freeform_slot"
+
+	with pytest.raises(FrappeError, match="canonical Drive slot registry"):
+		validation.validate_create_session_payload(payload)
+
+
+@pytest.mark.parametrize(
+	"slot",
+	(
+		"feedback",
+		"rubric_evidence",
+		"identity_passport_passport_copy",
+		"communication_attachment__row-001",
+		"organization_media__homepage_hero",
+		"health_vaccination_proof_mmr_2020-03-04",
+	),
+)
+def test_registry_slots_pass(slot: str):
+	_install_fake_frappe(
+		exists_map={
+			("Organization", "ORG-0001"): True,
+			("School", "SCH-0001"): True,
+			("Task Submission", "TSUB-0001"): True,
+		}
+	)
+	validation = _load_validation_module()
+	payload = _valid_payload()
+	payload["slot"] = slot
+
+	validation.validate_create_session_payload(payload)
+	assert payload["slot"] == slot

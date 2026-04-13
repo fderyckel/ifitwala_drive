@@ -8,6 +8,8 @@ Implemented now:
 
 - `Drive Storage Settings` Single DocType
 - settings-driven runtime profile resolution
+- canonical slot-registry enforcement during upload-session creation
+- explicit typed API wrappers for upload/session/access endpoints and the current Ed compatibility wrappers
 - `Test Connection`
 - `Dry Run Attachment Offload`
 - `Queue Offload Jobs`
@@ -27,6 +29,7 @@ Still not implemented:
 - scheduler-driven cleanup of expired temp upload objects
 - deployment-level miss routing for static public `/files/...` paths that bypass Python entirely
 - preservation of stale copied old `/files/...` links without web-tier miss routing
+- rate limiting on upload/session endpoints
 
 ## Bottom Line
 
@@ -34,6 +37,7 @@ Still not implemented:
 - Use that settings page to move new `ifitwala_drive` writes to Google Cloud Storage first.
 - Treat existing `sites/<site>/public/files` and `sites/<site>/private/files` content as a separate background migration, not as an immediate side effect of saving settings.
 - Do not treat the whole `sites/<site>` folder as Drive storage. Only attachment roots should be offloaded.
+- Start with one bucket and site-scoped prefixes unless there is a concrete ops reason to split public/private buckets immediately.
 
 ## Why This Fits The Current Code
 

@@ -8,6 +8,8 @@ from typing import Any
 import frappe
 from frappe import _
 
+from ifitwala_drive.services.uploads.slots import validate_slot
+
 REQUIRED_CREATE_SESSION_FIELDS: tuple[str, ...] = (
 	"owner_doctype",
 	"owner_name",
@@ -90,6 +92,7 @@ def _validate_secondary_subjects(secondary_subjects: Any) -> None:
 
 def validate_create_session_payload(payload: dict[str, Any]) -> None:
 	require_fields(payload, REQUIRED_CREATE_SESSION_FIELDS)
+	payload["slot"] = validate_slot(payload.get("slot"))
 
 	if payload.get("owner_doctype") == "User":
 		frappe.throw(_("Owner Doctype cannot be User. Use a business document owner."))

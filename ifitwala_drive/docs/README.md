@@ -14,6 +14,7 @@ Current docs:
 - `16_object_storage_adapter_contract.md` — active storage contract
 - `18_gcs_bucket_settings_and_site_offload_proposal.md` — proposed site settings and legacy attachment offload design
 - `19_public_file_cutover_contract.md` — canonical public URL and web-tier miss-routing contract for public prune
+- `20_gcs_ops_runbook.md` — production and local-dev runbook for GCS auth, settings, topology, and stale `/files/...` compatibility
 - `audit.md` — current audit and remediation status
 
 Completed Phase 1 planning and proposal notes were removed to keep this directory focused on the current system rather than historical execution scaffolding.

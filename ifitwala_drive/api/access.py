@@ -4,6 +4,7 @@ from typing import Any
 
 import frappe
 
+from ifitwala_drive.api._payloads import compact_payload
 from ifitwala_drive.services.files.access import (
 	issue_download_grant_service,
 	issue_preview_grant_service,
@@ -12,13 +13,23 @@ from ifitwala_drive.services.files.legacy_access import resolve_public_file_redi
 
 
 @frappe.whitelist()
-def issue_download_grant(**kwargs: Any) -> dict[str, Any]:
-	return issue_download_grant_service(kwargs)
+def issue_download_grant(
+	drive_file_id: str | None = None,
+	canonical_ref: str | None = None,
+) -> dict[str, Any]:
+	return issue_download_grant_service(
+		compact_payload(drive_file_id=drive_file_id, canonical_ref=canonical_ref)
+	)
 
 
 @frappe.whitelist()
-def issue_preview_grant(**kwargs: Any) -> dict[str, Any]:
-	return issue_preview_grant_service(kwargs)
+def issue_preview_grant(
+	drive_file_id: str | None = None,
+	canonical_ref: str | None = None,
+) -> dict[str, Any]:
+	return issue_preview_grant_service(
+		compact_payload(drive_file_id=drive_file_id, canonical_ref=canonical_ref)
+	)
 
 
 @frappe.whitelist(allow_guest=True)

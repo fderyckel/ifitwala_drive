@@ -179,8 +179,7 @@ def test_media_api_exports_expected_wrappers_and_delegates():
 		return _inner
 
 	integration_module = types.ModuleType("ifitwala_drive.services.integration.ifitwala_ed_media")
-	integration_module.MEDIA_API_SERVICE_EXPORTS = {}
-	for method_name in [
+	for method_name in (
 		"upload_employee_image",
 		"upload_guardian_image",
 		"upload_student_image",
@@ -188,22 +187,122 @@ def test_media_api_exports_expected_wrappers_and_delegates():
 		"upload_school_logo",
 		"upload_school_gallery_image",
 		"upload_organization_media_asset",
-	]:
-		service_callable = _service(method_name)
-		setattr(integration_module, f"{method_name}_service", service_callable)
-		integration_module.MEDIA_API_SERVICE_EXPORTS[method_name] = service_callable
+	):
+		setattr(integration_module, f"{method_name}_service", _service(method_name))
 	sys.modules["ifitwala_drive.services.integration.ifitwala_ed_media"] = integration_module
 
 	module = _load_module("ifitwala_drive.api.media")
+	assert (
+		module.upload_employee_image(
+			employee="EMP-0001",
+			filename_original="employee.jpg",
+			expected_size_bytes=100,
+		)["wrapper"]
+		== "upload_employee_image"
+	)
+	assert (
+		module.upload_guardian_image(
+			guardian="GRD-0001",
+			filename_original="guardian.jpg",
+		)["wrapper"]
+		== "upload_guardian_image"
+	)
+	assert (
+		module.upload_student_image(
+			student="STU-0001",
+			filename_original="student.jpg",
+		)["wrapper"]
+		== "upload_student_image"
+	)
+	assert (
+		module.upload_organization_logo(
+			organization="ORG-0001",
+			filename_original="logo.png",
+		)["wrapper"]
+		== "upload_organization_logo"
+	)
+	assert (
+		module.upload_school_logo(
+			school="SCH-0001",
+			filename_original="logo.png",
+		)["wrapper"]
+		== "upload_school_logo"
+	)
+	assert (
+		module.upload_school_gallery_image(
+			school="SCH-0001",
+			filename_original="gallery.jpg",
+			row_name="ROW-0001",
+			caption="Hero",
+		)["wrapper"]
+		== "upload_school_gallery_image"
+	)
+	assert (
+		module.upload_organization_media_asset(
+			filename_original="asset.jpg",
+			organization="ORG-0001",
+			scope="organization",
+			media_key="homepage_hero",
+		)["wrapper"]
+		== "upload_organization_media_asset"
+	)
 
-	expected_methods = list(integration_module.MEDIA_API_SERVICE_EXPORTS)
-	for method_name in expected_methods:
-		assert hasattr(module, method_name), method_name
-		response = getattr(module, method_name)(test_key=method_name)
-		assert response["wrapper"] == method_name
-
-	assert [entry[0] for entry in recorder] == expected_methods
-	assert all(payload["test_key"] == name for name, payload in recorder)
+	assert recorder == [
+		(
+			"upload_employee_image",
+			{
+				"employee": "EMP-0001",
+				"filename_original": "employee.jpg",
+				"expected_size_bytes": 100,
+			},
+		),
+		(
+			"upload_guardian_image",
+			{
+				"guardian": "GRD-0001",
+				"filename_original": "guardian.jpg",
+			},
+		),
+		(
+			"upload_student_image",
+			{
+				"student": "STU-0001",
+				"filename_original": "student.jpg",
+			},
+		),
+		(
+			"upload_organization_logo",
+			{
+				"organization": "ORG-0001",
+				"filename_original": "logo.png",
+			},
+		),
+		(
+			"upload_school_logo",
+			{
+				"school": "SCH-0001",
+				"filename_original": "logo.png",
+			},
+		),
+		(
+			"upload_school_gallery_image",
+			{
+				"school": "SCH-0001",
+				"filename_original": "gallery.jpg",
+				"row_name": "ROW-0001",
+				"caption": "Hero",
+			},
+		),
+		(
+			"upload_organization_media_asset",
+			{
+				"filename_original": "asset.jpg",
+				"organization": "ORG-0001",
+				"scope": "organization",
+				"media_key": "homepage_hero",
+			},
+		),
+	]
 
 
 def test_upload_student_image_uses_authoritative_contract():

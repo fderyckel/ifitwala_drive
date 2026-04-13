@@ -7,6 +7,7 @@ from typing import Any
 import frappe
 from frappe import _
 
+from ifitwala_drive.api._payloads import compact_payload
 from ifitwala_drive.services.logging import log_drive_event
 from ifitwala_drive.services.storage.base import get_storage_backend
 from ifitwala_drive.services.uploads.finalize import finalize_upload_session_service
@@ -18,33 +19,89 @@ from ifitwala_drive.services.uploads.sessions import (
 
 
 @frappe.whitelist()
-def create_upload_session(**kwargs: Any) -> dict[str, Any]:
+def create_upload_session(
+	owner_doctype: str,
+	owner_name: str,
+	attached_doctype: str,
+	attached_name: str,
+	organization: str,
+	primary_subject_type: str,
+	primary_subject_id: str,
+	data_class: str,
+	purpose: str,
+	retention_policy: str,
+	slot: str,
+	filename_original: str,
+	school: str | None = None,
+	folder: str | None = None,
+	secondary_subjects: list[dict[str, Any]] | None = None,
+	mime_type_hint: str | None = None,
+	expected_size_bytes: int | str | None = None,
+	is_private: int | bool | None = None,
+	upload_source: str | None = None,
+) -> dict[str, Any]:
 	"""Create a Drive Upload Session and return an upload target.
 
 	This is the canonical entrypoint for new governed uploads.
 	It must fail closed on missing governance context.
 	"""
-	return create_upload_session_service(kwargs)
+	return create_upload_session_service(
+		compact_payload(
+			owner_doctype=owner_doctype,
+			owner_name=owner_name,
+			attached_doctype=attached_doctype,
+			attached_name=attached_name,
+			organization=organization,
+			school=school,
+			folder=folder,
+			primary_subject_type=primary_subject_type,
+			primary_subject_id=primary_subject_id,
+			data_class=data_class,
+			purpose=purpose,
+			retention_policy=retention_policy,
+			slot=slot,
+			secondary_subjects=secondary_subjects,
+			filename_original=filename_original,
+			mime_type_hint=mime_type_hint,
+			expected_size_bytes=expected_size_bytes,
+			is_private=is_private,
+			upload_source=upload_source,
+		)
+	)
 
 
 @frappe.whitelist()
-def finalize_upload_session(**kwargs: Any) -> dict[str, Any]:
+def finalize_upload_session(
+	upload_session_id: str,
+	received_size_bytes: int | str | None = None,
+	content_hash: str | None = None,
+) -> dict[str, Any]:
 	"""Finalize an upload session and create the governed file artifact."""
-	return finalize_upload_session_service(kwargs)
+	return finalize_upload_session_service(
+		compact_payload(
+			upload_session_id=upload_session_id,
+			received_size_bytes=received_size_bytes,
+			content_hash=content_hash,
+		)
+	)
 
 
 @frappe.whitelist()
-def abort_upload_session(**kwargs: Any) -> dict[str, Any]:
+def abort_upload_session(upload_session_id: str) -> dict[str, Any]:
 	"""Abort an upload session and invalidate its temporary upload target."""
-	return abort_upload_session_service(kwargs)
+	return abort_upload_session_service(compact_payload(upload_session_id=upload_session_id))
 
 
 @frappe.whitelist()
-def upload_session_blob(**kwargs: Any) -> dict[str, Any]:
+def upload_session_blob(
+	upload_session_id: str | None = None,
+	session_key: str | None = None,
+	upload_token: str | None = None,
+) -> dict[str, Any]:
 	"""Receive blob data for same-host proxy upload strategies."""
-	upload_session_id = kwargs.get("upload_session_id") or frappe.form_dict.get("upload_session_id")
-	session_key = kwargs.get("session_key") or frappe.form_dict.get("session_key")
-	upload_token = kwargs.get("upload_token") or frappe.form_dict.get("upload_token")
+	upload_session_id = upload_session_id or frappe.form_dict.get("upload_session_id")
+	session_key = session_key or frappe.form_dict.get("session_key")
+	upload_token = upload_token or frappe.form_dict.get("upload_token")
 	if not upload_token:
 		request_headers = getattr(frappe, "request", None)
 		if request_headers and hasattr(request_headers, "headers"):
