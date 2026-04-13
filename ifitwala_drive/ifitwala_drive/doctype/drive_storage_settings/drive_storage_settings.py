@@ -8,6 +8,11 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
+from ifitwala_drive.services.storage.base import (
+	get_current_site_name,
+	validate_remote_storage_namespace,
+)
+
 _ALLOWED_BACKENDS = {"local", "gcs"}
 _ALLOWED_STORAGE_MODES = {
 	"local_only",
@@ -60,6 +65,9 @@ class DriveStorageSettings(Document):
 		if self.batch_size is None:
 			self.batch_size = 100
 
+		if getattr(self, "base_prefix", None):
+			self.base_prefix = str(self.base_prefix).strip().strip("/")
+
 	def _validate_backend_name(self) -> None:
 		if self.backend_name not in _ALLOWED_BACKENDS:
 			frappe.throw(_("Invalid storage backend: {0}").format(self.backend_name))
@@ -94,6 +102,15 @@ class DriveStorageSettings(Document):
 
 		if not str(self.bucket_or_container or "").strip():
 			frappe.throw(_("Bucket / Container is required when GCS storage is enabled."))
+
+		try:
+			self.base_prefix = validate_remote_storage_namespace(
+				bucket_or_container=self.bucket_or_container,
+				base_prefix=self.base_prefix,
+				site_name=get_current_site_name(),
+			)
+		except ValueError as exc:
+			frappe.throw(_(str(exc)))
 
 		if (
 			self.credential_source == "service_account_file"

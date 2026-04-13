@@ -5,6 +5,8 @@ import os
 import sys
 import types
 
+import pytest
+
 
 def _purge_modules(*prefixes: str) -> None:
 	for module_name in list(sys.modules):
@@ -24,6 +26,7 @@ class FakeDoc:
 def _install_fake_frappe(*, conf=None, settings_doc=None):
 	frappe = types.ModuleType("frappe")
 	frappe.conf = conf or {}
+	frappe.local = types.SimpleNamespace(site=(frappe.conf.get("site_name") or "site-a"))
 	frappe.get_cached_doc = (
 		lambda doctype, name=None: settings_doc if doctype == "Drive Storage Settings" else None
 	)
@@ -99,7 +102,7 @@ def test_local_only_settings_disable_legacy_remote_profile():
 def test_env_override_wins_over_settings():
 	previous = os.environ.get("IFITWALA_DRIVE_STORAGE_PROFILE")
 	os.environ["IFITWALA_DRIVE_STORAGE_PROFILE"] = (
-		'{"backend_name":"gcs","bucket_or_container":"env-bucket","base_prefix":"sites/env"}'
+		'{"backend_name":"gcs","bucket_or_container":"env-bucket","base_prefix":"sites/site-a"}'
 	)
 	try:
 		_install_fake_frappe(
@@ -122,4 +125,48 @@ def test_env_override_wins_over_settings():
 
 	assert profile.backend_name == "gcs"
 	assert profile.bucket_or_container == "env-bucket"
-	assert profile.base_prefix == "sites/env"
+	assert profile.base_prefix == "sites/site-a"
+
+
+def test_settings_profile_rejects_non_site_scoped_base_prefix():
+	_install_fake_frappe(
+		conf={"site_name": "site-a"},
+		settings_doc=FakeDoc(
+			{
+				"enabled": 1,
+				"backend_name": "gcs",
+				"storage_mode": "gcs_for_new_writes",
+				"bucket_or_container": "drive-bucket",
+				"base_prefix": "shared-prefix",
+			}
+		),
+	)
+	module = _load_base_module()
+
+	with pytest.raises(
+		module.StorageProfileValidationError,
+		match="Base Prefix must use the site-scoped shape sites/<site_name>",
+	):
+		module.resolve_storage_runtime_profile()
+
+
+def test_settings_profile_rejects_wrong_site_prefix():
+	_install_fake_frappe(
+		conf={"site_name": "site-a"},
+		settings_doc=FakeDoc(
+			{
+				"enabled": 1,
+				"backend_name": "gcs",
+				"storage_mode": "gcs_for_new_writes",
+				"bucket_or_container": "drive-bucket",
+				"base_prefix": "sites/site-b",
+			}
+		),
+	)
+	module = _load_base_module()
+
+	with pytest.raises(
+		module.StorageProfileValidationError,
+		match="Base Prefix must match the current site and use sites/site-a",
+	):
+		module.resolve_storage_runtime_profile()

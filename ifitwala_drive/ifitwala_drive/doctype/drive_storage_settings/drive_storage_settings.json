@@ -93,7 +93,7 @@
    "label": "Bucket / Container"
   },
   {
-   "description": "Recommended shape: sites/<site_name>",
+   "description": "Required for remote storage. Expected shape: sites/<site_name>",
    "fieldname": "base_prefix",
    "fieldtype": "Data",
    "label": "Base Prefix"

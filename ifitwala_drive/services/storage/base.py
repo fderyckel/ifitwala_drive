@@ -11,6 +11,10 @@ _PROFILE_ENV_KEY = "IFITWALA_DRIVE_STORAGE_PROFILE"
 _SETTINGS_DOCTYPE = "Drive Storage Settings"
 
 
+class StorageProfileValidationError(ValueError):
+	pass
+
+
 def normalize_storage_backend_name(backend_name: str | None) -> str:
 	value = str(backend_name or "").strip()
 	if not value:
@@ -59,6 +63,13 @@ def _clean_prefix(value: Any) -> str:
 	return str(value or "").strip().strip("/")
 
 
+def _clean_site_name(value: Any) -> str | None:
+	text = str(value or "").strip().rstrip("/")
+	if not text:
+		return None
+	return os.path.basename(text) or None
+
+
 def _get_legacy_conf_value(key: str) -> Any:
 	try:
 		import frappe
@@ -66,6 +77,21 @@ def _get_legacy_conf_value(key: str) -> Any:
 		return getattr(frappe, "conf", {}).get(key)
 	except Exception:
 		return None
+
+
+def get_current_site_name() -> str | None:
+	try:
+		import frappe
+	except Exception:
+		return None
+
+	local = getattr(frappe, "local", None)
+	site_name = _clean_site_name(getattr(local, "site", None))
+	if site_name:
+		return site_name
+
+	conf = getattr(frappe, "conf", {}) or {}
+	return _clean_site_name(conf.get("site_name"))
 
 
 def _parse_profile_value(profile_value: Any) -> dict[str, Any]:
@@ -171,6 +197,67 @@ def _read_raw_profile() -> dict[str, Any]:
 	return _read_legacy_profile()
 
 
+def validate_remote_storage_namespace(
+	*, bucket_or_container: Any, base_prefix: Any, site_name: str | None = None
+) -> str:
+	bucket = _clean_optional(bucket_or_container)
+	if not bucket:
+		raise StorageProfileValidationError("Bucket / Container is required when remote storage is enabled.")
+
+	prefix = _clean_prefix(base_prefix)
+	if not prefix:
+		raise StorageProfileValidationError(
+			"Base Prefix is required when remote storage is enabled and must use the site-scoped shape sites/<site_name>."
+		)
+
+	segments = [segment for segment in prefix.split("/") if segment]
+	if any(segment in {".", ".."} for segment in segments):
+		raise StorageProfileValidationError("Base Prefix cannot contain '.' or '..' path segments.")
+
+	if len(segments) != 2 or segments[0] != "sites":
+		raise StorageProfileValidationError("Base Prefix must use the site-scoped shape sites/<site_name>.")
+
+	if site_name and segments[1] != site_name:
+		raise StorageProfileValidationError(
+			f"Base Prefix must match the current site and use sites/{site_name}."
+		)
+
+	return prefix
+
+
+def _validate_runtime_profile(profile: StorageRuntimeProfile) -> StorageRuntimeProfile:
+	if profile.backend_name == "local" or profile.storage_mode == "local_only":
+		return profile
+
+	base_prefix = validate_remote_storage_namespace(
+		bucket_or_container=profile.bucket_or_container,
+		base_prefix=profile.base_prefix,
+		site_name=get_current_site_name(),
+	)
+	return StorageRuntimeProfile(
+		backend_name=profile.backend_name,
+		provider_family=profile.provider_family,
+		storage_mode=profile.storage_mode,
+		bucket_or_container=profile.bucket_or_container,
+		base_prefix=base_prefix,
+		region=profile.region,
+		endpoint=profile.endpoint,
+		project_id=profile.project_id,
+		signing_mode=profile.signing_mode,
+		quota_scope=profile.quota_scope,
+		credential_source=profile.credential_source,
+		service_account_file_path=profile.service_account_file_path,
+		upload_strategy=profile.upload_strategy,
+		upload_url_base=profile.upload_url_base,
+		download_url_base=profile.download_url_base,
+		preview_url_base=profile.preview_url_base,
+		object_url_base=profile.object_url_base,
+		probe_url_base=profile.probe_url_base,
+		local_staging_root=profile.local_staging_root,
+		extra_headers=profile.extra_headers,
+	)
+
+
 def resolve_storage_runtime_profile(backend_name: str | None = None) -> StorageRuntimeProfile:
 	raw = _read_raw_profile()
 	configured_backend = normalize_storage_backend_name(
@@ -184,7 +271,7 @@ def resolve_storage_runtime_profile(backend_name: str | None = None) -> StorageR
 	if not isinstance(extra_headers, dict):
 		extra_headers = {}
 
-	return StorageRuntimeProfile(
+	profile = StorageRuntimeProfile(
 		backend_name=configured_backend,
 		provider_family=provider_family,
 		storage_mode=_clean_optional(raw.get("storage_mode")),
@@ -208,6 +295,7 @@ def resolve_storage_runtime_profile(backend_name: str | None = None) -> StorageR
 		),
 		extra_headers=extra_headers,
 	)
+	return _validate_runtime_profile(profile)
 
 
 def build_object_key(*parts: str | None, base_prefix: str | None = None) -> str:
