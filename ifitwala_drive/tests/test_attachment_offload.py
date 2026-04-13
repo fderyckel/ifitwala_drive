@@ -550,20 +550,26 @@ def test_dry_run_local_prune_blocks_public_and_allows_private(monkeypatch):
 				"verifiable": True,
 			}
 
-	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
+		def build_public_object_url(self, *, object_key: str):
+			return None
+
+		monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
 
 	response = module.dry_run_local_prune_service(settings_doc=settings)
 
 	assert response["summary"] == {
 		"scanned": 2,
-		"eligible": 1,
-		"blocked": 1,
+		"eligible": 2,
+		"blocked": 0,
 		"private_files": 1,
 		"public_files": 1,
-		"public_file_prune_requires_web_tier_miss_routing": 1,
 	}
 	assert response["candidates"][0]["status"] == "eligible"
-	assert response["candidates"][1]["skip_reason"] == "public_file_prune_requires_web_tier_miss_routing"
+	assert response["candidates"][1]["status"] == "eligible"
+	assert (
+		response["candidates"][1]["canonical_file_url"]
+		== "/api/method/ifitwala_drive.api.access.redirect_public_file?file_id=FILE-1002"
+	)
 
 
 def test_enqueue_local_prune_jobs_creates_jobs_and_skips_existing(monkeypatch):
@@ -668,6 +674,9 @@ def test_enqueue_local_prune_jobs_creates_jobs_and_skips_existing(monkeypatch):
 				"verifiable": True,
 			}
 
+		def build_public_object_url(self, *, object_key: str):
+			return None
+
 	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
 
 	response = module.enqueue_local_prune_jobs_service(settings_doc=settings)
@@ -759,6 +768,85 @@ def test_run_prune_job_deletes_local_file_after_remote_verification(monkeypatch)
 	assert result["cleanup_performed"] is True
 	assert result["cleanup_blocked_reason"] is None
 	assert not source_path.exists()
+	assert job_doc.status == "completed"
+
+
+def test_run_prune_job_rewrites_public_file_url_before_delete(monkeypatch):
+	site_root = tempfile.mkdtemp(prefix="ifitwala-drive-prune-")
+	public_dir = Path(site_root, "public", "files", "legacy")
+	public_dir.mkdir(parents=True)
+	source_path = public_dir / "cover.jpg"
+	source_path.write_bytes(b"public-bytes")
+
+	settings = FakeDoc(
+		{
+			"doctype": "Drive Storage Settings",
+			"name": "Drive Storage Settings",
+			"enabled": 1,
+			"backend_name": "gcs",
+			"storage_mode": "gcs_primary_with_local_fallback",
+		}
+	)
+	file_rows = [
+		{
+			"name": "FILE-3501",
+			"file_url": "/files/legacy/cover.jpg",
+			"is_private": 0,
+			"file_name": "cover.jpg",
+		}
+	]
+	_install_fake_frappe(
+		file_rows=file_rows,
+		drive_rows=[],
+		settings_doc=settings,
+		site_root=site_root,
+	)
+	job_doc = FakeDoc(
+		{
+			"doctype": "Drive Processing Job",
+			"name": "DPJ-3501",
+			"file": "FILE-3501",
+			"status": "queued",
+			"payload_json": json.dumps(
+				{
+					"source_path": str(source_path),
+					"destination_object_key": "sites/site-a/legacy/public/files/legacy/cover.jpg",
+					"storage_backend": "gcs",
+					"verified_remote_size_bytes": 12,
+				},
+				sort_keys=True,
+			),
+		}
+	)
+	FakeDoc._docs_map[("Drive Processing Job", "DPJ-3501")] = job_doc
+	module = _load_module()
+
+	class FakeStorage:
+		def read_object_metadata(self, *, object_key: str):
+			return {
+				"exists": True,
+				"size_bytes": 12,
+				"checksum": None,
+				"verifiable": True,
+			}
+
+		def build_public_object_url(self, *, object_key: str):
+			return "https://cdn.invalid/legacy/cover.jpg"
+
+	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
+	monkeypatch.setattr(
+		module,
+		"build_canonical_public_file_url",
+		lambda *, file_id, storage_backend, object_key: "https://cdn.invalid/legacy/cover.jpg",
+	)
+
+	result = module.run_prune_job(drive_processing_job_id="DPJ-3501")
+
+	assert result["cleanup_performed"] is True
+	assert result["cleanup_blocked_reason"] is None
+	assert not source_path.exists()
+	file_doc = FakeDoc._docs_map[("File", "FILE-3501")]
+	assert file_doc.file_url == "https://cdn.invalid/legacy/cover.jpg"
 	assert job_doc.status == "completed"
 
 

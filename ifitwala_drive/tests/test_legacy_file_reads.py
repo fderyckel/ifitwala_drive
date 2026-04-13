@@ -337,3 +337,126 @@ def test_before_request_hook_redirects_to_remote_grant(monkeypatch):
 		"location": "https://signed.invalid/report.pdf",
 		"http_status_code": 302,
 	}
+
+
+def test_resolve_public_file_redirect_prefers_direct_public_object_url(monkeypatch):
+	_purge_modules("frappe", "ifitwala_drive.services.files.legacy_access")
+	_install_fake_frappe(
+		file_rows=[
+			{
+				"name": "FILE-PUB-1",
+				"file_url": "/files/legacy/cover.jpg",
+				"file_name": "cover.jpg",
+				"is_private": 0,
+				"attached_to_doctype": "",
+				"attached_to_name": "",
+			}
+		],
+		job_rows=[
+			{
+				"name": "DPJ-PUB-1",
+				"file": "FILE-PUB-1",
+				"job_type": "offload",
+				"status": "completed",
+				"payload_json": json.dumps(
+					{"destination_object_key": "sites/site-a/legacy/public/files/legacy/cover.jpg"},
+					sort_keys=True,
+				),
+				"result_json": json.dumps({"storage_backend": "gcs"}, sort_keys=True),
+			}
+		],
+	)
+	module = _load_module("ifitwala_drive.services.files.legacy_access")
+
+	class FakeStorage:
+		def build_public_object_url(self, *, object_key: str):
+			assert object_key == "sites/site-a/legacy/public/files/legacy/cover.jpg"
+			return "https://cdn.invalid/legacy/cover.jpg"
+
+		def issue_download_grant(self, *, object_key, file_url, expires_on, filename=None):
+			raise AssertionError("Direct public URL should be preferred.")
+
+	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
+
+	response = module.resolve_public_file_redirect(file_id="FILE-PUB-1")
+
+	assert response == {
+		"file_id": "FILE-PUB-1",
+		"file_url": "/files/legacy/cover.jpg",
+		"url": "https://cdn.invalid/legacy/cover.jpg",
+		"grant_type": "public_url",
+		"storage_backend": "gcs",
+		"object_key": "sites/site-a/legacy/public/files/legacy/cover.jpg",
+		"source": "offload_job",
+	}
+
+
+def test_resolve_public_file_redirect_falls_back_to_download_grant(monkeypatch):
+	_purge_modules("frappe", "ifitwala_drive.services.files.legacy_access")
+	_install_fake_frappe(
+		file_rows=[
+			{
+				"name": "FILE-PUB-2",
+				"file_url": "/files/legacy/cover.jpg",
+				"file_name": "cover.jpg",
+				"is_private": 0,
+				"attached_to_doctype": "",
+				"attached_to_name": "",
+			}
+		],
+		job_rows=[
+			{
+				"name": "DPJ-PUB-2",
+				"file": "FILE-PUB-2",
+				"job_type": "offload",
+				"status": "completed",
+				"payload_json": json.dumps(
+					{"destination_object_key": "sites/site-a/legacy/public/files/legacy/cover.jpg"},
+					sort_keys=True,
+				),
+				"result_json": json.dumps({"storage_backend": "gcs"}, sort_keys=True),
+			}
+		],
+	)
+	module = _load_module("ifitwala_drive.services.files.legacy_access")
+
+	class FakeStorage:
+		def build_public_object_url(self, *, object_key: str):
+			return None
+
+		def issue_download_grant(self, *, object_key, file_url, expires_on, filename=None):
+			assert filename == "cover.jpg"
+			return {"grant_type": "signed_url", "url": "https://signed.invalid/legacy/cover.jpg"}
+
+	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
+
+	response = module.resolve_public_file_redirect(file_id="FILE-PUB-2")
+
+	assert response["url"] == "https://signed.invalid/legacy/cover.jpg"
+	assert response["grant_type"] == "signed_url"
+	assert response["expires_on"] == "2026-04-13 12:10:00"
+
+
+def test_api_redirect_public_file_sets_redirect_response(monkeypatch):
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.api.access",
+		"ifitwala_drive.services.files.access",
+		"ifitwala_drive.services.files.legacy_access",
+	)
+	frappe = _install_fake_frappe()
+	module = _load_module("ifitwala_drive.api.access")
+	monkeypatch.setattr(
+		module,
+		"resolve_public_file_redirect",
+		lambda file_id=None, file_url=None: {"url": "https://cdn.invalid/legacy/cover.jpg"},
+	)
+
+	response = module.redirect_public_file(file_id="FILE-PUB-3")
+
+	assert response is None
+	assert frappe.local.response == {
+		"type": "redirect",
+		"location": "https://cdn.invalid/legacy/cover.jpg",
+		"http_status_code": 302,
+	}

@@ -10,6 +10,7 @@ import frappe
 from frappe import _
 from frappe.utils import now_datetime
 
+from ifitwala_drive.services.files.legacy_access import build_canonical_public_file_url
 from ifitwala_drive.services.storage.base import (
 	build_object_key,
 	get_storage_backend,
@@ -509,12 +510,14 @@ def _evaluate_local_prune(
 		"file_url": file_url,
 		"source_path": local_path,
 		"is_private": is_private,
+		"is_public": is_public,
 		"storage_backend": str(storage_backend or "").strip() or None,
 		"destination_object_key": str(destination_object_key or "").strip(),
 		"local_exists": bool(local_path and os.path.exists(local_path)),
 		"local_size_bytes": os.path.getsize(local_path)
 		if local_path and os.path.exists(local_path)
 		else None,
+		"canonical_file_url": None,
 		"cleanup_performed": False,
 		"cleanup_blocked_reason": None,
 	}
@@ -525,17 +528,10 @@ def _evaluate_local_prune(
 	if not response["local_exists"]:
 		response["cleanup_blocked_reason"] = "local_blob_missing"
 		return response
-	if is_public:
-		response["cleanup_blocked_reason"] = "public_file_prune_requires_web_tier_miss_routing"
-		return response
 	if not is_private:
-		response["cleanup_blocked_reason"] = "unsupported_file_visibility"
-		return response
-
-	owner_doctype, owner_name = _owner_context(file_doc, drive_file_doc)
-	if not owner_doctype or not owner_name or not frappe.db.exists(owner_doctype, owner_name):
-		response["cleanup_blocked_reason"] = "private_owner_missing"
-		return response
+		if not is_public:
+			response["cleanup_blocked_reason"] = "unsupported_file_visibility"
+			return response
 
 	remote_metadata = _read_remote_metadata(
 		storage_backend=storage_backend,
@@ -569,6 +565,22 @@ def _evaluate_local_prune(
 		response["cleanup_blocked_reason"] = "remote_size_mismatch"
 		return response
 
+	if is_private:
+		owner_doctype, owner_name = _owner_context(file_doc, drive_file_doc)
+		if not owner_doctype or not owner_name or not frappe.db.exists(owner_doctype, owner_name):
+			response["cleanup_blocked_reason"] = "private_owner_missing"
+			return response
+	else:
+		file_id = str(getattr(file_doc, "name", "") or "").strip()
+		response["canonical_file_url"] = build_canonical_public_file_url(
+			file_id=file_id,
+			storage_backend=response["storage_backend"],
+			object_key=response["destination_object_key"],
+		)
+		if not response["canonical_file_url"]:
+			response["cleanup_blocked_reason"] = "public_file_canonical_url_unavailable"
+			return response
+
 	return response
 
 
@@ -596,6 +608,10 @@ def _attempt_local_prune(
 	)
 	if evaluation.get("cleanup_blocked_reason"):
 		return evaluation
+
+	if evaluation.get("is_public"):
+		file_doc.file_url = evaluation["canonical_file_url"]
+		file_doc.save(ignore_permissions=True)
 
 	_remove_local_attachment_path(evaluation["source_path"])
 	evaluation["cleanup_performed"] = True
@@ -680,6 +696,7 @@ def _build_prune_candidate(job_row: dict[str, Any]) -> dict[str, Any]:
 		"remote_size_bytes": evaluation.get("remote_size_bytes"),
 		"remote_verifiable": evaluation.get("remote_verifiable"),
 		"is_private": evaluation.get("is_private"),
+		"canonical_file_url": evaluation.get("canonical_file_url"),
 		"status": status,
 		"skip_reason": evaluation.get("cleanup_blocked_reason"),
 	}

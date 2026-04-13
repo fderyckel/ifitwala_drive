@@ -4,7 +4,7 @@ import json
 import os
 from datetime import timedelta
 from typing import Any
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 import frappe
 from frappe import _
@@ -67,6 +67,25 @@ def _get_file_row(file_url: str) -> dict[str, Any] | None:
 			"attached_to_name",
 		],
 		filters={"file_url": file_url},
+		limit_page_length=1,
+	)
+	if not rows:
+		return None
+	return dict(rows[0])
+
+
+def _get_file_row_by_id(file_id: str) -> dict[str, Any] | None:
+	rows = frappe.get_all(
+		"File",
+		fields=[
+			"name",
+			"file_url",
+			"file_name",
+			"is_private",
+			"attached_to_doctype",
+			"attached_to_name",
+		],
+		filters={"name": file_id},
 		limit_page_length=1,
 	)
 	if not rows:
@@ -151,6 +170,20 @@ def _resolve_remote_artifact(file_row: dict[str, Any]) -> dict[str, Any] | None:
 	return _resolve_from_drive_file(file_id) or _resolve_from_offload_jobs(file_id)
 
 
+def build_canonical_public_file_url(*, file_id: str, storage_backend: str, object_key: str) -> str | None:
+	backend_name = normalize_storage_backend_name(storage_backend)
+	if not file_id or not object_key or backend_name == "local":
+		return None
+	storage = get_storage_backend(backend_name)
+	public_url = storage.build_public_object_url(object_key=object_key)
+	if public_url:
+		return public_url
+	return (
+		"/api/method/ifitwala_drive.api.access.redirect_public_file"
+		f"?file_id={quote(str(file_id).strip(), safe='')}"
+	)
+
+
 def _format_datetime(value) -> str:
 	return value.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -208,3 +241,55 @@ def resolve_legacy_file_grant(file_url: str | None) -> dict[str, Any] | None:
 		"object_key": remote_artifact["object_key"],
 		"source": remote_artifact["source"],
 	}
+
+
+def resolve_public_file_redirect(
+	*, file_id: str | None = None, file_url: str | None = None
+) -> dict[str, Any]:
+	identifier = str(file_id or "").strip()
+	file_row = _get_file_row_by_id(identifier) if identifier else None
+	if not file_row and file_url:
+		file_row = _get_file_row(_normalize_file_url(file_url))
+	if not file_row:
+		frappe.throw(_("Public file does not exist."))
+	if bool(int(file_row.get("is_private") or 0)):
+		frappe.throw(_("Public redirect is not allowed for private files: {0}").format(file_row.get("name")))
+
+	remote_artifact = _resolve_remote_artifact(file_row)
+	if not remote_artifact:
+		frappe.throw(_("No remote artifact is available for public file: {0}").format(file_row.get("name")))
+
+	storage = get_storage_backend(remote_artifact["storage_backend"])
+	url = storage.build_public_object_url(object_key=remote_artifact["object_key"])
+	grant_type = "public_url"
+	expires_on = None
+	if not url:
+		expires_on = now_datetime() + timedelta(minutes=_GRANT_TTL_MINUTES)
+		grant = storage.issue_download_grant(
+			object_key=remote_artifact["object_key"],
+			file_url=None,
+			expires_on=expires_on,
+			filename=str(file_row.get("file_name") or "").strip() or None,
+		)
+		url = str(grant.get("url") or "").strip()
+		grant_type = str(grant.get("grant_type") or "").strip() or "download_grant"
+
+	if not url or url.startswith((_PUBLIC_PREFIX, _PRIVATE_PREFIX)):
+		frappe.throw(
+			_("Configured storage backend cannot issue a public redirect for file: {0}").format(
+				file_row.get("name")
+			)
+		)
+
+	response = {
+		"file_id": str(file_row.get("name") or "").strip() or None,
+		"file_url": str(file_row.get("file_url") or "").strip() or None,
+		"url": url,
+		"grant_type": grant_type,
+		"storage_backend": remote_artifact["storage_backend"],
+		"object_key": remote_artifact["object_key"],
+		"source": remote_artifact["source"],
+	}
+	if expires_on is not None:
+		response["expires_on"] = _format_datetime(expires_on)
+	return response

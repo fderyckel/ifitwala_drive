@@ -77,6 +77,9 @@ class LocalStorageBackend:
 			handle.write(content)
 		return self._artifact_for_key(object_key)
 
+	def build_public_object_url(self, *, object_key: str) -> str | None:
+		return None
+
 	def read_object_metadata(self, *, object_key: str) -> dict[str, Any]:
 		path = self._absolute_path(object_key)
 		if not os.path.exists(path):

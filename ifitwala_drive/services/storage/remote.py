@@ -82,6 +82,12 @@ class ConfiguredRemoteStorageBackend(LocalStorageBackend):
 		artifact["file_url"] = self._build_object_url(object_key)
 		return artifact
 
+	def build_public_object_url(self, *, object_key: str) -> str | None:
+		url = str(self._build_object_url(object_key) or "").strip()
+		if not url or url.startswith(("/files/", "/private/files/")):
+			return None
+		return url
+
 	def read_object_metadata(self, *, object_key: str) -> dict[str, Any]:
 		return {
 			"exists": False,

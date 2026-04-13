@@ -19,12 +19,14 @@ Implemented now:
 - a `before_request` redirect hook that only activates when the local blob is gone
 - verified local prune for private attachments after remote-object size verification
 - optional immediate local prune during offload when `delete_local_after_verification` is enabled and safety checks pass
+- verified public local prune after `File.file_url` rewrite onto a canonical remote/proxy URL
+- public redirect endpoint for canonical fallback reads: `/api/method/ifitwala_drive.api.access.redirect_public_file?file_id=<FILE_ID>`
 
 Still not implemented:
 
 - scheduler-driven cleanup of expired temp upload objects
 - deployment-level miss routing for static public `/files/...` paths that bypass Python entirely
-- broad public-file local prune for legacy `/files/...` paths
+- preservation of stale copied old `/files/...` links without web-tier miss routing
 
 ## Bottom Line
 
@@ -127,6 +129,8 @@ Important:
 - `Test Connection`
 - `Dry Run Attachment Offload`
 - `Queue Offload Jobs`
+- `Dry Run Local Prune`
+- `Queue Local Prune Jobs`
 
 The more advanced controls from the original proposal remain future work:
 
@@ -255,8 +259,9 @@ Current implementation:
 - `services/files/legacy_access.py` resolves missing local `File.file_url` values to short-lived remote download grants
 - `before_request` redirects app-routed `/files/...` and `/private/files/...` requests to those remote grants when the local blob is missing
 - completed offloads can be scanned again for verified local prune candidates
-- `prune_local` jobs delete only private local blobs whose remote object existence and size can be re-verified
-- public `/files/...` blobs remain blocked from prune until the web tier can route misses into Python safely
+- `prune_local` jobs delete private local blobs only after remote object existence and size can be re-verified
+- `prune_local` jobs can also delete public local blobs after `File.file_url` is rewritten to a canonical remote/proxy URL
+- canonical public URL resolution prefers a direct remote public URL and falls back to `/api/method/ifitwala_drive.api.access.redirect_public_file?file_id=<FILE_ID>`
 
 ## Read Compatibility Requirement
 
@@ -270,7 +275,8 @@ That means we need one of these before final cutover:
 Current implementation status:
 
 - app-routed requests now use the first option: they resolve the existing `File.file_url`, enforce private-file ownership checks, and redirect to a short-lived remote download grant
-- static public `/files/...` delivery may still bypass Python entirely depending on the web tier, so public local-prune remains blocked until the web layer routes misses into the app or legacy public URLs are migrated to a canonical proxy/domain
+- public legacy attachments now use the second option during prune: `File.file_url` is rewritten to a canonical remote/proxy URL before the local blob is removed
+- static public `/files/...` delivery may still bypass Python entirely depending on the web tier, so preserving stale copied old `/files/...` links still requires the web layer to route misses into the app
 
 What we should not do:
 
@@ -342,7 +348,8 @@ Status:
 - missing-local reads now redirect to remote download grants for app-routed `/files/...` and `/private/files/...` requests
 - private local prune now exists after remote-object verification and owner-context checks
 - `delete_local_after_verification` can prune immediately for eligible private offloads
-- public static `/files/...` miss-through still needs deployment support
+- public local prune now exists after canonical public URL rewrite
+- preserving stale old `/files/...` links still needs deployment support
 
 ## Decision Summary
 
