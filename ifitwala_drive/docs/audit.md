@@ -91,5 +91,5 @@ The remaining high-priority work is now narrower and more operational:
 2. **Lifecycle Cleanup**: Re-enable schedulers in `hooks.py` and clean up expired upload sessions / orphaned `tmp/...` objects automatically.
 3. **API Hardening**: Add rate limits on upload/session endpoints and tighten wrapper contracts that still rely on loose `**kwargs`.
 4. **Slot Registry**: Enforce a canonical slot allowlist in `validation.py` so slot semantics cannot drift into arbitrary strings.
-5. **Migration Completion**: Add compatibility reads for migrated legacy `/files/...` and `/private/files/...` attachments before any local-blob pruning is allowed.
+5. **Migration Completion**: Compatibility reads now exist for app-routed missing local `/files/...` and `/private/files/...` attachments. Local-blob pruning is still blocked until static public `/files/...` misses are routed through the app or onto a canonical remote URL path.
 6. **Ops Documentation**: Document Workload Identity / ADC deployment clearly so production storage auth does not depend on ad hoc operator knowledge.

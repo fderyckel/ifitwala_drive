@@ -13,12 +13,14 @@ Implemented now:
 - `Queue Offload Jobs`
 - background `offload` jobs that copy eligible local blobs into the active storage backend
 - governed `Drive File` metadata updates after successful offload
+- compatibility read grants for migrated missing local attachments on app-routed `/files/...` and `/private/files/...` requests
+- a `before_request` redirect hook that only activates when the local blob is gone
 
 Still not implemented:
 
-- legacy compatibility reads from GCS for old `/files/...` and `/private/files/...` URLs
 - local blob deletion / prune after verification
 - scheduler-driven cleanup of expired temp upload objects
+- deployment-level miss routing for static public `/files/...` paths that bypass Python entirely
 
 ## Bottom Line
 
@@ -246,6 +248,8 @@ Current implementation:
 - queued jobs copy the local blob into the active storage backend
 - governed `Drive File` rows are updated to the remote `storage_backend` / `storage_object_key`
 - legacy `File` rows are left unchanged for read compatibility
+- `services/files/legacy_access.py` resolves missing local `File.file_url` values to short-lived remote download grants
+- `before_request` redirects app-routed `/files/...` and `/private/files/...` requests to those remote grants when the local blob is missing
 
 ## Read Compatibility Requirement
 
@@ -255,6 +259,11 @@ That means we need one of these before final cutover:
 
 - a compatibility read layer that serves `/files/...` and `/private/files/...` from GCS when the local blob is gone
 - or a canonical proxy route that legacy `File.file_url` values are migrated onto
+
+Current implementation status:
+
+- app-routed requests now use the first option: they resolve the existing `File.file_url`, enforce private-file ownership checks, and redirect to a short-lived remote download grant
+- static public `/files/...` delivery may still bypass Python entirely depending on the web tier, so public local-prune remains blocked until the web layer routes misses into the app or legacy public URLs are migrated to a canonical proxy/domain
 
 What we should not do:
 
@@ -322,7 +331,10 @@ Status:
 - add optional cleanup/prune of local blobs after verification
 
 Status:
-- not implemented
+- partially implemented
+- missing-local reads now redirect to remote download grants for app-routed `/files/...` and `/private/files/...` requests
+- local prune is still blocked
+- public static `/files/...` miss-through still needs deployment support
 
 ## Decision Summary
 

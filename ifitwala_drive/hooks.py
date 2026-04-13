@@ -199,7 +199,7 @@ app_license = "mit"
 
 # Request Events
 # ----------------
-# before_request = ["ifitwala_drive.utils.before_request"]
+before_request = ["ifitwala_drive.request_hooks.redirect_migrated_legacy_file_requests"]
 # after_request = ["ifitwala_drive.utils.after_request"]
 
 # Job Events
