@@ -197,6 +197,7 @@ def test_media_api_exports_expected_wrappers_and_delegates():
 			employee="EMP-0001",
 			filename_original="employee.jpg",
 			expected_size_bytes=100,
+			idempotency_key="retry-employee-001",
 		)["wrapper"]
 		== "upload_employee_image"
 	)
@@ -254,6 +255,7 @@ def test_media_api_exports_expected_wrappers_and_delegates():
 				"employee": "EMP-0001",
 				"filename_original": "employee.jpg",
 				"expected_size_bytes": 100,
+				"idempotency_key": "retry-employee-001",
 			},
 		),
 		(

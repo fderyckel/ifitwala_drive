@@ -49,6 +49,7 @@ def test_submission_wrapper_maps_explicit_payload():
 			student="STU-0001",
 			slot="submission",
 			expected_size_bytes=42,
+			idempotency_key="retry-submission-001",
 		)
 
 		assert recorder["payload"] == {
@@ -57,6 +58,7 @@ def test_submission_wrapper_maps_explicit_payload():
 			"student": "STU-0001",
 			"slot": "submission",
 			"expected_size_bytes": 42,
+			"idempotency_key": "retry-submission-001",
 		}
 	finally:
 		_purge_modules(
@@ -97,6 +99,7 @@ def test_admissions_wrapper_maps_explicit_payload():
 			filename_original="passport.pdf",
 			document_type="Passport",
 			item_key="passport_copy",
+			idempotency_key="retry-applicant-001",
 		)
 		module.upload_applicant_health_vaccination_proof(
 			student_applicant="APP-0001",
@@ -112,6 +115,7 @@ def test_admissions_wrapper_maps_explicit_payload():
 			"filename_original": "passport.pdf",
 			"document_type": "Passport",
 			"item_key": "passport_copy",
+			"idempotency_key": "retry-applicant-001",
 		}
 		assert recorder["health"] == {
 			"student_applicant": "APP-0001",
@@ -200,6 +204,7 @@ def test_access_and_upload_wrappers_map_explicit_payloads():
 			retention_policy="until_school_exit_plus_6m",
 			slot="submission",
 			filename_original="essay.docx",
+			idempotency_key="retry-upload-001",
 		)
 		uploads_api.finalize_upload_session(upload_session_id="DUS-0001", received_size_bytes=42)
 		uploads_api.abort_upload_session(upload_session_id="DUS-0001")
@@ -219,6 +224,7 @@ def test_access_and_upload_wrappers_map_explicit_payloads():
 			"retention_policy": "until_school_exit_plus_6m",
 			"slot": "submission",
 			"filename_original": "essay.docx",
+			"idempotency_key": "retry-upload-001",
 		}
 		assert recorder["finalize"] == {"upload_session_id": "DUS-0001", "received_size_bytes": 42}
 		assert recorder["abort"] == {"upload_session_id": "DUS-0001"}
@@ -261,12 +267,14 @@ def test_communications_wrapper_maps_explicit_payload():
 			org_communication="COMM-0001",
 			filename_original="announcement.pdf",
 			row_name="ROW-0001",
+			idempotency_key="retry-comm-001",
 		)
 
 		assert recorder["payload"] == {
 			"org_communication": "COMM-0001",
 			"filename_original": "announcement.pdf",
 			"row_name": "ROW-0001",
+			"idempotency_key": "retry-comm-001",
 		}
 	finally:
 		_purge_modules(

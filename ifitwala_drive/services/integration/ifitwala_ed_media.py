@@ -77,6 +77,7 @@ def upload_employee_image_service(payload: dict[str, Any]) -> dict[str, Any]:
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
+			"idempotency_key": payload.get("idempotency_key"),
 			"is_private": 0,
 			"upload_source": payload.get("upload_source") or "Desk",
 		}
@@ -107,6 +108,7 @@ def upload_student_image_service(payload: dict[str, Any]) -> dict[str, Any]:
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
+			"idempotency_key": payload.get("idempotency_key"),
 			"is_private": 0,
 			"upload_source": payload.get("upload_source") or "Desk",
 		}
@@ -136,6 +138,7 @@ def upload_guardian_image_service(payload: dict[str, Any]) -> dict[str, Any]:
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
+			"idempotency_key": payload.get("idempotency_key"),
 			"is_private": 0,
 			"upload_source": payload.get("upload_source") or "Desk",
 		}
@@ -171,6 +174,7 @@ def upload_organization_logo_service(payload: dict[str, Any]) -> dict[str, Any]:
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
+			"idempotency_key": payload.get("idempotency_key"),
 			"is_private": 0,
 			"upload_source": payload.get("upload_source") or "Desk",
 		}
@@ -204,6 +208,7 @@ def upload_school_logo_service(payload: dict[str, Any]) -> dict[str, Any]:
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
+			"idempotency_key": payload.get("idempotency_key"),
 			"is_private": 0,
 			"upload_source": payload.get("upload_source") or "Desk",
 		}
@@ -262,6 +267,7 @@ def upload_school_gallery_image_service(payload: dict[str, Any]) -> dict[str, An
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
+			"idempotency_key": payload.get("idempotency_key"),
 			"is_private": 0,
 			"upload_source": payload.get("upload_source") or "Desk",
 		}
@@ -321,6 +327,7 @@ def upload_organization_media_asset_service(payload: dict[str, Any]) -> dict[str
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
+			"idempotency_key": payload.get("idempotency_key"),
 			"is_private": 0,
 			"upload_source": payload.get("upload_source") or "Desk",
 		}

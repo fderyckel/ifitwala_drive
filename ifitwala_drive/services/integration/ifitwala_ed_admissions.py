@@ -72,6 +72,7 @@ def upload_applicant_document_service(payload: dict[str, Any]) -> dict[str, Any]
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
+			"idempotency_key": payload.get("idempotency_key"),
 			"is_private": 1,
 			"upload_source": payload.get("upload_source") or "SPA",
 		}
@@ -106,6 +107,7 @@ def upload_applicant_profile_image_service(payload: dict[str, Any]) -> dict[str,
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
+			"idempotency_key": payload.get("idempotency_key"),
 			"is_private": 1,
 			"upload_source": payload.get("upload_source") or "SPA",
 		}
@@ -133,6 +135,7 @@ def upload_applicant_guardian_image_service(payload: dict[str, Any]) -> dict[str
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
+			"idempotency_key": payload.get("idempotency_key"),
 			"is_private": 1,
 			"upload_source": payload.get("upload_source") or "SPA",
 		}
@@ -166,6 +169,7 @@ def upload_applicant_health_vaccination_proof_service(payload: dict[str, Any]) -
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
+			"idempotency_key": payload.get("idempotency_key"),
 			"is_private": 1,
 			"upload_source": payload.get("upload_source") or "SPA",
 		}

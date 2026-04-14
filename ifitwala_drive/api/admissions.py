@@ -24,6 +24,7 @@ def upload_applicant_document(
 	slot: str | None = None,
 	mime_type_hint: str | None = None,
 	expected_size_bytes: int | str | None = None,
+	idempotency_key: str | None = None,
 	upload_source: str | None = None,
 ) -> dict[str, Any]:
 	"""Workflow-aware wrapper for admissions document uploads."""
@@ -38,6 +39,7 @@ def upload_applicant_document(
 			slot=slot,
 			mime_type_hint=mime_type_hint,
 			expected_size_bytes=expected_size_bytes,
+			idempotency_key=idempotency_key,
 			upload_source=upload_source,
 		)
 	)
@@ -49,6 +51,7 @@ def upload_applicant_profile_image(
 	filename_original: str,
 	mime_type_hint: str | None = None,
 	expected_size_bytes: int | str | None = None,
+	idempotency_key: str | None = None,
 	upload_source: str | None = None,
 ) -> dict[str, Any]:
 	"""Workflow-aware wrapper for applicant profile image uploads."""
@@ -58,6 +61,7 @@ def upload_applicant_profile_image(
 			filename_original=filename_original,
 			mime_type_hint=mime_type_hint,
 			expected_size_bytes=expected_size_bytes,
+			idempotency_key=idempotency_key,
 			upload_source=upload_source,
 		)
 	)
@@ -70,6 +74,7 @@ def upload_applicant_guardian_image(
 	filename_original: str,
 	mime_type_hint: str | None = None,
 	expected_size_bytes: int | str | None = None,
+	idempotency_key: str | None = None,
 	upload_source: str | None = None,
 ) -> dict[str, Any]:
 	"""Workflow-aware wrapper for applicant guardian image uploads."""
@@ -80,6 +85,7 @@ def upload_applicant_guardian_image(
 			filename_original=filename_original,
 			mime_type_hint=mime_type_hint,
 			expected_size_bytes=expected_size_bytes,
+			idempotency_key=idempotency_key,
 			upload_source=upload_source,
 		)
 	)
@@ -95,6 +101,7 @@ def upload_applicant_health_vaccination_proof(
 	row_index: int | str | None = None,
 	mime_type_hint: str | None = None,
 	expected_size_bytes: int | str | None = None,
+	idempotency_key: str | None = None,
 	upload_source: str | None = None,
 ) -> dict[str, Any]:
 	"""Workflow-aware wrapper for applicant health vaccination proof uploads."""
@@ -108,6 +115,7 @@ def upload_applicant_health_vaccination_proof(
 			row_index=row_index,
 			mime_type_hint=mime_type_hint,
 			expected_size_bytes=expected_size_bytes,
+			idempotency_key=idempotency_key,
 			upload_source=upload_source,
 		)
 	)

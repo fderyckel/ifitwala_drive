@@ -38,6 +38,7 @@ def create_upload_session(
 	mime_type_hint: str | None = None,
 	expected_size_bytes: int | str | None = None,
 	is_private: int | bool | None = None,
+	idempotency_key: str | None = None,
 	upload_source: str | None = None,
 ) -> dict[str, Any]:
 	"""Create a Drive Upload Session and return an upload target.
@@ -65,6 +66,7 @@ def create_upload_session(
 			mime_type_hint=mime_type_hint,
 			expected_size_bytes=expected_size_bytes,
 			is_private=is_private,
+			idempotency_key=idempotency_key,
 			upload_source=upload_source,
 		)
 	)

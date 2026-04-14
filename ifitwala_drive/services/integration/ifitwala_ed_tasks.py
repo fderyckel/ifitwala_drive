@@ -103,6 +103,7 @@ def upload_task_submission_artifact_service(payload: dict[str, Any]) -> dict[str
 			"filename_original": filename_original,
 			"mime_type_hint": mime_type_hint,
 			"expected_size_bytes": expected_size_bytes,
+			"idempotency_key": payload.get("idempotency_key"),
 			"is_private": 1,
 			"upload_source": payload.get("upload_source") or "SPA",
 			"secondary_subjects": payload.get("secondary_subjects") or [],
@@ -140,6 +141,7 @@ def upload_task_resource_service(payload: dict[str, Any]) -> dict[str, Any]:
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
+			"idempotency_key": payload.get("idempotency_key"),
 			"is_private": 1,
 			"upload_source": payload.get("upload_source") or "Desk",
 		}
