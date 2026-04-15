@@ -20,6 +20,8 @@ def test_patch_repairs_stale_drive_doctype_modules():
 		"Drive File Version": "Desk",
 		"Drive Folder": "Ifitwala Drive",
 		"Drive Binding": "Core",
+		"Drive Access Event": "Desk",
+		"Drive Erasure Request": "Core",
 	}
 
 	class FakeDB:
@@ -45,4 +47,6 @@ def test_patch_repairs_stale_drive_doctype_modules():
 		("DocType", "Drive Upload Session", "module", "Ifitwala Drive", False),
 		("DocType", "Drive File Version", "module", "Ifitwala Drive", False),
 		("DocType", "Drive Binding", "module", "Ifitwala Drive", False),
+		("DocType", "Drive Access Event", "module", "Ifitwala Drive", False),
+		("DocType", "Drive Erasure Request", "module", "Ifitwala Drive", False),
 	]

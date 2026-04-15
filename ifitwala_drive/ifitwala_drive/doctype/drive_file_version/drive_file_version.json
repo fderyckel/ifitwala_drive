@@ -18,6 +18,8 @@
   "drive_file",
   "version_no",
   "file",
+  "source_version",
+  "source_file",
   "is_current",
   "version_reason",
   "section_storage",
@@ -49,6 +51,18 @@
    "label": "File",
    "options": "File",
    "reqd": 1
+  },
+  {
+   "fieldname": "source_version",
+   "fieldtype": "Link",
+   "label": "Source Version",
+   "options": "Drive File Version"
+  },
+  {
+   "fieldname": "source_file",
+   "fieldtype": "Link",
+   "label": "Source File",
+   "options": "File"
   },
   {
    "default": "1",

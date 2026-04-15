@@ -1,0 +1,129 @@
+{
+ "actions": [],
+ "allow_copy": 0,
+ "allow_events_in_timeline": 0,
+ "allow_guest_to_view": 0,
+ "allow_import": 0,
+ "allow_rename": 0,
+ "autoname": "hash",
+ "beta": 0,
+ "creation": "2026-04-15 00:00:00.000000",
+ "custom": 0,
+ "default_view": "List",
+ "doctype": "DocType",
+ "document_type": "Document",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "data_subject_type",
+  "data_subject_id",
+  "requested_by",
+  "request_reason",
+  "scope",
+  "slot_filter",
+  "status",
+  "executed_on",
+  "result_deleted_count",
+  "result_blocked_count"
+ ],
+ "fields": [
+  {
+   "fieldname": "data_subject_type",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Data Subject Type",
+   "reqd": 1
+  },
+  {
+   "fieldname": "data_subject_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Data Subject ID",
+   "reqd": 1
+  },
+  {
+   "fieldname": "requested_by",
+   "fieldtype": "Link",
+   "label": "Requested By",
+   "options": "User"
+  },
+  {
+   "fieldname": "request_reason",
+   "fieldtype": "Small Text",
+   "label": "Request Reason"
+  },
+  {
+   "default": "files_only",
+   "fieldname": "scope",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Scope",
+   "options": "all\nfiles_only\nslot_only",
+   "reqd": 1
+  },
+  {
+   "fieldname": "slot_filter",
+   "fieldtype": "Data",
+   "label": "Slot Filter"
+  },
+  {
+   "default": "draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "draft\napproved\nexecuting\ncompleted\nblocked",
+   "reqd": 1
+  },
+  {
+   "fieldname": "executed_on",
+   "fieldtype": "Datetime",
+   "label": "Executed On"
+  },
+  {
+   "default": "0",
+   "fieldname": "result_deleted_count",
+   "fieldtype": "Int",
+   "label": "Result Deleted Count"
+  },
+  {
+   "default": "0",
+   "fieldname": "result_blocked_count",
+   "fieldtype": "Int",
+   "label": "Result Blocked Count"
+  }
+ ],
+ "grid_page_length": 50,
+ "hide_toolbar": 0,
+ "index_web_pages_for_search": 0,
+ "is_submittable": 0,
+ "issingle": 0,
+ "links": [],
+ "modified": "2026-04-15 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Ifitwala Drive",
+ "name": "Drive Erasure Request",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "read_only": 0,
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1,
+ "track_seen": 0
+}

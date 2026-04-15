@@ -552,7 +552,7 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 
 	assert response == {
 		"drive_file_id": "DF-0001",
-		"drive_file_version_id": None,
+		"drive_file_version_id": "DFV-0001",
 		"file_id": "FILE-0001",
 		"canonical_ref": "drv:ORG-0001:DF-0001",
 		"status": "completed",
@@ -562,7 +562,7 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 	assert session_doc.status == "completed"
 	assert session_doc.file == "FILE-0001"
 	assert session_doc.drive_file == "DF-0001"
-	assert session_doc.drive_file_version is None
+	assert session_doc.drive_file_version == "DFV-0001"
 	assert session_doc.canonical_ref == "drv:ORG-0001:DF-0001"
 	assert session_doc.content_hash == "sha256:abc123"
 	assert dispatcher_recorder["call"]["classification"]["slot"] == "submission"
@@ -1234,6 +1234,7 @@ def test_create_drive_file_artifacts_recovers_from_duplicate_inserts():
 			"name": "DF-0099",
 			"source_upload_session": "DUS-0001",
 			"canonical_ref": "drv:ORG-0001:DF-0099",
+			"current_version": "DFV-0099",
 		}
 	)
 	_install_fake_frappe(
@@ -1278,7 +1279,7 @@ def test_create_drive_file_artifacts_recovers_from_duplicate_inserts():
 
 	assert response == {
 		"drive_file_id": "DF-0099",
-		"drive_file_version_id": None,
+		"drive_file_version_id": "DFV-0099",
 		"canonical_ref": "drv:ORG-0001:DF-0099",
 		"drive_binding_id": None,
 	}
@@ -1323,6 +1324,7 @@ def test_create_drive_file_artifacts_creates_primary_binding_when_ed_requests_on
 	)
 
 	assert response["drive_file_id"] == "DF-0001"
+	assert response["drive_file_version_id"] == "DFV-0001"
 	assert response["canonical_ref"] == "drv:ORG-0001:DF-0001"
 	assert response["drive_binding_id"] == "DB-0001"
 

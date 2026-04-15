@@ -94,7 +94,7 @@ def _load_module(module_name: str):
 
 
 def test_issue_download_grant_supports_canonical_ref(monkeypatch):
-	_purge_modules("frappe", "ifitwala_drive.services.files.access")
+	_purge_modules("frappe", "ifitwala_drive.services.audit.events", "ifitwala_drive.services.files.access")
 	drive_file = FakeDoc(
 		{
 			"name": "DF-0001",
@@ -143,7 +143,7 @@ def test_issue_download_grant_supports_canonical_ref(monkeypatch):
 
 
 def test_issue_preview_grant_requires_ready_preview(monkeypatch):
-	_purge_modules("frappe", "ifitwala_drive.services.files.access")
+	_purge_modules("frappe", "ifitwala_drive.services.audit.events", "ifitwala_drive.services.files.access")
 	drive_file = FakeDoc(
 		{
 			"name": "DF-0002",
@@ -187,7 +187,7 @@ def test_issue_preview_grant_requires_ready_preview(monkeypatch):
 
 
 def test_issue_download_grant_rejects_blocked_file(monkeypatch):
-	_purge_modules("frappe", "ifitwala_drive.services.files.access")
+	_purge_modules("frappe", "ifitwala_drive.services.audit.events", "ifitwala_drive.services.files.access")
 	drive_file = FakeDoc(
 		{
 			"name": "DF-0003",

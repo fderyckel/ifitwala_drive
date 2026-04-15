@@ -5,6 +5,7 @@ from typing import Any
 import frappe
 
 from ifitwala_drive.services.concurrency import drive_lock, is_duplicate_entry_error
+from ifitwala_drive.services.files.versions import create_initial_drive_file_version
 
 
 def _build_canonical_ref(*, organization: str | None, drive_file_id: str) -> str:
@@ -147,9 +148,10 @@ def _existing_drive_file_response(
 		binding_role=binding_role,
 	)
 	canonical_ref = frappe.db.get_value("Drive File", drive_file_id, "canonical_ref")
+	drive_file_version_id = frappe.db.get_value("Drive File", drive_file_id, "current_version")
 	return {
 		"drive_file_id": drive_file_id,
-		"drive_file_version_id": None,
+		"drive_file_version_id": drive_file_version_id,
 		"canonical_ref": canonical_ref,
 		"drive_binding_id": binding_id,
 	}
@@ -207,6 +209,12 @@ def create_drive_file_artifacts(
 			organization=getattr(upload_session_doc, "organization", None),
 			drive_file_id=drive_file.name,
 		)
+		drive_file.current_version = create_initial_drive_file_version(
+			drive_file_id=drive_file.name,
+			file_id=file_id,
+			storage_artifact=storage_artifact,
+			upload_session_doc=upload_session_doc,
+		)
 		drive_file.save(ignore_permissions=True)
 
 		binding_id = _create_primary_binding(
@@ -218,7 +226,7 @@ def create_drive_file_artifacts(
 
 		return {
 			"drive_file_id": drive_file.name,
-			"drive_file_version_id": None,
+			"drive_file_version_id": drive_file.current_version,
 			"canonical_ref": drive_file.canonical_ref,
 			"drive_binding_id": binding_id,
 		}

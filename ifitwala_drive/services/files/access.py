@@ -7,6 +7,7 @@ import frappe
 from frappe import _
 from frappe.utils import now_datetime
 
+from ifitwala_drive.services.audit.events import record_drive_access_event
 from ifitwala_drive.services.storage.base import get_storage_backend
 
 _GRANT_TTL_MINUTES = 10
@@ -96,6 +97,12 @@ def _issue_grant(*, doc, grant_kind: str) -> dict[str, Any]:
 	}
 	if grant_kind == "preview":
 		response["preview_status"] = doc.preview_status
+	record_drive_access_event(
+		drive_file_id=doc.name,
+		drive_file_version_id=getattr(doc, "current_version", None),
+		event_type="preview_open" if grant_kind == "preview" else "download_grant",
+		metadata={"grant_type": grant["grant_type"], "expires_on": response["expires_on"]},
+	)
 	return response
 
 

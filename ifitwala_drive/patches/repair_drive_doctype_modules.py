@@ -7,6 +7,8 @@ DRIVE_DOCTYPES = (
 	"Drive Folder",
 	"Drive Binding",
 	"Drive Processing Job",
+	"Drive Access Event",
+	"Drive Erasure Request",
 )
 
 TARGET_MODULE = "Ifitwala Drive"

@@ -8,6 +8,7 @@ import frappe
 from frappe import _
 from frappe.utils import get_datetime, now_datetime
 
+from ifitwala_drive.services.audit.events import record_drive_access_event
 from ifitwala_drive.services.concurrency import drive_lock
 from ifitwala_drive.services.files.creation import create_drive_file_artifacts
 from ifitwala_drive.services.integration.ifitwala_ed_bridge import (
@@ -239,11 +240,16 @@ def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 		frappe.throw(_("Temporary uploaded object was not found for this upload session."))
 
 	try:
-		inspect_uploaded_bytes(storage=storage, upload_session_doc=doc)
+		detected_mime_type = inspect_uploaded_bytes(storage=storage, upload_session_doc=doc)
 		storage_artifact = storage.finalize_temporary_object(
 			object_key=doc.tmp_object_key,
 			final_key=_build_final_object_key(doc),
 		)
+		storage_artifact["mime_type"] = detected_mime_type
+		if getattr(doc, "received_size_bytes", None):
+			storage_artifact["size_bytes"] = doc.received_size_bytes
+		if getattr(doc, "content_hash", None):
+			storage_artifact["content_hash"] = doc.content_hash
 		created = _call_authoritative_create_and_classify_file(
 			file_kwargs=_build_file_kwargs(doc, storage_artifact, finalize_contract),
 			classification=_build_classification(doc),
@@ -276,6 +282,12 @@ def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 			doc = refreshed
 
 	extra_response = run_post_finalize(doc, created)
+	record_drive_access_event(
+		drive_file_id=doc.drive_file,
+		drive_file_version_id=doc.drive_file_version,
+		event_type="upload",
+		metadata={"upload_session_id": doc.name, "file_id": doc.file, "slot": doc.intended_slot},
+	)
 
 	log_drive_event(
 		"upload_session_finalized",

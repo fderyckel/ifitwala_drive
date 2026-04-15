@@ -91,6 +91,16 @@ Fields conceptually include:
 * current preview status
 * current malware/validation state
 
+Current implemented shape also includes:
+
+* `current_version_no`
+* `current_version`
+* `legal_hold`
+* `erasure_state`
+* canonical `storage_object_key`
+
+This means Drive File now carries both the active version pointer and the minimum erasure posture needed for deterministic file-domain erasure.
+
 ### `Drive File Classification`
 
 This should preserve your current 1:1 classification concept, or absorb it as Drive’s canonical metadata layer.
@@ -131,6 +141,12 @@ Needed for:
 Immutable version row.
 Keep versioning per slot. That matches your current architecture.
 
+Current implementation note:
+
+* governed finalize creates `version_no = 1`
+* replacements append a new immutable `Drive File Version`
+* `Drive File.current_version` and `current_version_no` advance without changing the governed file identity
+
 ### `Drive Processing Job`
 
 Tracks:
@@ -152,6 +168,28 @@ Audit/event log for:
 * delete
 * erasure action
 
+Current implementation now records minimal audit events for:
+
+* upload
+* replace
+* download grant issuance
+* preview grant issuance
+* erase
+
+This is intentionally compact audit, not a second workflow engine.
+
+### `Drive Erasure Request`
+
+File-domain erasure request object.
+
+Current implementation supports:
+
+* subject-scoped request creation
+* execution after approval
+* deterministic deletion across all stored versions for a governed file
+* blocked execution when `legal_hold` is active
+* result counters for deleted vs blocked files
+
 ### `Drive Resource Binding`
 
 Useful as explicit bindings for:
@@ -162,6 +200,16 @@ Useful as explicit bindings for:
 * applicant document
 * portfolio evidence
 * organization media
+
+## Documentation and downstream coordination rule
+
+Whenever Drive behavior changes, the relevant docs must be updated with:
+
+* the technical behavior change
+* the design or architecture decision behind it
+* any downstream impact on Ifitwala_Ed
+
+If the change affects file delivery semantics for Ifitwala_Ed, that downstream app must be informed explicitly. This is part of the engineering contract, not release polish.
 
 ## Slot model
 

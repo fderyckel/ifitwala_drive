@@ -217,6 +217,14 @@ Never block hot user flows on:
 ### 4.5 Fail closed
 If a file cannot be proven governed, routable, and policy-valid, stop. Do not silently fall back to generic attach behavior.
 
+### 4.6 Documentation and downstream coordination are part of the change
+Whenever code changes, update the relevant docs to reflect:
+- the technical behavior that changed
+- the design or architecture choice behind it
+- any new API, schema, lifecycle, or operator expectation
+
+If a change affects how **Ifitwala_Ed** uploads, stores, resolves, previews, downloads, or otherwise delivers files, that downstream contract change must be made explicit in the docs and **Ifitwala_Ed must be informed**. Treat this as part of the implementation, not optional follow-up.
+
 ---
 
 ## 5. Required Initial Use Cases

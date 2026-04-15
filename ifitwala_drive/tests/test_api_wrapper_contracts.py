@@ -137,8 +137,12 @@ def test_access_and_upload_wrappers_map_explicit_payloads():
 	_purge_modules(
 		"frappe",
 		"ifitwala_drive.api.access",
+		"ifitwala_drive.api.erasure",
+		"ifitwala_drive.api.files",
 		"ifitwala_drive.api.uploads",
+		"ifitwala_drive.services.audit.erasure",
 		"ifitwala_drive.services.files.access",
+		"ifitwala_drive.services.files.versions",
 		"ifitwala_drive.services.files.legacy_access",
 		"ifitwala_drive.services.logging",
 		"ifitwala_drive.services.storage.base",
@@ -157,6 +161,21 @@ def test_access_and_upload_wrappers_map_explicit_payloads():
 			"preview", payload
 		) or {"status": "ok"}
 		sys.modules["ifitwala_drive.services.files.access"] = access_module
+
+		versions_module = types.ModuleType("ifitwala_drive.services.files.versions")
+		versions_module.replace_drive_file_version_service = lambda payload: recorder.setdefault(
+			"replace", payload
+		) or {"status": "ok"}
+		sys.modules["ifitwala_drive.services.files.versions"] = versions_module
+
+		erasure_module = types.ModuleType("ifitwala_drive.services.audit.erasure")
+		erasure_module.create_drive_erasure_request_service = lambda payload: recorder.setdefault(
+			"erasure_create", payload
+		) or {"status": "ok"}
+		erasure_module.execute_drive_erasure_request_service = lambda payload: recorder.setdefault(
+			"erasure_execute", payload
+		) or {"status": "ok"}
+		sys.modules["ifitwala_drive.services.audit.erasure"] = erasure_module
 
 		legacy_module = types.ModuleType("ifitwala_drive.services.files.legacy_access")
 		legacy_module.resolve_public_file_redirect = lambda **kwargs: {"url": "https://example.invalid"}
@@ -187,10 +206,28 @@ def test_access_and_upload_wrappers_map_explicit_payloads():
 		sys.modules["ifitwala_drive.services.uploads.sessions"] = sessions_module
 
 		access_api = _load_module("ifitwala_drive.api.access")
+		erasure_api = _load_module("ifitwala_drive.api.erasure")
+		files_api = _load_module("ifitwala_drive.api.files")
 		uploads_api = _load_module("ifitwala_drive.api.uploads")
 
 		access_api.issue_download_grant(canonical_ref="drv:ORG-0001:DF-0001")
 		access_api.issue_preview_grant(drive_file_id="DF-0002")
+		erasure_api.create_drive_erasure_request(
+			data_subject_type="Student",
+			data_subject_id="STU-0001",
+			scope="slot_only",
+			request_reason="GDPR",
+			slot_filter="submission",
+		)
+		erasure_api.execute_drive_erasure_request(erasure_request_id="DER-0001")
+		files_api.replace_drive_file_version(
+			drive_file_id="DF-0001",
+			new_file_artifact={
+				"file_id": "FILE-0002",
+				"storage_object_key": "files/ab/cd/object-v2.docx",
+			},
+			reason="replace",
+		)
 		uploads_api.create_upload_session(
 			owner_doctype="Task Submission",
 			owner_name="TSUB-0001",
@@ -211,6 +248,22 @@ def test_access_and_upload_wrappers_map_explicit_payloads():
 
 		assert recorder["download"] == {"canonical_ref": "drv:ORG-0001:DF-0001"}
 		assert recorder["preview"] == {"drive_file_id": "DF-0002"}
+		assert recorder["erasure_create"] == {
+			"data_subject_type": "Student",
+			"data_subject_id": "STU-0001",
+			"scope": "slot_only",
+			"request_reason": "GDPR",
+			"slot_filter": "submission",
+		}
+		assert recorder["erasure_execute"] == {"erasure_request_id": "DER-0001"}
+		assert recorder["replace"] == {
+			"drive_file_id": "DF-0001",
+			"new_file_artifact": {
+				"file_id": "FILE-0002",
+				"storage_object_key": "files/ab/cd/object-v2.docx",
+			},
+			"reason": "replace",
+		}
 		assert recorder["create"] == {
 			"owner_doctype": "Task Submission",
 			"owner_name": "TSUB-0001",
@@ -232,8 +285,12 @@ def test_access_and_upload_wrappers_map_explicit_payloads():
 		_purge_modules(
 			"frappe",
 			"ifitwala_drive.api.access",
+			"ifitwala_drive.api.erasure",
+			"ifitwala_drive.api.files",
 			"ifitwala_drive.api.uploads",
+			"ifitwala_drive.services.audit.erasure",
 			"ifitwala_drive.services.files.access",
+			"ifitwala_drive.services.files.versions",
 			"ifitwala_drive.services.files.legacy_access",
 			"ifitwala_drive.services.logging",
 			"ifitwala_drive.services.storage.base",

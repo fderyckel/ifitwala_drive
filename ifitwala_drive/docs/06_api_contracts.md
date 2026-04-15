@@ -227,6 +227,7 @@ Confirm upload completion and create the governed file record.
 * rejects dangerous executable/script MIME types and hint mismatches
 * creates authoritative governed file record
 * creates initial version
+* records a minimal upload audit event
 * queues heavy async work if needed
 * returns canonical Drive artifact info
 
@@ -238,10 +239,15 @@ Confirm upload completion and create the governed file record.
   "drive_file_version_id": "DFV-0001",
   "file_id": "FILE-0001",
   "canonical_ref": "drv:ORG-0001:DF-0001",
-  "status": "active",
+  "status": "completed",
   "preview_status": "pending"
 }
 ```
+
+Implementation note:
+
+* the current response `status` is the `Drive Upload Session` terminal status (`completed`), not the `Drive File.status`
+* consumers that need the governed-file lifecycle state should use `drive_file_id` and then Drive file retrieval/browse surfaces
 
 ---
 
@@ -344,6 +350,7 @@ Replace the current version of a governed file in a version-safe way.
   "drive_file_id": "DF-0001",
   "new_file_artifact": {
     "file_id": "FILE-0002",
+    "storage_object_key": "files/ab/cd/object-v2.docx",
     "filename_original": "essay_v2.docx",
     "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "size_bytes": 545000,
@@ -358,6 +365,9 @@ Replace the current version of a governed file in a version-safe way.
 * validates actor can replace for this owner/slot/context
 * increments version
 * marks old current version non-current
+* updates the governed file's current file pointer and storage object key
+* resets preview status to `pending`
+* records a minimal replace audit event
 * preserves same governed file identity
 
 ### Response
@@ -836,6 +846,12 @@ Create a file-domain erasure request by subject/scope.
 }
 ```
 
+Notes:
+
+* current supported scopes are `all`, `files_only`, and `slot_only`
+* `slot_filter` is required when `scope = "slot_only"`
+* newly created requests start as `draft` unless explicitly elevated by trusted server-side flow
+
 ---
 
 ## 8.2 `execute_drive_erasure_request`
@@ -852,6 +868,28 @@ Execute erasure once approved.
 * final status
 
 This must preserve the minimal-audit/no-content-remnant posture already locked in your GDPR notes.
+
+Current implementation behavior:
+
+* execution requires the request status to be `approved` or already `executing`
+* all stored object keys across the governed file and its recorded versions are deleted
+* active bindings for erased files are deactivated
+* `Drive File.status` becomes `erased`
+* `Drive File.erasure_state` becomes `erased` or `blocked_legal`
+* current `File` rows are scrubbed of direct `file_url` access
+* each successful file erasure records a minimal `Drive Access Event`
+
+Example response:
+
+```json
+{
+  "erasure_request_id": "DER-0001",
+  "status": "completed",
+  "deleted_count": 3,
+  "blocked_count": 1,
+  "slots_touched": ["submission", "feedback"]
+}
+```
 
 ---
 
@@ -900,18 +938,37 @@ The first target remains:
 The `api/*` modules should stay thin and delegate to services:
 
 * `api/uploads.py`
+* `api/files.py`
 * `api/resources.py`
 * `api/submissions.py`
 * `api/admissions.py`
 * `api/media.py`
 * `api/access.py`
 * `api/folders.py`
+* `api/erasure.py`
 
 while the real logic lives in:
 
 * `services/uploads/`
 * `services/files/`
+* `services/audit/`
 * `services/governance/`
 * `services/storage/`
 * `services/access/`
 * `services/integration/`
+
+## Downstream note for Ifitwala_Ed
+
+Ifitwala_Ed should now treat the following as first-class Drive contract outputs:
+
+* `drive_file_id`
+* `drive_file_version_id`
+* `canonical_ref`
+
+Ifitwala_Ed file delivery logic must not assume:
+
+* replacement leaves version identity unchanged
+* erasure can be modeled as only a `File` row concern
+* direct `file_url` values remain durable after erasure or future delivery changes
+
+Any Ed slice that delivers files, stores file references, or exposes replace/erase controls must be informed when these contracts change.
