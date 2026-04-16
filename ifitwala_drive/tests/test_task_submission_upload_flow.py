@@ -1501,6 +1501,61 @@ def test_create_drive_file_artifacts_creates_pending_image_derivatives_and_previ
 	assert job.file == "FILE-0003"
 
 
+def test_create_drive_file_artifacts_creates_pending_pdf_derivative_and_preview_job():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.files.creation",
+		"ifitwala_drive.services.files.derivatives",
+	)
+	_install_fake_frappe(docs_map={})
+	module = _load_module("ifitwala_drive.services.files.creation")
+	upload_session_doc = FakeDoc(
+		{
+			"name": "DUS-0005",
+			"attached_doctype": "Org Communication",
+			"attached_name": "COMM-0001",
+			"owner_doctype": "Org Communication",
+			"owner_name": "COMM-0001",
+			"organization": "ORG-0001",
+			"school": None,
+			"upload_source": "SPA",
+			"filename_original": "announcement.pdf",
+			"is_private": 1,
+			"intended_primary_subject_type": "Organization",
+			"intended_primary_subject_id": "ORG-0001",
+			"intended_data_class": "administrative",
+			"intended_purpose": "administrative",
+			"intended_retention_policy": "fixed_7y",
+			"intended_slot": "communication_attachment__row-001",
+		}
+	)
+
+	response = module.create_drive_file_artifacts(
+		upload_session_doc=upload_session_doc,
+		file_id="FILE-0005",
+		storage_artifact={
+			"storage_backend": "gcs",
+			"object_key": "files/pdf/object.pdf",
+			"mime_type": "application/pdf",
+		},
+	)
+
+	assert response["drive_file_id"] == "DF-0001"
+	drive_file = FakeDoc._docs_map[("Drive File", "DF-0001")]
+	assert drive_file.preview_status == "pending"
+
+	pdf_page = FakeDoc._docs_map[("Drive File Derivative", "DFD-0001")]
+	assert pdf_page.derivative_role == "pdf_page_1"
+	assert pdf_page.status == "pending"
+	assert pdf_page.drive_file_version == "DFV-0001"
+
+	job = FakeDoc._docs_map[("Drive Processing Job", "DPJ-0001")]
+	assert job.job_type == "preview"
+	assert job.status == "queued"
+	assert job.drive_file == "DF-0001"
+	assert job.file == "FILE-0005"
+
+
 def test_create_drive_file_artifacts_marks_unsupported_preview_not_applicable():
 	_purge_modules(
 		"frappe",

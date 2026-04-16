@@ -10,15 +10,18 @@ from frappe.utils import now_datetime
 from ifitwala_drive.services.storage.base import build_object_key, get_storage_backend
 
 DEFAULT_PREVIEW_DERIVATIVE_ROLE = "viewer_preview"
+DEFAULT_PDF_PREVIEW_DERIVATIVE_ROLE = "pdf_page_1"
 _IMAGE_PREVIEW_ROLES = ("thumb", "viewer_preview")
+_PDF_PREVIEW_ROLES = (DEFAULT_PDF_PREVIEW_DERIVATIVE_ROLE,)
 _PREVIEW_JOB_STATUSES = ("queued", "running")
-_IMAGE_RENDER_ORDER = ("viewer_preview", "thumb")
+_DERIVATIVE_RENDER_ORDER = ("viewer_preview", "pdf_page_1", "thumb")
 _SUPPORTED_IMAGE_PREVIEW_MIME_TYPES = {
 	"image/jpeg",
 	"image/jpg",
 	"image/png",
 	"image/webp",
 }
+_SUPPORTED_PDF_PREVIEW_MIME_TYPES = {"application/pdf"}
 _IMAGE_DERIVATIVE_SPECS = {
 	"thumb": {
 		"max_width": 160,
@@ -31,6 +34,14 @@ _IMAGE_DERIVATIVE_SPECS = {
 		"quality": 80,
 		"output_format": "WEBP",
 		"mime_type": "image/webp",
+	},
+}
+_PDF_DERIVATIVE_SPECS = {
+	"pdf_page_1": {
+		"max_width": 960,
+		"output_format": "png",
+		"mime_type": "image/png",
+		"file_extension": "png",
 	},
 }
 _ERROR_CODE_UNSUPPORTED = "unsupported_mime_type"
@@ -79,6 +90,16 @@ def preview_plan_for_mime_type(mime_type: str | None) -> dict[str, Any]:
 			"supported": True,
 			"preview_status": "pending",
 			"derivative_roles": list(_IMAGE_PREVIEW_ROLES),
+			"primary_derivative_role": DEFAULT_PREVIEW_DERIVATIVE_ROLE,
+			"queue_name": "drive_default",
+		}
+
+	if normalized in _SUPPORTED_PDF_PREVIEW_MIME_TYPES:
+		return {
+			"supported": True,
+			"preview_status": "pending",
+			"derivative_roles": list(_PDF_PREVIEW_ROLES),
+			"primary_derivative_role": DEFAULT_PDF_PREVIEW_DERIVATIVE_ROLE,
 			"queue_name": "drive_default",
 		}
 
@@ -86,8 +107,16 @@ def preview_plan_for_mime_type(mime_type: str | None) -> dict[str, Any]:
 		"supported": False,
 		"preview_status": "not_applicable",
 		"derivative_roles": [],
+		"primary_derivative_role": None,
 		"queue_name": None,
 	}
+
+
+def primary_preview_derivative_role_for_mime_type(mime_type: str | None) -> str:
+	return str(
+		preview_plan_for_mime_type(mime_type).get("primary_derivative_role")
+		or DEFAULT_PREVIEW_DERIVATIVE_ROLE
+	)
 
 
 def _enqueue_preview_job_execution(job_name: str, queue_name: str) -> None:
@@ -218,6 +247,17 @@ def _load_pillow_image_backend():
 	return Image, ImageOps, UnidentifiedImageError
 
 
+def _load_pymupdf_backend():
+	try:
+		import pymupdf
+	except ImportError:
+		try:
+			import fitz as pymupdf
+		except ImportError as exc:
+			raise RuntimeError("Drive preview generation requires PyMuPDF for PDF derivatives.") from exc
+	return pymupdf
+
+
 def _render_image_derivative(*, source_content: bytes, derivative_role: str) -> dict[str, Any]:
 	spec = _IMAGE_DERIVATIVE_SPECS.get(derivative_role)
 	if not spec:
@@ -246,18 +286,67 @@ def _render_image_derivative(*, source_content: bytes, derivative_role: str) -> 
 			return {
 				"content": content,
 				"mime_type": spec["mime_type"],
+				"file_extension": "webp",
 				"width": int(getattr(img, "width", 0) or 0) or None,
 				"height": int(getattr(img, "height", 0) or 0) or None,
 				"size_bytes": len(content),
+				"page_count": None,
 			}
 	except UnidentifiedImageError as exc:
 		raise RuntimeError("Drive preview generation could not decode image content.") from exc
 
 
+def _render_pdf_derivative(*, source_content: bytes, derivative_role: str) -> dict[str, Any]:
+	spec = _PDF_DERIVATIVE_SPECS.get(derivative_role)
+	if not spec:
+		raise RuntimeError(f"Unsupported PDF derivative role: {derivative_role}")
+
+	pymupdf = _load_pymupdf_backend()
+	with pymupdf.open(stream=source_content, filetype="pdf") as document:
+		if document.page_count < 1:
+			raise RuntimeError("Drive preview generation could not find a PDF page to render.")
+
+		page = document.load_page(0)
+		page_width = float(getattr(page.rect, "width", 0) or 0)
+		scale = 1.0
+		if page_width > 0:
+			scale = min(2.0, float(spec["max_width"]) / page_width)
+			if scale <= 0:
+				scale = 1.0
+
+		pixmap = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), alpha=False)
+		content = pixmap.tobytes(spec["output_format"])
+		return {
+			"content": content,
+			"mime_type": spec["mime_type"],
+			"file_extension": spec["file_extension"],
+			"width": int(getattr(pixmap, "width", 0) or 0) or None,
+			"height": int(getattr(pixmap, "height", 0) or 0) or None,
+			"size_bytes": len(content),
+			"page_count": int(document.page_count or 0) or None,
+		}
+
+
+def _render_derivative(
+	*,
+	source_content: bytes,
+	derivative_role: str,
+	mime_type: str | None,
+) -> dict[str, Any]:
+	normalized_mime = str(mime_type or "").strip().lower()
+	if derivative_role in _IMAGE_DERIVATIVE_SPECS:
+		return _render_image_derivative(source_content=source_content, derivative_role=derivative_role)
+	if derivative_role in _PDF_DERIVATIVE_SPECS or normalized_mime in _SUPPORTED_PDF_PREVIEW_MIME_TYPES:
+		return _render_pdf_derivative(source_content=source_content, derivative_role=derivative_role)
+	raise RuntimeError(
+		f"Unsupported derivative role for MIME type {normalized_mime or 'unknown'}: {derivative_role}"
+	)
+
+
 def _derivative_sort_key(role: str) -> tuple[int, str]:
-	if role in _IMAGE_RENDER_ORDER:
-		return (_IMAGE_RENDER_ORDER.index(role), role)
-	return (len(_IMAGE_RENDER_ORDER), role)
+	if role in _DERIVATIVE_RENDER_ORDER:
+		return (_DERIVATIVE_RENDER_ORDER.index(role), role)
+	return (len(_DERIVATIVE_RENDER_ORDER), role)
 
 
 def _ordered_derivative_roles(derivative_roles: list[str]) -> list[str]:
@@ -292,13 +381,15 @@ def _build_derivative_object_key(
 	drive_file_id: str,
 	drive_file_version_id: str,
 	derivative_role: str,
+	file_extension: str | None = None,
 ) -> str:
 	base_prefix = getattr(getattr(storage, "profile", None), "base_prefix", None)
+	normalized_extension = str(file_extension or "webp").strip().lstrip(".") or "webp"
 	return build_object_key(
 		"derivatives",
 		drive_file_id,
 		drive_file_version_id,
-		f"{derivative_role}.webp",
+		f"{derivative_role}.{normalized_extension}",
 		base_prefix=base_prefix,
 	)
 
@@ -317,7 +408,7 @@ def _set_derivative_ready(
 	derivative_doc.size_bytes = rendered.get("size_bytes")
 	derivative_doc.width = rendered.get("width")
 	derivative_doc.height = rendered.get("height")
-	derivative_doc.page_count = None
+	derivative_doc.page_count = rendered.get("page_count")
 	derivative_doc.generated_on = now_datetime()
 	derivative_doc.source_hash = source_hash
 	derivative_doc.error_code = None
@@ -411,6 +502,7 @@ def run_preview_job(*, drive_processing_job_id: str) -> dict[str, Any]:
 			or None
 		)
 		plan = preview_plan_for_mime_type(mime_type)
+		primary_derivative_role = str(plan.get("primary_derivative_role") or DEFAULT_PREVIEW_DERIVATIVE_ROLE)
 		source_hash = (
 			str(getattr(drive_file_version_doc, "content_hash", "") or "").strip()
 			or str(getattr(drive_file_doc, "content_hash", "") or "").strip()
@@ -470,9 +562,10 @@ def run_preview_job(*, drive_processing_job_id: str) -> dict[str, Any]:
 			derivative_doc.save(ignore_permissions=True)
 
 			try:
-				rendered = _render_image_derivative(
+				rendered = _render_derivative(
 					source_content=source_content,
 					derivative_role=derivative_role,
+					mime_type=mime_type,
 				)
 				storage_artifact = storage.write_final_object(
 					object_key=_build_derivative_object_key(
@@ -480,6 +573,7 @@ def run_preview_job(*, drive_processing_job_id: str) -> dict[str, Any]:
 						drive_file_id=drive_file_doc.name,
 						drive_file_version_id=current_version_id,
 						derivative_role=derivative_role,
+						file_extension=rendered.get("file_extension"),
 					),
 					content=rendered["content"],
 					mime_type=rendered["mime_type"],
@@ -504,7 +598,9 @@ def run_preview_job(*, drive_processing_job_id: str) -> dict[str, Any]:
 				)
 			except Exception as exc:
 				error_code = _ERROR_CODE_RUNTIME_MISSING
-				if "Pillow" not in _sanitize_error_message(exc):
+				if all(
+					runtime_name not in _sanitize_error_message(exc) for runtime_name in ("Pillow", "PyMuPDF")
+				):
 					error_code = _ERROR_CODE_GENERATION_FAILED
 				_mark_derivative_failed(
 					derivative_doc=derivative_doc,
@@ -520,13 +616,11 @@ def run_preview_job(*, drive_processing_job_id: str) -> dict[str, Any]:
 					}
 				)
 
-		drive_file_doc.preview_status = (
-			"ready" if DEFAULT_PREVIEW_DERIVATIVE_ROLE in ready_roles else "failed"
-		)
+		drive_file_doc.preview_status = "ready" if primary_derivative_role in ready_roles else "failed"
 		drive_file_doc.save(ignore_permissions=True)
 
 		result = {
-			"status": "completed" if DEFAULT_PREVIEW_DERIVATIVE_ROLE in ready_roles else "failed",
+			"status": "completed" if primary_derivative_role in ready_roles else "failed",
 			"preview_status": drive_file_doc.preview_status,
 			"mime_type": mime_type,
 			"ready_roles": ready_roles,
@@ -534,12 +628,12 @@ def run_preview_job(*, drive_processing_job_id: str) -> dict[str, Any]:
 			"artifacts": artifacts,
 		}
 		job_doc.result_json = json.dumps(result, sort_keys=True)
-		job_doc.status = "completed" if DEFAULT_PREVIEW_DERIVATIVE_ROLE in ready_roles else "failed"
+		job_doc.status = "completed" if primary_derivative_role in ready_roles else "failed"
 		job_doc.finished_on = now_datetime()
 		job_doc.error_log = (
 			None
 			if job_doc.status == "completed"
-			else "Preview generation did not produce a ready viewer derivative."
+			else f"Preview generation did not produce a ready {primary_derivative_role} derivative."
 		)
 		job_doc.save(ignore_permissions=True)
 		return result

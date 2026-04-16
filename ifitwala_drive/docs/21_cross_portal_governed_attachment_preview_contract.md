@@ -66,14 +66,13 @@ Drive currently has:
 - `Drive File` with a file-level `preview_status`
 - `Drive File Version` for immutable original-file versions
 - `Drive File Derivative` for version-bound derivative metadata
-- derivative-role resolution for preview grants, with `viewer_preview` preferred when ready
-- async `preview` jobs that create image derivatives for supported image MIME types
+- derivative-role resolution for preview grants, with `viewer_preview` preferred for images and `pdf_page_1` preferred for PDFs when ready
+- async `preview` jobs that create image derivatives and first-page PDF derivatives for supported MIME types
 - provider-neutral final-object reads for `local` and `gcs` storage backends
 - version replacement that marks old derivatives `stale` and creates new pending derivative rows/jobs
 
 Drive still does not have:
 
-- PDF first-page derivative generation
 - broader media support beyond the narrow image Phase 1 set
 - an Ed-facing portal contract; Ed still owns that boundary
 
@@ -207,7 +206,7 @@ Original versions and derivative artifacts are different concepts and need diffe
 Current state:
 
 - `issue_preview_grant(...)` still uses the current `Drive File.preview_status` gate
-- preview grant resolution prefers a ready `viewer_preview` derivative for the current version
+- preview grant resolution prefers a ready primary derivative for the current version: `viewer_preview` for images and `pdf_page_1` for PDFs
 - preview grant resolution falls back to the current original object only while no derivative is ready yet
 
 Target state:
@@ -277,8 +276,8 @@ Phase 2: Drive foundation
 Phase 3: processing pipeline
 
 - add idempotent derivative jobs on Drive queues
-- support image derivatives first
-- add PDF first-page derivative after image flow is stable
+- support image derivatives and first-page PDF derivatives on the narrow shipped path
+- keep broader media beyond those two cases deferred until the narrow path is stable
 
 Phase 4: Ed integration
 

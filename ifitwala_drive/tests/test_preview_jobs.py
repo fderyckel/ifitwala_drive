@@ -168,6 +168,45 @@ def test_sync_preview_pipeline_enqueues_preview_job_for_supported_image():
 	}
 
 
+def test_sync_preview_pipeline_enqueues_preview_job_for_supported_pdf():
+	drive_file = FakeDoc(
+		{
+			"doctype": "Drive File",
+			"name": "DF-0002",
+			"file": "FILE-0002",
+			"current_version": "DFV-0002",
+			"content_hash": "sha256:pdf123",
+		}
+	)
+	enqueue_calls = _install_fake_frappe(docs_map={("Drive File", "DF-0002"): drive_file})
+	module = _load_module()
+
+	result = module.sync_preview_pipeline_for_current_version(
+		drive_file_doc=drive_file,
+		mime_type="application/pdf",
+	)
+
+	assert result["preview_status"] == "pending"
+	assert result["derivative_ids"] == ["DFD-0001"]
+	assert result["drive_processing_job_id"] == "DPJ-0001"
+	assert enqueue_calls == [
+		{
+			"method": "ifitwala_drive.services.files.derivatives.run_preview_job",
+			"queue": "drive_default",
+			"job_id": "drive-preview:DPJ-0001",
+			"drive_processing_job_id": "DPJ-0001",
+		}
+	]
+
+	job_doc = FakeDoc._docs_map[("Drive Processing Job", "DPJ-0001")]
+	payload = json.loads(job_doc.payload_json)
+	assert payload == {
+		"derivative_roles": ["pdf_page_1"],
+		"drive_file_version": "DFV-0002",
+		"mime_type": "application/pdf",
+	}
+
+
 def test_run_preview_job_marks_viewer_and_thumb_ready(monkeypatch):
 	drive_file = FakeDoc(
 		{
@@ -307,6 +346,131 @@ def test_run_preview_job_marks_viewer_and_thumb_ready(monkeypatch):
 			"content": b"rendered-thumb",
 			"mime_type": "image/webp",
 		},
+	]
+
+
+def test_run_preview_job_marks_pdf_first_page_ready(monkeypatch):
+	drive_file = FakeDoc(
+		{
+			"doctype": "Drive File",
+			"name": "DF-0002",
+			"file": "FILE-0002",
+			"current_version": "DFV-0002",
+			"preview_status": "pending",
+			"storage_backend": "local",
+			"storage_object_key": "files/original/handout.pdf",
+			"content_hash": "sha256:pdf-source",
+		}
+	)
+	version = FakeDoc(
+		{
+			"doctype": "Drive File Version",
+			"name": "DFV-0002",
+			"drive_file": "DF-0002",
+			"storage_object_key": "files/original/handout.pdf",
+			"mime_type": "application/pdf",
+			"content_hash": "sha256:pdf-source",
+		}
+	)
+	pdf_page = FakeDoc(
+		{
+			"doctype": "Drive File Derivative",
+			"name": "DFD-0001",
+			"drive_file": "DF-0002",
+			"drive_file_version": "DFV-0002",
+			"derivative_role": "pdf_page_1",
+			"status": "pending",
+		}
+	)
+	job = FakeDoc(
+		{
+			"doctype": "Drive Processing Job",
+			"name": "DPJ-0001",
+			"job_type": "preview",
+			"status": "queued",
+			"queue_name": "drive_default",
+			"drive_file": "DF-0002",
+			"file": "FILE-0002",
+			"payload_json": json.dumps(
+				{
+					"drive_file_version": "DFV-0002",
+					"mime_type": "application/pdf",
+					"derivative_roles": ["pdf_page_1"],
+				},
+				sort_keys=True,
+			),
+		}
+	)
+	_install_fake_frappe(
+		docs_map={
+			("Drive File", "DF-0002"): drive_file,
+			("Drive File Version", "DFV-0002"): version,
+			("Drive File Derivative", "DFD-0001"): pdf_page,
+			("Drive Processing Job", "DPJ-0001"): job,
+		}
+	)
+	module = _load_module()
+
+	class FakeStorage:
+		def __init__(self):
+			self.writes: list[dict[str, object]] = []
+
+		def read_final_object(self, *, object_key: str) -> bytes:
+			assert object_key == "files/original/handout.pdf"
+			return b"%PDF-1.7 source"
+
+		def write_final_object(self, *, object_key: str, content: bytes, mime_type: str | None = None):
+			self.writes.append(
+				{
+					"object_key": object_key,
+					"content": content,
+					"mime_type": mime_type,
+				}
+			)
+			return {
+				"object_key": object_key,
+				"storage_backend": "local",
+				"file_url": f"/private/files/ifitwala_drive/{object_key}",
+			}
+
+	storage = FakeStorage()
+	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: storage)
+	monkeypatch.setattr(
+		module,
+		"_render_pdf_derivative",
+		lambda *, source_content, derivative_role: {
+			"content": b"rendered-pdf-page-1",
+			"mime_type": "image/png",
+			"file_extension": "png",
+			"width": 960,
+			"height": 1357,
+			"size_bytes": len(b"rendered-pdf-page-1"),
+			"page_count": 4,
+		},
+	)
+
+	result = module.run_preview_job(drive_processing_job_id="DPJ-0001")
+
+	assert result["status"] == "completed"
+	assert result["preview_status"] == "ready"
+	assert result["ready_roles"] == ["pdf_page_1"]
+	assert result["failed_roles"] == []
+	assert drive_file.preview_status == "ready"
+	assert job.status == "completed"
+
+	assert pdf_page.status == "ready"
+	assert pdf_page.storage_object_key == "derivatives/DF-0002/DFV-0002/pdf_page_1.png"
+	assert pdf_page.mime_type == "image/png"
+	assert pdf_page.width == 960
+	assert pdf_page.height == 1357
+	assert pdf_page.page_count == 4
+
+	assert storage.writes == [
+		{
+			"object_key": "derivatives/DF-0002/DFV-0002/pdf_page_1.png",
+			"content": b"rendered-pdf-page-1",
+			"mime_type": "image/png",
+		}
 	]
 
 
