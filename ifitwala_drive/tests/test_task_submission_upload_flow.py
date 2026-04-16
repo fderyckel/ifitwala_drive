@@ -17,6 +17,7 @@ def _purge_modules(*prefixes: str) -> None:
 			or module_name.startswith("ifitwala_drive.services.folders")
 			or module_name.startswith("ifitwala_drive.services.integration.ifitwala_ed_")
 			or module_name.startswith("ifitwala_ed.integrations.drive")
+			or module_name.startswith("ifitwala_ed.utilities.file_")
 		):
 			sys.modules.pop(module_name, None)
 	FakeDoc._insert_counters = {}
@@ -70,7 +71,9 @@ class FakeDoc:
 				"Drive Upload Session": "DUS",
 				"Drive File": "DF",
 				"Drive File Version": "DFV",
+				"Drive File Derivative": "DFD",
 				"Drive Binding": "DB",
+				"Drive Processing Job": "DPJ",
 				"Drive Folder": "DRF",
 			}
 			prefix = prefix_map.get(doctype, "DOC")
@@ -218,6 +221,13 @@ def _install_fake_frappe(
 
 
 def _install_fake_ifitwala_ed(*, dispatcher_recorder: dict):
+	import frappe
+
+	ed_package_root = Path(__file__).resolve().parents[2].parent / "ifitwala_ed" / "ifitwala_ed"
+	utilities_package_root = ed_package_root / "utilities"
+	integrations_package_root = ed_package_root / "integrations"
+	drive_integrations_package_root = integrations_package_root / "drive"
+
 	dispatcher = types.ModuleType("ifitwala_ed.utilities.file_dispatcher")
 
 	def create_and_classify_file(**kwargs):
@@ -234,17 +244,120 @@ def _install_fake_ifitwala_ed(*, dispatcher_recorder: dict):
 		"routing": "task_submission",
 	}
 
+	def _build_task_submission_upload_contract(task_submission_doc) -> dict[str, object]:
+		school = getattr(task_submission_doc, "school", None)
+		student = getattr(task_submission_doc, "student", None)
+		organization = frappe.db.get_value("School", school, "organization")
+		return {
+			"owner_doctype": "Task Submission",
+			"owner_name": task_submission_doc.name,
+			"attached_doctype": "Task Submission",
+			"attached_name": task_submission_doc.name,
+			"organization": organization,
+			"school": school,
+			"primary_subject_type": "Student",
+			"primary_subject_id": student,
+			"data_class": "assessment",
+			"purpose": "assessment_submission",
+			"retention_policy": "until_school_exit_plus_6m",
+			"slot": "submission",
+		}
+
+	def _reconcile_upload_session_payload(payload: dict[str, object]) -> dict[str, object]:
+		if payload.get("owner_doctype") != "Task Submission":
+			return payload
+		task_submission_doc = frappe.get_doc("Task Submission", payload["owner_name"])
+		authoritative = _build_task_submission_upload_contract(task_submission_doc)
+		for fieldname, authoritative_value in authoritative.items():
+			provided = payload.get(fieldname)
+			if provided not in (None, "", authoritative_value):
+				frappe.throw(
+					"Task Submission upload field '{field_name}' does not match the authoritative owner context.".format(
+						field_name=fieldname
+					)
+				)
+		return {**payload, **authoritative}
+
+	def _resolve_finalize_contract(upload_session_doc):
+		if getattr(upload_session_doc, "owner_doctype", None) != "Task Submission":
+			return {
+				"workflow": None,
+				"authoritative_context": None,
+				"attached_field_override": None,
+				"context_override": None,
+				"binding_role": None,
+			}
+		task_submission_doc = frappe.get_doc("Task Submission", upload_session_doc.owner_name)
+		authoritative = _build_task_submission_upload_contract(task_submission_doc)
+		field_map = {
+			"owner_doctype": "owner_doctype",
+			"owner_name": "owner_name",
+			"attached_doctype": "attached_doctype",
+			"attached_name": "attached_name",
+			"organization": "organization",
+			"school": "school",
+			"intended_primary_subject_type": "primary_subject_type",
+			"intended_primary_subject_id": "primary_subject_id",
+			"intended_data_class": "data_class",
+			"intended_purpose": "purpose",
+			"intended_retention_policy": "retention_policy",
+			"intended_slot": "slot",
+		}
+		for session_field, authoritative_field in field_map.items():
+			if getattr(upload_session_doc, session_field, None) != authoritative[authoritative_field]:
+				frappe.throw(
+					"Upload session no longer matches the authoritative Task Submission context for field '{field_name}'.".format(
+						field_name=session_field
+					)
+				)
+		return {
+			"workflow": "task_submission",
+			"authoritative_context": authoritative,
+			"attached_field_override": None,
+			"context_override": file_management.build_task_submission_context(
+				student=authoritative["primary_subject_id"],
+				task_name=getattr(task_submission_doc, "task", None) or task_submission_doc.name,
+				settings=file_management.get_settings(),
+			),
+			"binding_role": None,
+		}
+
+	def _run_post_finalize(upload_session_doc, created_file):
+		return {}
+
+	file_classification_contract = types.ModuleType("ifitwala_ed.utilities.file_classification_contract")
+	file_classification_contract.LEARNING_RESOURCE_PURPOSE = "learning_resource"
+
 	utilities = types.ModuleType("ifitwala_ed.utilities")
+	utilities.__path__ = [str(utilities_package_root)]
 	utilities.file_dispatcher = dispatcher
 	utilities.file_management = file_management
+	utilities.file_classification_contract = file_classification_contract
+
+	integrations = types.ModuleType("ifitwala_ed.integrations")
+	integrations.__path__ = [str(integrations_package_root)]
+	drive_integrations = types.ModuleType("ifitwala_ed.integrations.drive")
+	drive_integrations.__path__ = [str(drive_integrations_package_root)]
+	bridge = types.ModuleType("ifitwala_ed.integrations.drive.bridge")
+	bridge.reconcile_upload_session_payload = _reconcile_upload_session_payload
+	bridge.resolve_finalize_contract = _resolve_finalize_contract
+	bridge.run_post_finalize = _run_post_finalize
 
 	ifitwala_ed = types.ModuleType("ifitwala_ed")
+	ifitwala_ed.__path__ = [str(ed_package_root)]
 	ifitwala_ed.utilities = utilities
+	ifitwala_ed.integrations = integrations
+	integrations.drive = drive_integrations
+	drive_integrations.bridge = bridge
 
 	sys.modules["ifitwala_ed"] = ifitwala_ed
 	sys.modules["ifitwala_ed.utilities"] = utilities
 	sys.modules["ifitwala_ed.utilities.file_dispatcher"] = dispatcher
 	sys.modules["ifitwala_ed.utilities.file_management"] = file_management
+	sys.modules["ifitwala_ed.utilities.file_classification_contract"] = file_classification_contract
+	sys.modules["ifitwala_ed.integrations"] = integrations
+	sys.modules["ifitwala_ed.integrations.drive"] = drive_integrations
+	sys.modules["ifitwala_ed.integrations.drive.bridge"] = bridge
 
 
 def _load_module(module_name: str):
@@ -556,7 +669,7 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 		"file_id": "FILE-0001",
 		"canonical_ref": "drv:ORG-0001:DF-0001",
 		"status": "completed",
-		"preview_status": "pending",
+		"preview_status": "not_applicable",
 		"file_url": None,
 	}
 	assert session_doc.status == "completed"
@@ -1327,6 +1440,111 @@ def test_create_drive_file_artifacts_creates_primary_binding_when_ed_requests_on
 	assert response["drive_file_version_id"] == "DFV-0001"
 	assert response["canonical_ref"] == "drv:ORG-0001:DF-0001"
 	assert response["drive_binding_id"] == "DB-0001"
+
+
+def test_create_drive_file_artifacts_creates_pending_image_derivatives_and_preview_job():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.files.creation",
+		"ifitwala_drive.services.files.derivatives",
+	)
+	_install_fake_frappe(docs_map={})
+	module = _load_module("ifitwala_drive.services.files.creation")
+	upload_session_doc = FakeDoc(
+		{
+			"name": "DUS-0003",
+			"attached_doctype": "Organization",
+			"attached_name": "ORG-0001",
+			"owner_doctype": "Organization",
+			"owner_name": "ORG-0001",
+			"organization": "ORG-0001",
+			"school": None,
+			"upload_source": "Desk",
+			"filename_original": "cover.png",
+			"is_private": 0,
+			"intended_primary_subject_type": "Organization",
+			"intended_primary_subject_id": "ORG-0001",
+			"intended_data_class": "branding",
+			"intended_purpose": "organization_public_media",
+			"intended_retention_policy": "until_replaced",
+			"intended_slot": "organization_media__cover",
+		}
+	)
+
+	response = module.create_drive_file_artifacts(
+		upload_session_doc=upload_session_doc,
+		file_id="FILE-0003",
+		storage_artifact={
+			"storage_backend": "gcs",
+			"object_key": "files/cc/dd/object.png",
+			"mime_type": "image/png",
+		},
+	)
+
+	assert response["drive_file_id"] == "DF-0001"
+	drive_file = FakeDoc._docs_map[("Drive File", "DF-0001")]
+	assert drive_file.preview_status == "pending"
+
+	thumb = FakeDoc._docs_map[("Drive File Derivative", "DFD-0001")]
+	viewer = FakeDoc._docs_map[("Drive File Derivative", "DFD-0002")]
+	assert thumb.derivative_role == "thumb"
+	assert thumb.status == "pending"
+	assert thumb.drive_file_version == "DFV-0001"
+	assert viewer.derivative_role == "viewer_preview"
+	assert viewer.status == "pending"
+	assert viewer.drive_file_version == "DFV-0001"
+
+	job = FakeDoc._docs_map[("Drive Processing Job", "DPJ-0001")]
+	assert job.job_type == "preview"
+	assert job.status == "queued"
+	assert job.drive_file == "DF-0001"
+	assert job.file == "FILE-0003"
+
+
+def test_create_drive_file_artifacts_marks_unsupported_preview_not_applicable():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.files.creation",
+		"ifitwala_drive.services.files.derivatives",
+	)
+	_install_fake_frappe(docs_map={})
+	module = _load_module("ifitwala_drive.services.files.creation")
+	upload_session_doc = FakeDoc(
+		{
+			"name": "DUS-0004",
+			"attached_doctype": "Task Submission",
+			"attached_name": "TSUB-0001",
+			"owner_doctype": "Task Submission",
+			"owner_name": "TSUB-0001",
+			"organization": "ORG-0001",
+			"school": "SCH-0001",
+			"upload_source": "SPA",
+			"filename_original": "essay.docx",
+			"is_private": 1,
+			"intended_primary_subject_type": "Student",
+			"intended_primary_subject_id": "STU-0001",
+			"intended_data_class": "assessment",
+			"intended_purpose": "assessment_submission",
+			"intended_retention_policy": "until_school_exit_plus_6m",
+			"intended_slot": "submission",
+		}
+	)
+
+	response = module.create_drive_file_artifacts(
+		upload_session_doc=upload_session_doc,
+		file_id="FILE-0004",
+		storage_artifact={
+			"storage_backend": "gcs",
+			"object_key": "files/ee/ff/object.docx",
+			"mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		},
+	)
+
+	assert response["drive_file_id"] == "DF-0001"
+	drive_file = FakeDoc._docs_map[("Drive File", "DF-0001")]
+	assert drive_file.preview_status == "not_applicable"
+	assert not any(doctype == "Drive File Derivative" for doctype, _name in FakeDoc._docs_map)
+	assert not any(doctype == "Drive Processing Job" for doctype, _name in FakeDoc._docs_map)
 
 
 def test_folder_resolution_recovers_from_duplicate_folder_insert():

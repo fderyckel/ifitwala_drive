@@ -137,6 +137,7 @@ def _completed_response(doc, extra: dict[str, Any] | None = None) -> dict[str, A
 	drive_file_id = getattr(doc, "drive_file", None)
 	drive_file_version_id = getattr(doc, "drive_file_version", None)
 	canonical_ref = getattr(doc, "canonical_ref", None)
+	preview_status = None
 
 	if drive_file_id and not drive_file_version_id:
 		drive_file_version_id = frappe.db.get_value("Drive File", drive_file_id, "current_version")
@@ -144,13 +145,16 @@ def _completed_response(doc, extra: dict[str, Any] | None = None) -> dict[str, A
 	if drive_file_id and not canonical_ref:
 		canonical_ref = frappe.db.get_value("Drive File", drive_file_id, "canonical_ref")
 
+	if drive_file_id:
+		preview_status = frappe.db.get_value("Drive File", drive_file_id, "preview_status")
+
 	response = {
 		"drive_file_id": drive_file_id,
 		"drive_file_version_id": drive_file_version_id,
 		"file_id": getattr(doc, "file", None),
 		"canonical_ref": canonical_ref,
 		"status": doc.status,
-		"preview_status": "pending" if doc.status == "completed" else None,
+		"preview_status": preview_status,
 		"file_url": frappe.db.get_value("File", doc.file, "file_url") if getattr(doc, "file", None) else None,
 	}
 	if extra:

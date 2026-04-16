@@ -196,6 +196,7 @@ def test_upload_task_resource_uses_task_contract_and_course_folder():
 	assert recorder["payload"]["organization"] == "ORG-0001"
 	assert recorder["payload"]["school"] == "SCH-0001"
 	assert recorder["payload"]["slot"].startswith("supporting_material__")
+	assert recorder["payload"]["purpose"] == "learning_resource"
 	assert recorder["payload"]["is_private"] == 1
 	assert recorder["payload"]["folder"].startswith("DRF-")
 
@@ -238,7 +239,7 @@ def test_upload_supporting_material_uses_material_contract_and_course_folder():
 		"primary_subject_type": "Organization",
 		"primary_subject_id": "ORG-0001",
 		"data_class": "academic",
-		"purpose": "general_reference",
+		"purpose": "learning_resource",
 		"retention_policy": "until_program_end_plus_1y",
 		"slot": "material_file",
 		"course": material_doc.course,
@@ -265,6 +266,7 @@ def test_upload_supporting_material_uses_material_contract_and_course_folder():
 	assert recorder["payload"]["organization"] == "ORG-0001"
 	assert recorder["payload"]["school"] == "SCH-0001"
 	assert recorder["payload"]["slot"] == "material_file"
+	assert recorder["payload"]["purpose"] == "learning_resource"
 	assert recorder["payload"]["is_private"] == 1
 	assert recorder["payload"]["folder"].startswith("DRF-")
 

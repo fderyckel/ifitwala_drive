@@ -1,0 +1,180 @@
+{
+ "actions": [],
+ "allow_copy": 0,
+ "allow_events_in_timeline": 0,
+ "allow_guest_to_view": 0,
+ "allow_import": 0,
+ "allow_rename": 0,
+ "autoname": "hash",
+ "beta": 0,
+ "creation": "2026-04-16 12:00:00.000000",
+ "custom": 0,
+ "default_view": "List",
+ "doctype": "DocType",
+ "document_type": "Document",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "drive_file",
+  "drive_file_version",
+  "derivative_role",
+  "status",
+  "section_storage",
+  "storage_backend",
+  "storage_object_key",
+  "mime_type",
+  "size_bytes",
+  "width",
+  "height",
+  "page_count",
+  "generated_on",
+  "section_debug",
+  "source_hash",
+  "error_code",
+  "error_message_sanitized"
+ ],
+ "fields": [
+  {
+   "fieldname": "drive_file",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Drive File",
+   "options": "Drive File",
+   "reqd": 1
+  },
+  {
+   "fieldname": "drive_file_version",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Drive File Version",
+   "options": "Drive File Version",
+   "reqd": 1
+  },
+  {
+   "fieldname": "derivative_role",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Derivative Role",
+   "options": "thumb\nviewer_preview\npdf_page_1",
+   "reqd": 1
+  },
+  {
+   "default": "pending",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "pending\nprocessing\nready\nfailed\nunsupported\nstale",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_storage",
+   "fieldtype": "Section Break",
+   "label": "Storage"
+  },
+  {
+   "fieldname": "storage_backend",
+   "fieldtype": "Data",
+   "label": "Storage Backend",
+   "read_only": 1
+  },
+  {
+   "fieldname": "storage_object_key",
+   "fieldtype": "Data",
+   "label": "Storage Object Key",
+   "read_only": 1
+  },
+  {
+   "fieldname": "mime_type",
+   "fieldtype": "Data",
+   "label": "MIME Type",
+   "read_only": 1
+  },
+  {
+   "fieldname": "size_bytes",
+   "fieldtype": "Int",
+   "label": "Size Bytes",
+   "read_only": 1
+  },
+  {
+   "fieldname": "width",
+   "fieldtype": "Int",
+   "label": "Width",
+   "read_only": 1
+  },
+  {
+   "fieldname": "height",
+   "fieldtype": "Int",
+   "label": "Height",
+   "read_only": 1
+  },
+  {
+   "fieldname": "page_count",
+   "fieldtype": "Int",
+   "label": "Page Count",
+   "read_only": 1
+  },
+  {
+   "fieldname": "generated_on",
+   "fieldtype": "Datetime",
+   "label": "Generated On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_debug",
+   "fieldtype": "Section Break",
+   "label": "Debug"
+  },
+  {
+   "fieldname": "source_hash",
+   "fieldtype": "Data",
+   "label": "Source Hash",
+   "read_only": 1
+  },
+  {
+   "fieldname": "error_code",
+   "fieldtype": "Data",
+   "label": "Error Code",
+   "read_only": 1
+  },
+  {
+   "fieldname": "error_message_sanitized",
+   "fieldtype": "Small Text",
+   "label": "Error Message Sanitized",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "hide_toolbar": 0,
+ "index_web_pages_for_search": 0,
+ "is_submittable": 0,
+ "issingle": 0,
+ "links": [],
+ "modified": "2026-04-16 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Ifitwala Drive",
+ "name": "Drive File Derivative",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "read_only": 0,
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1,
+ "track_seen": 0
+}

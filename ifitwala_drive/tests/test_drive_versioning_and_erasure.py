@@ -9,7 +9,9 @@ from typing import ClassVar
 
 def _purge_modules(*prefixes: str) -> None:
 	for module_name in list(sys.modules):
-		if any(module_name == prefix or module_name.startswith(f"{prefix}.") for prefix in prefixes):
+		if any(
+			module_name == prefix or module_name.startswith(f"{prefix}.") for prefix in prefixes
+		) or module_name.startswith("ifitwala_drive.services.files.derivatives"):
 			sys.modules.pop(module_name, None)
 	FakeDoc._docs_map = {}
 	FakeDoc._insert_counters = {}
@@ -37,7 +39,9 @@ class FakeDoc:
 		if not getattr(self, "name", None):
 			prefix_map = {
 				"Drive File Version": "DFV",
+				"Drive File Derivative": "DFD",
 				"Drive Access Event": "DAE",
+				"Drive Processing Job": "DPJ",
 				"Drive Erasure Request": "DER",
 			}
 			prefix = prefix_map.get(getattr(self, "doctype", ""), "DOC")
@@ -189,10 +193,32 @@ def test_replace_drive_file_version_creates_new_current_version(monkeypatch):
 		}
 	)
 	task_submission = FakeDoc({"doctype": "Task Submission", "name": "TSUB-0001"})
+	old_thumb = FakeDoc(
+		{
+			"doctype": "Drive File Derivative",
+			"name": "DFD-0001",
+			"drive_file": "DF-0001",
+			"drive_file_version": "DFV-0001",
+			"derivative_role": "thumb",
+			"status": "ready",
+		}
+	)
+	old_viewer = FakeDoc(
+		{
+			"doctype": "Drive File Derivative",
+			"name": "DFD-0002",
+			"drive_file": "DF-0001",
+			"drive_file_version": "DFV-0001",
+			"derivative_role": "viewer_preview",
+			"status": "ready",
+		}
+	)
 	_install_fake_frappe(
 		docs_map={
 			("Drive File", "DF-0001"): drive_file,
 			("Drive File Version", "DFV-0001"): current_version,
+			("Drive File Derivative", "DFD-0001"): old_thumb,
+			("Drive File Derivative", "DFD-0002"): old_viewer,
 			("Drive Binding", "DB-0001"): binding,
 			("Task Submission", "TSUB-0001"): task_submission,
 		}
@@ -204,9 +230,9 @@ def test_replace_drive_file_version_creates_new_current_version(monkeypatch):
 			"drive_file_id": "DF-0001",
 			"new_file_artifact": {
 				"file_id": "FILE-0002",
-				"filename_original": "essay_v2.docx",
-				"storage_object_key": "files/replaced.docx",
-				"mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+				"filename_original": "essay_v2.png",
+				"storage_object_key": "files/replaced.png",
+				"mime_type": "image/png",
 				"size_bytes": 545000,
 				"content_hash": "sha256:new",
 			},
@@ -221,19 +247,35 @@ def test_replace_drive_file_version_creates_new_current_version(monkeypatch):
 		"status": "active",
 	}
 	assert drive_file.file == "FILE-0002"
-	assert drive_file.display_name == "essay_v2.docx"
-	assert drive_file.storage_object_key == "files/replaced.docx"
+	assert drive_file.display_name == "essay_v2.png"
+	assert drive_file.storage_object_key == "files/replaced.png"
 	assert drive_file.content_hash == "sha256:new"
 	assert drive_file.current_version == "DFV-0002"
 	assert drive_file.current_version_no == 2
 	assert drive_file.preview_status == "pending"
 	assert current_version.is_current == 0
 	assert binding.file == "FILE-0002"
+	assert old_thumb.status == "stale"
+	assert old_viewer.status == "stale"
 
 	new_version = FakeDoc._docs_map[("Drive File Version", "DFV-0002")]
 	assert new_version.source_version == "DFV-0001"
 	assert new_version.source_file == "FILE-0001"
 	assert new_version.version_reason == "replace"
+
+	new_thumb = FakeDoc._docs_map[("Drive File Derivative", "DFD-0003")]
+	new_viewer = FakeDoc._docs_map[("Drive File Derivative", "DFD-0004")]
+	assert new_thumb.derivative_role == "thumb"
+	assert new_thumb.status == "pending"
+	assert new_thumb.drive_file_version == "DFV-0002"
+	assert new_viewer.derivative_role == "viewer_preview"
+	assert new_viewer.status == "pending"
+	assert new_viewer.drive_file_version == "DFV-0002"
+
+	preview_job = FakeDoc._docs_map[("Drive Processing Job", "DPJ-0001")]
+	assert preview_job.job_type == "preview"
+	assert preview_job.status == "queued"
+	assert preview_job.file == "FILE-0002"
 
 	access_event = FakeDoc._docs_map[("Drive Access Event", "DAE-0001")]
 	assert access_event.event_type == "replace"

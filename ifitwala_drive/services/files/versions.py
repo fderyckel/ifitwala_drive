@@ -7,6 +7,10 @@ from frappe import _
 
 from ifitwala_drive.services.audit.events import record_drive_access_event
 from ifitwala_drive.services.concurrency import drive_lock, is_duplicate_entry_error
+from ifitwala_drive.services.files.derivatives import (
+	mark_version_derivatives_stale,
+	sync_preview_pipeline_for_current_version,
+)
 
 _ALLOWED_REPLACE_REASONS = {"replace", "system_regeneration"}
 
@@ -207,6 +211,10 @@ def replace_drive_file_version_service(payload: dict[str, Any]) -> dict[str, Any
 		)
 
 		_deactivate_current_version(current_version_id)
+		mark_version_derivatives_stale(
+			drive_file_id=drive_file.name,
+			drive_file_version_id=current_version_id,
+		)
 
 		drive_file.file = new_file_artifact["file_id"]
 		drive_file.display_name = new_file_artifact.get("filename_original") or drive_file.display_name
@@ -215,7 +223,10 @@ def replace_drive_file_version_service(payload: dict[str, Any]) -> dict[str, Any
 			drive_file.content_hash = new_file_artifact["content_hash"]
 		drive_file.current_version = version_id
 		drive_file.current_version_no = next_version_no
-		drive_file.preview_status = "pending"
+		sync_preview_pipeline_for_current_version(
+			drive_file_doc=drive_file,
+			mime_type=new_file_artifact.get("mime_type"),
+		)
 		drive_file.save(ignore_permissions=True)
 
 		_sync_active_bindings_to_file(drive_file.name, file_id=new_file_artifact["file_id"])

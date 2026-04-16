@@ -8,6 +8,7 @@ from frappe import _
 from frappe.utils import now_datetime
 
 from ifitwala_drive.services.audit.events import record_drive_access_event
+from ifitwala_drive.services.files.derivatives import resolve_ready_preview_derivative
 from ifitwala_drive.services.storage.base import get_storage_backend
 
 _GRANT_TTL_MINUTES = 10
@@ -73,19 +74,28 @@ def _format_datetime(value) -> str:
 def _issue_grant(*, doc, grant_kind: str) -> dict[str, Any]:
 	file_url = frappe.db.get_value("File", doc.file, "file_url") if getattr(doc, "file", None) else None
 	expires_on = _build_expires_on()
-	storage = get_storage_backend(getattr(doc, "storage_backend", None))
+	storage_backend = getattr(doc, "storage_backend", None)
+	object_key = getattr(doc, "storage_object_key", None)
+	response_file_url = file_url
 
 	if grant_kind == "preview":
+		preview_derivative = resolve_ready_preview_derivative(drive_file_doc=doc)
+		if preview_derivative and preview_derivative.get("storage_object_key"):
+			storage_backend = preview_derivative.get("storage_backend") or storage_backend
+			object_key = preview_derivative.get("storage_object_key")
+			response_file_url = None
+		storage = get_storage_backend(storage_backend)
 		grant = storage.issue_preview_grant(
-			object_key=doc.storage_object_key,
-			file_url=file_url,
+			object_key=object_key,
+			file_url=response_file_url,
 			expires_on=expires_on,
 			filename=getattr(doc, "display_name", None),
 		)
 	else:
+		storage = get_storage_backend(storage_backend)
 		grant = storage.issue_download_grant(
-			object_key=doc.storage_object_key,
-			file_url=file_url,
+			object_key=object_key,
+			file_url=response_file_url,
 			expires_on=expires_on,
 			filename=getattr(doc, "display_name", None),
 		)

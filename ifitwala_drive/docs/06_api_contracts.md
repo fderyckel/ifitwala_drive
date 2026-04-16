@@ -471,7 +471,9 @@ Upload or register a resource attached to a Task.
 * attached_doctype/name = `Task` / task id in the compatibility slice
 * primary_subject = owning organization derived from `Task.default_course -> Course.school -> School.organization`
 * slot = `supporting_material__<row_name>`
-* purpose/data_class/retention derived server-side
+* data_class = `academic`
+* purpose = `learning_resource`
+* retention_policy = `until_program_end_plus_1y`
 
 ### Response
 

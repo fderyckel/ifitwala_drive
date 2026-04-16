@@ -91,24 +91,26 @@ def upload_task_submission_artifact_service(payload: dict[str, Any]) -> dict[str
 	if student not in (None, "", authoritative["primary_subject_id"]):
 		frappe.throw(_("Student does not match the authoritative Task Submission owner context."))
 
-	return create_upload_session_service(
-		{
-			**authoritative,
-			"folder": resolve_task_submission_folder(
-				student=authoritative["primary_subject_id"],
-				task_name=getattr(task_submission_doc, "task", None) or task_submission_doc.name,
-				organization=authoritative["organization"],
-				school=authoritative["school"],
-			),
-			"filename_original": filename_original,
-			"mime_type_hint": mime_type_hint,
-			"expected_size_bytes": expected_size_bytes,
-			"idempotency_key": payload.get("idempotency_key"),
-			"is_private": 1,
-			"upload_source": payload.get("upload_source") or "SPA",
-			"secondary_subjects": payload.get("secondary_subjects") or [],
-		}
-	)
+	session_payload = {
+		**authoritative,
+		"folder": resolve_task_submission_folder(
+			student=authoritative["primary_subject_id"],
+			task_name=getattr(task_submission_doc, "task", None) or task_submission_doc.name,
+			organization=authoritative["organization"],
+			school=authoritative["school"],
+		),
+		"filename_original": filename_original,
+		"mime_type_hint": mime_type_hint,
+		"expected_size_bytes": expected_size_bytes,
+		"is_private": 1,
+		"upload_source": payload.get("upload_source") or "SPA",
+		"secondary_subjects": payload.get("secondary_subjects") or [],
+	}
+	idempotency_key = payload.get("idempotency_key")
+	if idempotency_key:
+		session_payload["idempotency_key"] = idempotency_key
+
+	return create_upload_session_service(session_payload)
 
 
 def upload_task_resource_service(payload: dict[str, Any]) -> dict[str, Any]:
@@ -129,23 +131,25 @@ def upload_task_resource_service(payload: dict[str, Any]) -> dict[str, Any]:
 	if provided_slot and provided_slot != authoritative["slot"]:
 		frappe.throw(_("Task resource slot does not match the authoritative attachment row context."))
 
-	response = create_upload_session_service(
-		{
-			**{key: value for key, value in authoritative.items() if key not in {"row_name", "course"}},
-			"folder": resolve_task_resource_folder(
-				task=task_doc.name,
-				course=authoritative["course"],
-				organization=authoritative["organization"],
-				school=authoritative["school"],
-			),
-			"filename_original": filename_original,
-			"mime_type_hint": payload.get("mime_type_hint"),
-			"expected_size_bytes": payload.get("expected_size_bytes"),
-			"idempotency_key": payload.get("idempotency_key"),
-			"is_private": 1,
-			"upload_source": payload.get("upload_source") or "Desk",
-		}
-	)
+	session_payload = {
+		**{key: value for key, value in authoritative.items() if key not in {"row_name", "course"}},
+		"folder": resolve_task_resource_folder(
+			task=task_doc.name,
+			course=authoritative["course"],
+			organization=authoritative["organization"],
+			school=authoritative["school"],
+		),
+		"filename_original": filename_original,
+		"mime_type_hint": payload.get("mime_type_hint"),
+		"expected_size_bytes": payload.get("expected_size_bytes"),
+		"is_private": 1,
+		"upload_source": payload.get("upload_source") or "Desk",
+	}
+	idempotency_key = payload.get("idempotency_key")
+	if idempotency_key:
+		session_payload["idempotency_key"] = idempotency_key
+
+	response = create_upload_session_service(session_payload)
 	response["row_name"] = authoritative["row_name"]
 	response["slot"] = authoritative["slot"]
 	return response

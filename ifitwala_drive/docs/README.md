@@ -15,6 +15,7 @@ Current docs:
 - `18_gcs_bucket_settings_and_site_offload_proposal.md` — proposed site settings and legacy attachment offload design
 - `19_public_file_cutover_contract.md` — canonical public URL and web-tier miss-routing contract for public prune
 - `20_gcs_ops_runbook.md` — production and local-dev runbook for GCS auth, settings, topology, and stale `/files/...` compatibility
+- `21_cross_portal_governed_attachment_preview_contract.md` — proposed Ed/Drive contract for derivative-backed governed previews across staff, student, and guardian surfaces
 - `audit.md` — current audit and remediation status
 
 Completed Phase 1 planning and proposal notes were removed to keep this directory focused on the current system rather than historical execution scaffolding.

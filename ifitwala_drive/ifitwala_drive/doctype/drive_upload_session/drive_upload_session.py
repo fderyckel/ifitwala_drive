@@ -10,6 +10,8 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import add_to_date, now_datetime
 
+from ifitwala_drive.services.governance_contract import validate_file_purpose
+
 _ALLOWED_STATUSES = {
 	"created",
 	"uploading",
@@ -109,6 +111,11 @@ class DriveUploadSession(Document):
 		for fieldname in required_fields:
 			if not self.get(fieldname):
 				frappe.throw(_("Missing required governance intent field: {0}").format(fieldname))
+
+		self.intended_purpose = validate_file_purpose(
+			self.intended_purpose,
+			field_label="Intended Purpose",
+		)
 
 	def _validate_owner_contract(self) -> None:
 		"""Ownership must mean business-document owner, never human uploader.

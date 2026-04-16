@@ -5,6 +5,7 @@ from typing import Any
 import frappe
 
 from ifitwala_drive.services.concurrency import drive_lock, is_duplicate_entry_error
+from ifitwala_drive.services.files.derivatives import sync_preview_pipeline_for_current_version
 from ifitwala_drive.services.files.versions import create_initial_drive_file_version
 
 
@@ -214,6 +215,10 @@ def create_drive_file_artifacts(
 			file_id=file_id,
 			storage_artifact=storage_artifact,
 			upload_session_doc=upload_session_doc,
+		)
+		sync_preview_pipeline_for_current_version(
+			drive_file_doc=drive_file,
+			mime_type=storage_artifact.get("mime_type"),
 		)
 		drive_file.save(ignore_permissions=True)
 

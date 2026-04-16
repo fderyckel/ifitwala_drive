@@ -8,6 +8,7 @@ from typing import Any
 import frappe
 from frappe import _
 
+from ifitwala_drive.services.governance_contract import validate_file_purpose
 from ifitwala_drive.services.uploads.slots import validate_slot
 
 REQUIRED_CREATE_SESSION_FIELDS: tuple[str, ...] = (
@@ -92,6 +93,7 @@ def _validate_secondary_subjects(secondary_subjects: Any) -> None:
 
 def validate_create_session_payload(payload: dict[str, Any]) -> None:
 	require_fields(payload, REQUIRED_CREATE_SESSION_FIELDS)
+	payload["purpose"] = validate_file_purpose(payload.get("purpose"))
 	payload["slot"] = validate_slot(payload.get("slot"))
 
 	if payload.get("owner_doctype") == "User":

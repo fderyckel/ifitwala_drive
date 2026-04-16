@@ -6,6 +6,8 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
+from ifitwala_drive.services.governance_contract import validate_file_purpose
+
 _ALLOWED_STATUSES = {"active", "processing", "blocked", "erased", "superseded"}
 _ALLOWED_PREVIEW_STATUSES = {"pending", "ready", "failed", "not_applicable"}
 _ALLOWED_UPLOAD_SOURCES = {"Desk", "SPA", "API", "Job"}
@@ -16,10 +18,12 @@ class DriveFile(Document):
 	def before_insert(self) -> None:
 		self._set_defaults()
 		self._validate_required_fields()
+		self.purpose = validate_file_purpose(self.purpose)
 
 	def validate(self) -> None:
 		self._set_defaults()
 		self._validate_required_fields()
+		self.purpose = validate_file_purpose(self.purpose)
 		self._validate_status()
 		self._validate_preview_status()
 		self._validate_upload_source()
