@@ -96,6 +96,14 @@ class ConfiguredRemoteStorageBackend(LocalStorageBackend):
 			"verifiable": False,
 		}
 
+	def read_final_object(self, *, object_key: str) -> bytes:
+		if super().temporary_object_exists(object_key=object_key):
+			return super().read_final_object(object_key=object_key)
+
+		raise RuntimeError(
+			f"Storage backend '{self.backend_name}' cannot read final objects without a provider-native implementation."
+		)
+
 	def read_temporary_object_head(self, *, object_key: str, max_bytes: int) -> bytes:
 		return super().read_temporary_object_head(object_key=object_key, max_bytes=max_bytes)
 

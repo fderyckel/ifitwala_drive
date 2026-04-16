@@ -10,10 +10,15 @@ Code refs:
 
 - `ifitwala_drive/api/access.py`
 - `ifitwala_drive/services/files/access.py`
+- `ifitwala_drive/services/files/derivatives.py`
 - `ifitwala_drive/services/files/versions.py`
 - `ifitwala_drive/services/storage/base.py`
+- `ifitwala_drive/services/storage/local.py`
+- `ifitwala_drive/services/storage/gcs.py`
 - `ifitwala_drive/ifitwala_drive/doctype/drive_file/drive_file.py`
 - `ifitwala_drive/ifitwala_drive/doctype/drive_file/drive_file.json`
+- `ifitwala_drive/ifitwala_drive/doctype/drive_file_derivative/drive_file_derivative.py`
+- `ifitwala_drive/ifitwala_drive/doctype/drive_file_derivative/drive_file_derivative.json`
 - `ifitwala_drive/ifitwala_drive/doctype/drive_file_version/drive_file_version.py`
 - `ifitwala_drive/ifitwala_drive/doctype/drive_file_version/drive_file_version.json`
 - `ifitwala_drive/ifitwala_drive/doctype/drive_processing_job/drive_processing_job.json`
@@ -23,6 +28,9 @@ Test refs:
 - `ifitwala_drive/tests/test_access_grants.py`
 - `ifitwala_drive/tests/test_drive_versioning_and_erasure.py`
 - `ifitwala_drive/tests/test_browse_services.py`
+- `ifitwala_drive/tests/test_local_storage_backend.py`
+- `ifitwala_drive/tests/test_gcs_storage_backend.py`
+- `ifitwala_drive/tests/test_preview_jobs.py`
 
 Related docs:
 
@@ -57,18 +65,19 @@ Drive currently has:
 
 - `Drive File` with a file-level `preview_status`
 - `Drive File Version` for immutable original-file versions
-- `issue_download_grant(...)` and `issue_preview_grant(...)`
-- queue types for `preview` and `derivative`
-- version replacement that resets the file-level preview hint to `pending`
+- `Drive File Derivative` for version-bound derivative metadata
+- derivative-role resolution for preview grants, with `viewer_preview` preferred when ready
+- async `preview` jobs that create image derivatives for supported image MIME types
+- provider-neutral final-object reads for `local` and `gcs` storage backends
+- version replacement that marks old derivatives `stale` and creates new pending derivative rows/jobs
 
-Drive does not currently have:
+Drive still does not have:
 
-- a `Drive File Derivative` doctype or equivalent durable derivative metadata model
-- derivative-role grant resolution
-- a preview pipeline that stores derivative metadata and marks derivative readiness per version
-- a portal-safe preview contract by derivative role
+- PDF first-page derivative generation
+- broader media support beyond the narrow image Phase 1 set
+- an Ed-facing portal contract; Ed still owns that boundary
 
-Treat current preview support as groundwork, not as the final governed preview architecture.
+Treat current preview support as a partial Phase 1 implementation, not as the final governed preview architecture.
 
 ## Assessment Of The Proposal
 
@@ -197,8 +206,9 @@ Original versions and derivative artifacts are different concepts and need diffe
 
 Current state:
 
-- `issue_preview_grant(...)` resolves from `Drive File.storage_object_key`
-- preview and download grants may point at the same underlying object
+- `issue_preview_grant(...)` still uses the current `Drive File.preview_status` gate
+- preview grant resolution prefers a ready `viewer_preview` derivative for the current version
+- preview grant resolution falls back to the current original object only while no derivative is ready yet
 
 Target state:
 

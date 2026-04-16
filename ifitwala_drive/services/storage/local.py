@@ -96,6 +96,11 @@ class LocalStorageBackend:
 			"verifiable": True,
 		}
 
+	def read_final_object(self, *, object_key: str) -> bytes:
+		path = self._absolute_path(object_key)
+		with open(path, "rb") as handle:
+			return handle.read()
+
 	def temporary_object_exists(self, *, object_key: str) -> bool:
 		return os.path.exists(self._absolute_path(object_key))
 

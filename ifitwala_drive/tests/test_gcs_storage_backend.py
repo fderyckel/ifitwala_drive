@@ -401,3 +401,4 @@ def test_gcs_storage_backend_reads_object_metadata():
 		"checksum": "md5:legacy/private/files/archive/report.pdf",
 		"verifiable": True,
 	}
+	assert backend.read_final_object(object_key="legacy/private/files/archive/report.pdf") == b"report-bytes"

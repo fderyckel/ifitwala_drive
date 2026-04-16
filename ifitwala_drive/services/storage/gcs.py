@@ -83,6 +83,9 @@ class GCSStorageBackend(ConfiguredRemoteStorageBackend):
 			"verifiable": True,
 		}
 
+	def read_final_object(self, *, object_key: str) -> bytes:
+		return self._build_blob(object_key).download_as_bytes()
+
 	def read_temporary_object_head(self, *, object_key: str, max_bytes: int) -> bytes:
 		if max_bytes <= 0:
 			return b""

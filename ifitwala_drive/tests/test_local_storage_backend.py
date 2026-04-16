@@ -98,6 +98,7 @@ def test_local_storage_backend_reads_object_metadata():
 		"checksum": None,
 		"verifiable": True,
 	}
+	assert backend.read_final_object(object_key="files/aa/bb/report.pdf") == b"report-bytes"
 
 
 def test_get_storage_backend_defaults_to_local():
@@ -117,6 +118,7 @@ def test_get_storage_backend_supports_s3_compatible_profile():
 	frappe = _install_fake_frappe(root=root)
 	frappe.conf["ifitwala_drive_storage_profile"] = {
 		"backend_name": "S3 Compatible",
+		"bucket_or_container": "drive-bucket",
 		"base_prefix": "sites/site-a",
 	}
 
