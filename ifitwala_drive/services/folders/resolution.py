@@ -536,6 +536,78 @@ def _ensure_course_root(*, course: str, organization: str, school: str) -> str:
 	)
 
 
+def _ensure_organization_communications_root(*, organization: str) -> str:
+	organization_root = _ensure_folder(
+		title=organization,
+		parent_drive_folder=None,
+		owner_doctype="Organization",
+		owner_name=organization,
+		organization=organization,
+		school=None,
+		folder_kind="system_bound",
+		context_doctype="Organization",
+		context_name=organization,
+	)
+	return _ensure_folder(
+		title="Communications",
+		parent_drive_folder=organization_root,
+		owner_doctype="Organization",
+		owner_name=organization,
+		organization=organization,
+		school=None,
+		folder_kind="system_bound",
+		context_doctype="Organization",
+		context_name=organization,
+	)
+
+
+def _ensure_school_communications_root(*, organization: str, school: str) -> str:
+	organization_root = _ensure_folder(
+		title=organization,
+		parent_drive_folder=None,
+		owner_doctype="Organization",
+		owner_name=organization,
+		organization=organization,
+		school=None,
+		folder_kind="system_bound",
+		context_doctype="Organization",
+		context_name=organization,
+	)
+	schools_root = _ensure_folder(
+		title="Schools",
+		parent_drive_folder=organization_root,
+		owner_doctype="Organization",
+		owner_name=organization,
+		organization=organization,
+		school=None,
+		folder_kind="system_bound",
+		context_doctype="Organization",
+		context_name=organization,
+	)
+	school_root = _ensure_folder(
+		title=school,
+		parent_drive_folder=schools_root,
+		owner_doctype="Organization",
+		owner_name=organization,
+		organization=organization,
+		school=school,
+		folder_kind="system_bound",
+		context_doctype="School",
+		context_name=school,
+	)
+	return _ensure_folder(
+		title="Communications",
+		parent_drive_folder=school_root,
+		owner_doctype="School",
+		owner_name=school,
+		organization=organization,
+		school=school,
+		folder_kind="system_bound",
+		context_doctype="School",
+		context_name=school,
+	)
+
+
 def resolve_supporting_material_folder(
 	*,
 	material: str,
@@ -622,46 +694,99 @@ def resolve_task_resource_folder(
 def resolve_org_communication_attachment_folder(
 	*,
 	org_communication: str,
-	course: str,
-	student_group: str,
+	course: str | None,
+	student_group: str | None,
 	organization: str,
-	school: str,
+	school: str | None,
 ) -> str:
-	course_root = _ensure_course_root(
-		course=course,
-		organization=organization,
-		school=school,
-	)
-	communications_root = _ensure_folder(
-		title="Communications",
-		parent_drive_folder=course_root,
-		owner_doctype="Course",
-		owner_name=course,
-		organization=organization,
-		school=school,
-		folder_kind="course_shared",
-		context_doctype="Course",
-		context_name=course,
-	)
-	student_group_root = _ensure_folder(
-		title=student_group,
-		parent_drive_folder=communications_root,
-		owner_doctype="Student Group",
-		owner_name=student_group,
-		organization=organization,
-		school=school,
-		folder_kind="course_shared",
-		context_doctype="Student Group",
-		context_name=student_group,
-	)
+	if course and student_group and school:
+		course_root = _ensure_course_root(
+			course=course,
+			organization=organization,
+			school=school,
+		)
+		communications_root = _ensure_folder(
+			title="Communications",
+			parent_drive_folder=course_root,
+			owner_doctype="Course",
+			owner_name=course,
+			organization=organization,
+			school=school,
+			folder_kind="course_shared",
+			context_doctype="Course",
+			context_name=course,
+		)
+		student_group_root = _ensure_folder(
+			title=student_group,
+			parent_drive_folder=communications_root,
+			owner_doctype="Student Group",
+			owner_name=student_group,
+			organization=organization,
+			school=school,
+			folder_kind="course_shared",
+			context_doctype="Student Group",
+			context_name=student_group,
+		)
+		org_communication_root = _ensure_folder(
+			title=org_communication,
+			parent_drive_folder=student_group_root,
+			owner_doctype="Org Communication",
+			owner_name=org_communication,
+			organization=organization,
+			school=school,
+			folder_kind="course_shared",
+			context_doctype="Org Communication",
+			context_name=org_communication,
+		)
+		return _ensure_folder(
+			title="Attachments",
+			parent_drive_folder=org_communication_root,
+			owner_doctype="Org Communication",
+			owner_name=org_communication,
+			organization=organization,
+			school=school,
+			folder_kind="course_shared",
+			context_doctype="Org Communication",
+			context_name=org_communication,
+		)
+
+	if school:
+		communications_root = _ensure_school_communications_root(
+			organization=organization,
+			school=school,
+		)
+		org_communication_root = _ensure_folder(
+			title=org_communication,
+			parent_drive_folder=communications_root,
+			owner_doctype="Org Communication",
+			owner_name=org_communication,
+			organization=organization,
+			school=school,
+			folder_kind="system_bound",
+			context_doctype="Org Communication",
+			context_name=org_communication,
+		)
+		return _ensure_folder(
+			title="Attachments",
+			parent_drive_folder=org_communication_root,
+			owner_doctype="Org Communication",
+			owner_name=org_communication,
+			organization=organization,
+			school=school,
+			folder_kind="system_bound",
+			context_doctype="Org Communication",
+			context_name=org_communication,
+		)
+
+	communications_root = _ensure_organization_communications_root(organization=organization)
 	org_communication_root = _ensure_folder(
 		title=org_communication,
-		parent_drive_folder=student_group_root,
+		parent_drive_folder=communications_root,
 		owner_doctype="Org Communication",
 		owner_name=org_communication,
 		organization=organization,
-		school=school,
-		folder_kind="course_shared",
+		school=None,
+		folder_kind="system_bound",
 		context_doctype="Org Communication",
 		context_name=org_communication,
 	)
@@ -671,8 +796,8 @@ def resolve_org_communication_attachment_folder(
 		owner_doctype="Org Communication",
 		owner_name=org_communication,
 		organization=organization,
-		school=school,
-		folder_kind="course_shared",
+		school=None,
+		folder_kind="system_bound",
 		context_doctype="Org Communication",
 		context_name=org_communication,
 	)

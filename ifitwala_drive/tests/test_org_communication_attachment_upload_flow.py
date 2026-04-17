@@ -213,3 +213,123 @@ def test_upload_org_communication_attachment_uses_class_context_folder():
 	assert recorder["payload"]["slot"] == "communication_attachment__row-001"
 	assert recorder["payload"]["is_private"] == 1
 	assert recorder["payload"]["folder"].startswith("DRF-")
+
+
+def test_upload_org_communication_attachment_uses_school_context_folder_without_class_context():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.integration.ifitwala_ed_org_communications",
+		"ifitwala_drive.services.uploads.sessions",
+	)
+	org_communication = FakeDoc({"name": "COMM-0002", "organization": "ORG-0001", "school": "SCH-0002"})
+	_install_fake_frappe(
+		exists_map={
+			("Org Communication", "COMM-0002"): True,
+		},
+		docs_map={("Org Communication", "COMM-0002"): org_communication},
+	)
+	recorder = {}
+	_install_fake_sessions(recorder)
+	_ensure_ed_repo_on_path()
+	importlib.import_module("ifitwala_ed")
+	importlib.import_module("ifitwala_ed.integrations")
+	importlib.import_module("ifitwala_ed.integrations.drive")
+	delegate = types.ModuleType("ifitwala_ed.integrations.drive.org_communications")
+	delegate.assert_org_communication_upload_access = (
+		lambda org_communication_name, permission_type="write": org_communication
+	)
+	delegate.build_org_communication_upload_contract = lambda doc, row_name=None: {
+		"owner_doctype": "Org Communication",
+		"owner_name": doc.name,
+		"attached_doctype": "Org Communication",
+		"attached_name": doc.name,
+		"organization": "ORG-0001",
+		"school": "SCH-0002",
+		"primary_subject_type": "Organization",
+		"primary_subject_id": "ORG-0001",
+		"data_class": "administrative",
+		"purpose": "administrative",
+		"retention_policy": "fixed_7y",
+		"slot": "communication_attachment__row-002",
+		"row_name": "row-002",
+		"course": None,
+		"student_group": None,
+	}
+	sys.modules["ifitwala_ed.integrations.drive.org_communications"] = delegate
+
+	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_org_communications")
+	response = module.upload_org_communication_attachment_service(
+		{
+			"org_communication": "COMM-0002",
+			"filename_original": "announcement.pdf",
+			"mime_type_hint": "application/pdf",
+			"expected_size_bytes": 4321,
+		}
+	)
+
+	assert response["upload_session_id"] == "DUS-0001"
+	assert response["row_name"] == "row-002"
+	assert recorder["payload"]["organization"] == "ORG-0001"
+	assert recorder["payload"]["school"] == "SCH-0002"
+	assert recorder["payload"]["slot"] == "communication_attachment__row-002"
+	assert recorder["payload"]["folder"].startswith("DRF-")
+
+
+def test_upload_org_communication_attachment_uses_organization_context_folder_without_school_or_class():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.integration.ifitwala_ed_org_communications",
+		"ifitwala_drive.services.uploads.sessions",
+	)
+	org_communication = FakeDoc({"name": "COMM-0003", "organization": "ORG-0001", "school": None})
+	_install_fake_frappe(
+		exists_map={
+			("Org Communication", "COMM-0003"): True,
+		},
+		docs_map={("Org Communication", "COMM-0003"): org_communication},
+	)
+	recorder = {}
+	_install_fake_sessions(recorder)
+	_ensure_ed_repo_on_path()
+	importlib.import_module("ifitwala_ed")
+	importlib.import_module("ifitwala_ed.integrations")
+	importlib.import_module("ifitwala_ed.integrations.drive")
+	delegate = types.ModuleType("ifitwala_ed.integrations.drive.org_communications")
+	delegate.assert_org_communication_upload_access = (
+		lambda org_communication_name, permission_type="write": org_communication
+	)
+	delegate.build_org_communication_upload_contract = lambda doc, row_name=None: {
+		"owner_doctype": "Org Communication",
+		"owner_name": doc.name,
+		"attached_doctype": "Org Communication",
+		"attached_name": doc.name,
+		"organization": "ORG-0001",
+		"school": None,
+		"primary_subject_type": "Organization",
+		"primary_subject_id": "ORG-0001",
+		"data_class": "administrative",
+		"purpose": "administrative",
+		"retention_policy": "fixed_7y",
+		"slot": "communication_attachment__row-003",
+		"row_name": "row-003",
+		"course": None,
+		"student_group": None,
+	}
+	sys.modules["ifitwala_ed.integrations.drive.org_communications"] = delegate
+
+	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_org_communications")
+	response = module.upload_org_communication_attachment_service(
+		{
+			"org_communication": "COMM-0003",
+			"filename_original": "announcement.pdf",
+			"mime_type_hint": "application/pdf",
+			"expected_size_bytes": 4321,
+		}
+	)
+
+	assert response["upload_session_id"] == "DUS-0001"
+	assert response["row_name"] == "row-003"
+	assert recorder["payload"]["organization"] == "ORG-0001"
+	assert recorder["payload"]["school"] is None
+	assert recorder["payload"]["slot"] == "communication_attachment__row-003"
+	assert recorder["payload"]["folder"].startswith("DRF-")
