@@ -421,7 +421,7 @@ For these wrappers:
 
 ### Purpose
 
-Upload a governed file attached to a class-context `Org Communication`.
+Upload a governed file attached to an `Org Communication` with authoritative context from Ifitwala_Ed.
 
 ### Required request shape
 
@@ -444,7 +444,11 @@ Upload a governed file attached to a class-context `Org Communication`.
 * purpose = `administrative`
 * retention_policy = `fixed_7y`
 * slot prefix = `communication_attachment__`
-* folder placement derives from Ed-owned course + student-group context
+* folder placement derives from the Ed-owned authoritative context:
+  * class context when `course` + `student_group` + `school` are all present
+  * otherwise school context when `school` is authoritative
+  * otherwise organization context
+* partial class context must fail closed before session creation or folder resolution; Drive must not crash and must not silently fall back when `student_group` is present but required class fields are missing
 
 ## 5.1 `upload_task_resource`
 

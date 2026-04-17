@@ -6,6 +6,8 @@ import types
 from pathlib import Path
 from typing import ClassVar
 
+import pytest
+
 
 class FakeDoc:
 	_insert_counters: ClassVar[dict[str, int]] = {}
@@ -333,3 +335,59 @@ def test_upload_org_communication_attachment_uses_organization_context_folder_wi
 	assert recorder["payload"]["school"] is None
 	assert recorder["payload"]["slot"] == "communication_attachment__row-003"
 	assert recorder["payload"]["folder"].startswith("DRF-")
+
+
+def test_upload_org_communication_attachment_rejects_incomplete_class_context():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.integration.ifitwala_ed_org_communications",
+		"ifitwala_drive.services.uploads.sessions",
+	)
+	org_communication = FakeDoc({"name": "COMM-0004", "organization": "ORG-0001", "school": "SCH-0001"})
+	_install_fake_frappe(
+		exists_map={
+			("Org Communication", "COMM-0004"): True,
+		},
+		docs_map={("Org Communication", "COMM-0004"): org_communication},
+	)
+	recorder = {}
+	_install_fake_sessions(recorder)
+	_ensure_ed_repo_on_path()
+	importlib.import_module("ifitwala_ed")
+	importlib.import_module("ifitwala_ed.integrations")
+	importlib.import_module("ifitwala_ed.integrations.drive")
+	delegate = types.ModuleType("ifitwala_ed.integrations.drive.org_communications")
+	delegate.assert_org_communication_upload_access = (
+		lambda org_communication_name, permission_type="write": org_communication
+	)
+	delegate.build_org_communication_upload_contract = lambda doc, row_name=None: {
+		"owner_doctype": "Org Communication",
+		"owner_name": doc.name,
+		"attached_doctype": "Org Communication",
+		"attached_name": doc.name,
+		"organization": "ORG-0001",
+		"school": "SCH-0001",
+		"primary_subject_type": "Organization",
+		"primary_subject_id": "ORG-0001",
+		"data_class": "administrative",
+		"purpose": "administrative",
+		"retention_policy": "fixed_7y",
+		"slot": "communication_attachment__row-004",
+		"row_name": "row-004",
+		"course": None,
+		"student_group": "SG-0001",
+	}
+	sys.modules["ifitwala_ed.integrations.drive.org_communications"] = delegate
+
+	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_org_communications")
+	with pytest.raises(RuntimeError, match="Org Communication attachment class context is incomplete"):
+		module.upload_org_communication_attachment_service(
+			{
+				"org_communication": "COMM-0004",
+				"filename_original": "announcement.pdf",
+				"mime_type_hint": "application/pdf",
+				"expected_size_bytes": 4321,
+			}
+		)
+
+	assert "payload" not in recorder

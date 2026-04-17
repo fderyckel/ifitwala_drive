@@ -1,9 +1,44 @@
 from __future__ import annotations
 
 import frappe
+from frappe import _
 
 from ifitwala_drive.services.concurrency import drive_lock, is_duplicate_entry_error
 from ifitwala_drive.services.folders.key_builder import build_folder_system_key, slugify_folder_title
+
+
+def _clean_text(value: str | None) -> str | None:
+	resolved = str(value or "").strip()
+	return resolved or None
+
+
+def _assert_complete_org_communication_class_context(
+	*,
+	course: str | None,
+	student_group: str | None,
+	school: str | None,
+) -> tuple[str | None, str | None, str | None]:
+	resolved_course = _clean_text(course)
+	resolved_student_group = _clean_text(student_group)
+	resolved_school = _clean_text(school)
+	if not resolved_course and not resolved_student_group:
+		return resolved_course, resolved_student_group, resolved_school
+
+	missing_fields: list[str] = []
+	if not resolved_course:
+		missing_fields.append(_("course"))
+	if not resolved_student_group:
+		missing_fields.append(_("student group"))
+	if not resolved_school:
+		missing_fields.append(_("issuing school"))
+	if missing_fields:
+		frappe.throw(
+			_("Org Communication attachment class context is incomplete. Missing {0}.").format(
+				", ".join(missing_fields)
+			)
+		)
+
+	return resolved_course, resolved_student_group, resolved_school
 
 
 def _folder_lookup_filters(
@@ -699,6 +734,11 @@ def resolve_org_communication_attachment_folder(
 	organization: str,
 	school: str | None,
 ) -> str:
+	course, student_group, school = _assert_complete_org_communication_class_context(
+		course=course,
+		student_group=student_group,
+		school=school,
+	)
 	if course and student_group and school:
 		course_root = _ensure_course_root(
 			course=course,
