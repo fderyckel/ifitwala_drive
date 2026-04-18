@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+from datetime import datetime, timedelta
 from typing import Any
 
 import frappe
@@ -49,6 +50,131 @@ _ERROR_CODE_UNSUPPORTED = "unsupported_mime_type"
 _ERROR_CODE_GENERATION_FAILED = "preview_generation_failed"
 _ERROR_CODE_RUNTIME_MISSING = "preview_runtime_missing"
 _ERROR_CODE_SOURCE_READ_FAILED = "source_read_failed"
+_STALE_DERIVATIVE_GRACE_DAYS = 30
+
+
+def _get_all(doctype: str, *, filters: dict[str, Any], fields: list[str]) -> list[dict[str, Any]]:
+	get_all = getattr(frappe, "get_all", None)
+	if callable(get_all):
+		return get_all(doctype, filters=filters, fields=fields)
+
+	db_get_all = getattr(getattr(frappe, "db", None), "get_all", None)
+	if callable(db_get_all):
+		return db_get_all(doctype, filters=filters, fields=fields)
+
+	return []
+
+
+def _coerce_datetime(value) -> datetime | None:
+	if value is None:
+		return None
+	if isinstance(value, datetime):
+		return value
+
+	try:
+		from frappe.utils import get_datetime
+	except ImportError:
+		get_datetime = None
+
+	if callable(get_datetime):
+		try:
+			return get_datetime(value)
+		except Exception:
+			pass
+
+	text = str(value or "").strip()
+	if not text:
+		return None
+	try:
+		return datetime.fromisoformat(text)
+	except ValueError:
+		return None
+
+
+def _delete_derivative_doc(derivative_id: str) -> None:
+	delete_doc = getattr(frappe, "delete_doc", None)
+	if callable(delete_doc):
+		delete_doc("Drive File Derivative", derivative_id, ignore_permissions=True)
+		return
+
+	derivative_doc = frappe.get_doc("Drive File Derivative", derivative_id)
+	delete_method = getattr(derivative_doc, "delete", None)
+	if callable(delete_method):
+		delete_method(ignore_permissions=True)
+		return
+
+	# Fallback for constrained runtimes: clear delivery metadata so the row cannot be reused.
+	derivative_doc.status = "stale"
+	derivative_doc.storage_backend = None
+	derivative_doc.storage_object_key = None
+	derivative_doc.save(ignore_permissions=True)
+
+
+def delete_derivative_artifacts_for_drive_file(*, drive_file_id: str) -> int:
+	deleted_count = 0
+	for row in _get_all(
+		"Drive File Derivative",
+		filters={"drive_file": drive_file_id},
+		fields=["name", "storage_backend", "storage_object_key"],
+	):
+		derivative_id = str(row.get("name") or "").strip()
+		if not derivative_id:
+			continue
+
+		storage_object_key = str(row.get("storage_object_key") or "").strip()
+		if storage_object_key:
+			storage_backend = row.get("storage_backend")
+			storage = get_storage_backend(storage_backend)
+			storage.delete_object(object_key=storage_object_key)
+
+		_delete_derivative_doc(derivative_id)
+		deleted_count += 1
+
+	return deleted_count
+
+
+def prune_stale_derivatives_service(
+	*, grace_days: int = _STALE_DERIVATIVE_GRACE_DAYS, limit: int | None = None
+) -> dict[str, Any]:
+	if int(grace_days or 0) <= 0:
+		raise ValueError("grace_days must be a positive integer.")
+
+	remaining = int(limit or 0) if limit is not None else None
+	cutoff = now_datetime() - timedelta(days=int(grace_days))
+	pruned_count = 0
+
+	for row in _get_all(
+		"Drive File Derivative",
+		filters={"status": "stale"},
+		fields=["name", "storage_backend", "storage_object_key", "modified"],
+	):
+		if remaining is not None and remaining <= 0:
+			break
+
+		modified_on = _coerce_datetime(row.get("modified"))
+		if not modified_on or modified_on > cutoff:
+			continue
+
+		derivative_id = str(row.get("name") or "").strip()
+		if not derivative_id:
+			continue
+
+		storage_object_key = str(row.get("storage_object_key") or "").strip()
+		if storage_object_key:
+			storage = get_storage_backend(row.get("storage_backend"))
+			storage.delete_object(object_key=storage_object_key)
+
+		_delete_derivative_doc(derivative_id)
+		pruned_count += 1
+		if remaining is not None:
+			remaining -= 1
+
+	return {
+		"status": "completed",
+		"grace_days": int(grace_days),
+		"pruned_count": pruned_count,
+		"cutoff": cutoff.strftime("%Y-%m-%d %H:%M:%S"),
+	}
 
 
 def resolve_ready_preview_derivative(
@@ -440,12 +566,8 @@ def mark_version_derivatives_stale(*, drive_file_id: str, drive_file_version_id:
 	if not version_id:
 		return 0
 
-	get_all = getattr(frappe, "get_all", None)
-	if not callable(get_all):
-		return 0
-
 	stale_count = 0
-	for row in get_all(
+	for row in _get_all(
 		"Drive File Derivative",
 		filters={"drive_file": drive_file_id, "drive_file_version": version_id},
 		fields=["name", "status"],

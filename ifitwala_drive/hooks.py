@@ -143,23 +143,11 @@ app_license = "mit"
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"ifitwala_drive.tasks.all"
-# 	],
-# 	"daily": [
-# 		"ifitwala_drive.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"ifitwala_drive.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"ifitwala_drive.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"ifitwala_drive.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+	"hourly": [
+		"ifitwala_drive.tasks.hourly",
+	]
+}
 
 # Testing
 # -------

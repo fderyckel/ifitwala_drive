@@ -308,6 +308,82 @@ def test_issue_preview_grant_uses_ready_derivative_when_present(monkeypatch):
 	}
 
 
+def test_issue_preview_grant_uses_explicit_thumbnail_derivative_when_requested(monkeypatch):
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.audit.events",
+		"ifitwala_drive.services.files.derivatives",
+		"ifitwala_drive.services.files.access",
+	)
+	drive_file = FakeDoc(
+		{
+			"name": "DF-0004",
+			"status": "active",
+			"preview_status": "ready",
+			"owner_doctype": "Task Submission",
+			"owner_name": "TSUB-0001",
+			"file": "FILE-0004",
+			"current_version": "DFV-0004",
+			"display_name": "policy.png",
+			"storage_backend": "gcs",
+			"storage_object_key": "files/original/policy.png",
+		}
+	)
+	task_submission = FakeDoc({"name": "TSUB-0001"})
+	version_doc = FakeDoc(
+		{
+			"name": "DFV-0004",
+			"drive_file": "DF-0004",
+			"mime_type": "image/png",
+		}
+	)
+	file_doc = FakeDoc(
+		{"name": "FILE-0004", "file_url": "https://storage.ifitwala.invalid/original/policy.png"}
+	)
+	thumb_doc = FakeDoc(
+		{
+			"name": "DFD-0002",
+			"drive_file": "DF-0004",
+			"drive_file_version": "DFV-0004",
+			"derivative_role": "thumb",
+			"status": "ready",
+			"storage_backend": "gcs",
+			"storage_object_key": "derivatives/policy/thumb.webp",
+		}
+	)
+	_install_fake_frappe(
+		docs_map={
+			("Drive File", "DF-0004"): drive_file,
+			("Task Submission", "TSUB-0001"): task_submission,
+			("Drive File Version", "DFV-0004"): version_doc,
+			("File", "FILE-0004"): file_doc,
+			("Drive File Derivative", "DFD-0002"): thumb_doc,
+		},
+	)
+	module = _load_module("ifitwala_drive.services.files.access")
+
+	class FakeStorage:
+		def issue_download_grant(self, *, object_key, file_url, expires_on, filename=None):
+			raise AssertionError("Download grant should not be issued in this test.")
+
+		def issue_preview_grant(self, *, object_key, file_url, expires_on, filename=None):
+			assert object_key == "derivatives/policy/thumb.webp"
+			assert file_url is None
+			assert filename == "policy.png"
+			return {"grant_type": "signed_url", "url": "https://preview.invalid/policy-thumb.webp"}
+
+	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
+
+	response = module.issue_preview_grant_service({"drive_file_id": "DF-0004", "derivative_role": "thumb"})
+
+	assert response == {
+		"grant_type": "signed_url",
+		"url": "https://preview.invalid/policy-thumb.webp",
+		"expires_on": "2026-03-19 10:10:00",
+		"preview_status": "ready",
+	}
+
+
 def test_issue_preview_grant_uses_ready_pdf_first_page_derivative(monkeypatch):
 	_purge_modules(
 		"frappe",
@@ -438,3 +514,62 @@ def test_issue_preview_grant_falls_back_to_original_object_when_no_ready_derivat
 		"expires_on": "2026-03-19 10:10:00",
 		"preview_status": "ready",
 	}
+
+
+def test_issue_preview_grant_rejects_missing_explicit_derivative(monkeypatch):
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.audit.events",
+		"ifitwala_drive.services.files.derivatives",
+		"ifitwala_drive.services.files.access",
+	)
+	drive_file = FakeDoc(
+		{
+			"name": "DF-0007",
+			"status": "active",
+			"preview_status": "ready",
+			"owner_doctype": "Task Submission",
+			"owner_name": "TSUB-0001",
+			"file": "FILE-0007",
+			"current_version": "DFV-0007",
+			"display_name": "policy.png",
+			"storage_backend": "gcs",
+			"storage_object_key": "files/original/policy.png",
+		}
+	)
+	task_submission = FakeDoc({"name": "TSUB-0001"})
+	version_doc = FakeDoc(
+		{
+			"name": "DFV-0007",
+			"drive_file": "DF-0007",
+			"mime_type": "image/png",
+		}
+	)
+	file_doc = FakeDoc(
+		{"name": "FILE-0007", "file_url": "https://storage.ifitwala.invalid/original/policy.png"}
+	)
+	_install_fake_frappe(
+		docs_map={
+			("Drive File", "DF-0007"): drive_file,
+			("Task Submission", "TSUB-0001"): task_submission,
+			("Drive File Version", "DFV-0007"): version_doc,
+			("File", "FILE-0007"): file_doc,
+		},
+	)
+	module = _load_module("ifitwala_drive.services.files.access")
+
+	class FakeStorage:
+		def issue_download_grant(self, *, object_key, file_url, expires_on, filename=None):
+			raise AssertionError("Download grant should not be issued in this test.")
+
+		def issue_preview_grant(self, *, object_key, file_url, expires_on, filename=None):
+			raise AssertionError("Preview grant should not be issued without a ready derivative.")
+
+	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
+
+	try:
+		module.issue_preview_grant_service({"drive_file_id": "DF-0007", "derivative_role": "thumb"})
+	except RuntimeError as exc:
+		assert "ready derivative: thumb" in str(exc)
+	else:
+		raise AssertionError("Expected explicit derivative preview grant issuance to fail.")

@@ -4,7 +4,7 @@
 
 **Proposed canonical contract for cross-app implementation**
 
-Date: 2026-04-16
+Date: 2026-04-18
 
 Code refs:
 
@@ -66,10 +66,12 @@ Drive currently has:
 - `Drive File` with a file-level `preview_status`
 - `Drive File Version` for immutable original-file versions
 - `Drive File Derivative` for version-bound derivative metadata
-- derivative-role resolution for preview grants, with `viewer_preview` preferred for images and `pdf_page_1` preferred for PDFs when ready
+- derivative-role resolution for preview grants, with `viewer_preview` preferred for images, `pdf_page_1` preferred for PDFs, and explicit `derivative_role` support for thumbnail callers
 - async `preview` jobs that create image derivatives and first-page PDF derivatives for supported MIME types
 - provider-neutral final-object reads for `local` and `gcs` storage backends
 - version replacement that marks old derivatives `stale` and creates new pending derivative rows/jobs
+- derivative erasure that deletes derivative blobs and metadata together with the owning governed file
+- stale-derivative pruning on a separate lifecycle path after the grace window
 
 Drive still does not have:
 
@@ -213,7 +215,7 @@ Target state:
 
 - preview grants resolve a derivative for the current version and requested derivative role
 - download/open grants continue to resolve the original current object
-- preview issuance should fail closed if the requested derivative is not `ready`
+- preview issuance should fail closed if the requested derivative is not `ready`; the compatibility default may still fall back to current richer preview behavior when no explicit derivative role was requested
 
 The API shape must evolve accordingly. One acceptable direction is:
 
@@ -226,6 +228,43 @@ issue_preview_grant(
 ```
 
 Equivalent internal service shapes are acceptable if they preserve the same contract.
+
+## Thumbnail Delivery And Retention Direction
+
+Status: Proposed target refinement
+Code refs:
+
+- `ifitwala_drive/api/access.py`
+- `ifitwala_drive/services/files/access.py`
+- `ifitwala_drive/services/files/derivatives.py`
+- `ifitwala_drive/services/files/versions.py`
+- `ifitwala_drive/services/audit/erasure.py`
+
+Test refs:
+
+- `ifitwala_drive/tests/test_access_grants.py`
+- `ifitwala_drive/tests/test_preview_jobs.py`
+- `ifitwala_drive/tests/test_drive_versioning_and_erasure.py`
+
+Refined delivery split:
+
+- list/card image surfaces in Ifitwala_Ed should request the `thumb` derivative
+- richer image preview surfaces should request `viewer_preview`
+- PDF preview continues to use `pdf_page_1`
+- `issue_preview_grant(...)` should therefore accept `derivative_role`, with current richer-preview behavior preserved as the compatibility default during rollout
+
+Ed/Drive boundary rule:
+
+- Ifitwala_Ed may cache resolved redirect targets briefly on its own thumbnail routes
+- Drive remains the authority for derivative readiness and grant issuance
+- Drive grant URLs must not be embedded into Ed bootstrap DTOs as if they were durable asset URLs
+
+Retention and cleanup direction:
+
+- current-version derivatives should remain available; do not add arbitrary idle-time deletion for active current previews in Phase 1
+- replaced-version derivatives already become `stale`; the lifecycle cleanup path should delete stale derivative blobs and metadata after the grace window
+- a reasonable initial default for stale derivative pruning is 30 days, with later operator configurability if needed
+- governed erasure must delete derivative blobs and derivative metadata immediately, not only original-file objects
 
 ## Processing And Lifecycle Rules
 
@@ -241,6 +280,7 @@ Required behavior:
 6. mark failures and unsupported types explicitly
 7. mark affected derivative rows stale on replacement
 8. delete derivative blobs and metadata during governed erasure
+9. prune stale derivative blobs and metadata on a separate lifecycle path after the configured grace window
 
 Failure posture:
 
@@ -289,6 +329,7 @@ Phase 5: regression protection
 - add derivative lifecycle tests
 - add replace/version invalidation tests
 - add erasure cleanup tests
+- add stale-derivative prune tests
 - add access-grant tests that prove portal surfaces do not depend on direct Drive SPA calls
 
 ## Explicit anti-patterns

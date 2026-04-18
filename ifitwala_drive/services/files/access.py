@@ -74,7 +74,8 @@ def _format_datetime(value) -> str:
 	return value.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _issue_grant(*, doc, grant_kind: str) -> dict[str, Any]:
+def _issue_grant(*, doc, grant_kind: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+	payload = payload or {}
 	file_url = frappe.db.get_value("File", doc.file, "file_url") if getattr(doc, "file", None) else None
 	expires_on = _build_expires_on()
 	storage_backend = getattr(doc, "storage_backend", None)
@@ -88,14 +89,22 @@ def _issue_grant(*, doc, grant_kind: str) -> dict[str, Any]:
 			if current_version
 			else None
 		)
+		explicit_derivative_role = str(payload.get("derivative_role") or "").strip() or None
+		derivative_role = explicit_derivative_role or primary_preview_derivative_role_for_mime_type(mime_type)
 		preview_derivative = resolve_ready_preview_derivative(
 			drive_file_doc=doc,
-			derivative_role=primary_preview_derivative_role_for_mime_type(mime_type),
+			derivative_role=derivative_role,
 		)
 		if preview_derivative and preview_derivative.get("storage_object_key"):
 			storage_backend = preview_derivative.get("storage_backend") or storage_backend
 			object_key = preview_derivative.get("storage_object_key")
 			response_file_url = None
+		elif explicit_derivative_role:
+			frappe.throw(
+				_("Preview grant cannot be issued for Drive File without a ready derivative: {0}").format(
+					explicit_derivative_role
+				)
+			)
 		storage = get_storage_backend(storage_backend)
 		grant = storage.issue_preview_grant(
 			object_key=object_key,
@@ -137,4 +146,4 @@ def issue_download_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
 def issue_preview_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
 	doc = _get_drive_file_doc(payload)
 	_assert_can_issue_preview(doc)
-	return _issue_grant(doc=doc, grant_kind="preview")
+	return _issue_grant(doc=doc, grant_kind="preview", payload=payload)

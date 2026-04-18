@@ -26,9 +26,14 @@ def issue_download_grant(
 def issue_preview_grant(
 	drive_file_id: str | None = None,
 	canonical_ref: str | None = None,
+	derivative_role: str | None = None,
 ) -> dict[str, Any]:
 	return issue_preview_grant_service(
-		compact_payload(drive_file_id=drive_file_id, canonical_ref=canonical_ref)
+		compact_payload(
+			drive_file_id=drive_file_id,
+			canonical_ref=canonical_ref,
+			derivative_role=derivative_role,
+		)
 	)
 
 

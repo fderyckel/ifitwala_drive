@@ -125,12 +125,16 @@ def _install_fake_frappe(*, docs_map=None, now=None):
 			rows.append(row)
 		return rows
 
+	def _delete_doc(doctype, name, ignore_permissions=False):
+		FakeDoc._docs_map.pop((doctype, name), None)
+
 	frappe = types.ModuleType("frappe")
 	frappe.throw = _throw
 	frappe._ = lambda message: message
 	frappe.db = FakeDB()
 	frappe.get_doc = _get_doc
 	frappe.get_all = _get_all
+	frappe.delete_doc = _delete_doc
 	frappe.session = types.SimpleNamespace(user="manager@example.com")
 	frappe.local = types.SimpleNamespace(request_ip="127.0.0.1")
 	frappe.whitelist = lambda *args, **kwargs: lambda fn: fn
@@ -331,6 +335,28 @@ def test_execute_drive_erasure_request_erases_all_versions_and_deactivates_bindi
 			"status": "active",
 		}
 	)
+	thumb = FakeDoc(
+		{
+			"doctype": "Drive File Derivative",
+			"name": "DFD-0001",
+			"drive_file": "DF-0001",
+			"drive_file_version": "DFV-0002",
+			"status": "ready",
+			"storage_backend": "local",
+			"storage_object_key": "derivatives/current-thumb.webp",
+		}
+	)
+	stale_viewer = FakeDoc(
+		{
+			"doctype": "Drive File Derivative",
+			"name": "DFD-0002",
+			"drive_file": "DF-0001",
+			"drive_file_version": "DFV-0001",
+			"status": "stale",
+			"storage_backend": "local",
+			"storage_object_key": "derivatives/stale-viewer.webp",
+		}
+	)
 	file_one = FakeDoc({"doctype": "File", "name": "FILE-0001", "file_url": "/private/files/original.docx"})
 	file_two = FakeDoc({"doctype": "File", "name": "FILE-0002", "file_url": "/private/files/current.docx"})
 	request = FakeDoc(
@@ -351,12 +377,15 @@ def test_execute_drive_erasure_request_erases_all_versions_and_deactivates_bindi
 			("Drive File Version", "DFV-0001"): version_one,
 			("Drive File Version", "DFV-0002"): version_two,
 			("Drive Binding", "DB-0001"): binding,
+			("Drive File Derivative", "DFD-0001"): thumb,
+			("Drive File Derivative", "DFD-0002"): stale_viewer,
 			("File", "FILE-0001"): file_one,
 			("File", "FILE-0002"): file_two,
 			("Drive Erasure Request", "DER-0001"): request,
 		}
 	)
 	module = _load_module("ifitwala_drive.services.audit.erasure")
+	derivatives_module = _load_module("ifitwala_drive.services.files.derivatives")
 
 	deleted_object_keys: list[str] = []
 
@@ -365,6 +394,7 @@ def test_execute_drive_erasure_request_erases_all_versions_and_deactivates_bindi
 			deleted_object_keys.append(object_key)
 
 	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
+	monkeypatch.setattr(derivatives_module, "get_storage_backend", lambda backend_name=None: FakeStorage())
 
 	response = module.execute_drive_erasure_request_service({"erasure_request_id": "DER-0001"})
 
@@ -375,16 +405,82 @@ def test_execute_drive_erasure_request_erases_all_versions_and_deactivates_bindi
 		"blocked_count": 0,
 		"slots_touched": ["submission"],
 	}
-	assert sorted(deleted_object_keys) == ["files/current.docx", "files/original.docx"]
+	assert sorted(deleted_object_keys) == [
+		"derivatives/current-thumb.webp",
+		"derivatives/stale-viewer.webp",
+		"files/current.docx",
+		"files/original.docx",
+	]
 	assert drive_file.status == "erased"
 	assert drive_file.preview_status == "not_applicable"
 	assert drive_file.erasure_state == "erased"
 	assert binding.status == "inactive"
 	assert file_one.file_url is None
 	assert file_two.file_url is None
+	assert ("Drive File Derivative", "DFD-0001") not in FakeDoc._docs_map
+	assert ("Drive File Derivative", "DFD-0002") not in FakeDoc._docs_map
 	assert request.result_deleted_count == 1
 	assert request.result_blocked_count == 0
 	assert request.status == "completed"
 
 	access_event = FakeDoc._docs_map[("Drive Access Event", "DAE-0001")]
 	assert access_event.event_type == "erase"
+
+
+def test_prune_stale_derivatives_service_removes_expired_rows(monkeypatch):
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.files.derivatives",
+	)
+	stale_old = FakeDoc(
+		{
+			"doctype": "Drive File Derivative",
+			"name": "DFD-0001",
+			"drive_file": "DF-0001",
+			"drive_file_version": "DFV-0001",
+			"status": "stale",
+			"storage_backend": "local",
+			"storage_object_key": "derivatives/stale-old.webp",
+			"modified": "2026-03-01 08:00:00",
+		}
+	)
+	stale_recent = FakeDoc(
+		{
+			"doctype": "Drive File Derivative",
+			"name": "DFD-0002",
+			"drive_file": "DF-0001",
+			"drive_file_version": "DFV-0002",
+			"status": "stale",
+			"storage_backend": "local",
+			"storage_object_key": "derivatives/stale-recent.webp",
+			"modified": "2026-04-14 08:00:00",
+		}
+	)
+	_install_fake_frappe(
+		docs_map={
+			("Drive File Derivative", "DFD-0001"): stale_old,
+			("Drive File Derivative", "DFD-0002"): stale_recent,
+		},
+		now=datetime(2026, 4, 15, 10, 0, 0),
+	)
+	module = _load_module("ifitwala_drive.services.files.derivatives")
+
+	deleted_object_keys: list[str] = []
+
+	class FakeStorage:
+		def delete_object(self, *, object_key: str) -> None:
+			deleted_object_keys.append(object_key)
+
+	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
+
+	response = module.prune_stale_derivatives_service(grace_days=30)
+
+	assert response == {
+		"status": "completed",
+		"grace_days": 30,
+		"pruned_count": 1,
+		"cutoff": "2026-03-16 10:00:00",
+	}
+	assert deleted_object_keys == ["derivatives/stale-old.webp"]
+	assert ("Drive File Derivative", "DFD-0001") not in FakeDoc._docs_map
+	assert ("Drive File Derivative", "DFD-0002") in FakeDoc._docs_map

@@ -120,7 +120,9 @@ Rules:
 * originals in Cloud Storage
 * derivatives only when needed
 * lazy generation
-* lifecycle rules later for stale derivatives/previews/public media cache
+* current-version preview derivatives are retained for reuse
+* stale replaced-version derivatives are pruned on a separate lifecycle path after the grace window
+* derivative objects are deleted immediately during file erasure
 
 ### Identity
 

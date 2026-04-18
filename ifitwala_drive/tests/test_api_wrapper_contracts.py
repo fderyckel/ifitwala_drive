@@ -211,7 +211,7 @@ def test_access_and_upload_wrappers_map_explicit_payloads():
 		uploads_api = _load_module("ifitwala_drive.api.uploads")
 
 		access_api.issue_download_grant(canonical_ref="drv:ORG-0001:DF-0001")
-		access_api.issue_preview_grant(drive_file_id="DF-0002")
+		access_api.issue_preview_grant(drive_file_id="DF-0002", derivative_role="thumb")
 		erasure_api.create_drive_erasure_request(
 			data_subject_type="Student",
 			data_subject_id="STU-0001",
@@ -247,7 +247,7 @@ def test_access_and_upload_wrappers_map_explicit_payloads():
 		uploads_api.abort_upload_session(upload_session_id="DUS-0001")
 
 		assert recorder["download"] == {"canonical_ref": "drv:ORG-0001:DF-0001"}
-		assert recorder["preview"] == {"drive_file_id": "DF-0002"}
+		assert recorder["preview"] == {"drive_file_id": "DF-0002", "derivative_role": "thumb"}
 		assert recorder["erasure_create"] == {
 			"data_subject_type": "Student",
 			"data_subject_id": "STU-0001",

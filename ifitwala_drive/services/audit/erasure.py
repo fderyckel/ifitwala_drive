@@ -7,6 +7,7 @@ from frappe import _
 from frappe.utils import now_datetime
 
 from ifitwala_drive.services.audit.events import record_drive_access_event
+from ifitwala_drive.services.files.derivatives import delete_derivative_artifacts_for_drive_file
 from ifitwala_drive.services.storage.base import get_storage_backend
 
 _ALLOWED_ERASURE_SCOPES = {"all", "files_only", "slot_only"}
@@ -144,6 +145,8 @@ def _erase_drive_file(file_row: dict[str, Any], *, erasure_request_id: str) -> N
 
 	for file_id in file_ids:
 		_scrub_file_doc(file_id)
+
+	delete_derivative_artifacts_for_drive_file(drive_file_id=drive_file_id)
 
 	drive_doc = frappe.get_doc("Drive File", drive_file_id)
 	drive_doc.status = "erased"
