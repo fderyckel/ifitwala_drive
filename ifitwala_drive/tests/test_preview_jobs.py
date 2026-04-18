@@ -153,7 +153,7 @@ def test_sync_preview_pipeline_enqueues_preview_job_for_supported_image():
 	assert enqueue_calls == [
 		{
 			"method": "ifitwala_drive.services.files.derivatives.run_preview_job",
-			"queue": "drive_default",
+			"queue": "default",
 			"job_id": "drive-preview:DPJ-0001",
 			"drive_processing_job_id": "DPJ-0001",
 		}
@@ -192,7 +192,7 @@ def test_sync_preview_pipeline_enqueues_preview_job_for_supported_pdf():
 	assert enqueue_calls == [
 		{
 			"method": "ifitwala_drive.services.files.derivatives.run_preview_job",
-			"queue": "drive_default",
+			"queue": "default",
 			"job_id": "drive-preview:DPJ-0001",
 			"drive_processing_job_id": "DPJ-0001",
 		}

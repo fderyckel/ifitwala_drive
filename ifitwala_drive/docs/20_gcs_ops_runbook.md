@@ -113,6 +113,29 @@ Signing behavior:
 6. Only enable local prune after verification is acceptable for your environment.
 7. For public legacy attachments, confirm canonical rewritten URLs work before pruning local files.
 
+## Worker Queue Topology
+
+Preferred production setup is to define dedicated Drive workers for:
+
+- `drive_short`
+- `drive_default`
+- `drive_heavy`
+
+That preserves separation between file processing and normal ERP jobs.
+
+Current runtime safeguard:
+
+- `Drive Processing Job.queue_name` still stores those `drive_*` semantic classes
+- if the site does not define matching custom worker queues, Drive falls back when enqueuing to Frappe's built-in `short` / `default` / `long` queues
+
+So missing custom worker topology should no longer break governed uploads, but dedicated Drive queues remain the preferred production posture.
+
+Recommended verification after deploy:
+
+1. If you expect dedicated Drive workers, confirm the site runtime really exposes `drive_short`, `drive_default`, and `drive_heavy`.
+2. If you do not provision them, verify the fallback path is acceptable for current load and isolation needs.
+3. Run one governed upload that reaches preview/derivative scheduling and confirm the request does not fail with `Queue should be one of short, default, long`.
+
 ## Local Dev Fallback
 
 For local development:

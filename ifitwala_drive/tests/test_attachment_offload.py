@@ -339,7 +339,7 @@ def test_enqueue_attachment_offload_jobs_creates_jobs_and_skips_existing(monkeyp
 	assert enqueue_calls == [
 		{
 			"method": "ifitwala_drive.services.storage.offload.run_offload_job",
-			"queue": "drive_heavy",
+			"queue": "long",
 			"job_id": "drive-offload:DPJ-0001",
 			"drive_processing_job_id": "DPJ-0001",
 		}
@@ -690,7 +690,7 @@ def test_enqueue_local_prune_jobs_creates_jobs_and_skips_existing(monkeypatch):
 	assert enqueue_calls == [
 		{
 			"method": "ifitwala_drive.services.storage.offload.run_prune_job",
-			"queue": "drive_heavy",
+			"queue": "long",
 			"job_id": "drive-prune:DPJ-0001",
 			"drive_processing_job_id": "DPJ-0001",
 		}

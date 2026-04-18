@@ -11,6 +11,7 @@ from frappe import _
 from frappe.utils import now_datetime
 
 from ifitwala_drive.services.files.legacy_access import build_canonical_public_file_url
+from ifitwala_drive.services.queueing import resolve_enqueue_queue
 from ifitwala_drive.services.storage.base import (
 	build_object_key,
 	get_storage_backend,
@@ -336,7 +337,7 @@ def _enqueue_job_execution(job_name: str, queue_name: str) -> None:
 
 	enqueue(
 		"ifitwala_drive.services.storage.offload.run_offload_job",
-		queue=queue_name,
+		queue=resolve_enqueue_queue(queue_name),
 		job_id=f"drive-offload:{job_name}",
 		drive_processing_job_id=job_name,
 	)
@@ -765,7 +766,7 @@ def _enqueue_prune_job_execution(job_name: str, queue_name: str) -> None:
 		return
 	enqueue(
 		"ifitwala_drive.services.storage.offload.run_prune_job",
-		queue=queue_name,
+		queue=resolve_enqueue_queue(queue_name),
 		job_id=f"drive-prune:{job_name}",
 		drive_processing_job_id=job_name,
 	)

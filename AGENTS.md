@@ -214,6 +214,17 @@ Never block hot user flows on:
 - indexing
 - reconciliation
 
+### 4.4.1 Queue runtime contract
+
+Drive may keep semantic queue classes such as `drive_short`, `drive_default`, and `drive_heavy` on its own job records, but every `frappe.enqueue(...)` call must resolve to a queue that is valid for the active site runtime.
+
+Rules:
+
+- if matching custom Drive workers are part of the documented runtime topology, enqueue onto them
+- otherwise normalize at the enqueue boundary to runtime-valid standard queues instead of sending semantic labels directly into Frappe
+- a governed upload/finalize success path must not fail only because deferred preview or derivative work selected an undeployed queue label
+- any new async path must document its queue ownership and add regression coverage for enqueue-time queue resolution
+
 ### 4.5 Fail closed
 If a file cannot be proven governed, routable, and policy-valid, stop. Do not silently fall back to generic attach behavior.
 

@@ -77,13 +77,33 @@ This is the right way to get scale without over-distributing too early.
 
 ## Queue design
 
-Use dedicated Drive queues, separate from normal ERP jobs:
+Drive keeps semantic processing classes on `Drive Processing Job.queue_name`:
 
 * `drive_short`
 * `drive_default`
 * `drive_heavy`
 
-That prevents file processing from starving academic workflows.
+Preferred production topology is to provision matching custom worker queues so file processing stays isolated from academic workloads.
+
+Runtime rule:
+
+* if the site has matching custom queues configured, enqueue onto those same `drive_*` workers
+* otherwise fall back at the enqueue boundary to Frappe's standard queues:
+  * `drive_short` -> `short`
+  * `drive_default` -> `default`
+  * `drive_heavy` -> `long`
+
+That preserves Drive's internal job semantics without letting governed uploads fail on sites that only run the standard worker set.
+
+### Hot-path safeguard
+
+Preview, derivative, offload, and similar async follow-up work must not turn a successful governed mutation into a browser-visible error merely because the site omitted custom Drive worker queues.
+
+Rules:
+
+* queue choice is a runtime contract, not just an internal label
+* enqueue boundaries must validate or normalize queue names before calling `frappe.enqueue(...)`
+* if a feature truly requires dedicated custom workers with no fallback, that operator dependency must be explicit in the canonical API contract and runbook before the feature is considered production-ready
 
 ## Cost-conscious GCP shape
 

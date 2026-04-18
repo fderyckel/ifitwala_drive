@@ -229,7 +229,14 @@ Confirm upload completion and create the governed file record.
 * creates initial version
 * records a minimal upload audit event
 * queues heavy async work if needed
+* resolves any post-finalize async queue onto a queue name that is valid for the active Frappe runtime before calling `frappe.enqueue(...)`
 * returns canonical Drive artifact info
+
+Runtime queue rule:
+
+* Drive may persist semantic processing classes such as `drive_default` on internal job rows
+* those semantic labels must not be passed directly into `frappe.enqueue(...)` unless the live site has matching custom worker queues configured
+* otherwise the enqueue boundary must normalize them to standard runtime-valid queues
 
 ### Response shape
 

@@ -7,6 +7,7 @@ from typing import Any
 import frappe
 from frappe.utils import now_datetime
 
+from ifitwala_drive.services.queueing import resolve_enqueue_queue
 from ifitwala_drive.services.storage.base import build_object_key, get_storage_backend
 
 DEFAULT_PREVIEW_DERIVATIVE_ROLE = "viewer_preview"
@@ -126,7 +127,7 @@ def _enqueue_preview_job_execution(job_name: str, queue_name: str) -> None:
 
 	enqueue(
 		"ifitwala_drive.services.files.derivatives.run_preview_job",
-		queue=queue_name,
+		queue=resolve_enqueue_queue(queue_name),
 		job_id=f"drive-preview:{job_name}",
 		drive_processing_job_id=job_name,
 	)

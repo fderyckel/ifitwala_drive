@@ -60,6 +60,7 @@ Cross-app deployment rule:
 * the thin API export and the underlying integration service must ship together
 * `bench clear-cache` is not sufficient for new Python exports; running app processes must be restarted after deploy
 * browser testing is not valid until the deployed module surface is verified from bench console
+* if the upload/finalize path enqueues Drive follow-up work, the queue names used at the enqueue boundary are also part of the runtime contract and must match or safely normalize against the live worker topology
 
 Recommended verification:
 
