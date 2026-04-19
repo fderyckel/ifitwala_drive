@@ -1336,6 +1336,58 @@ def test_upload_session_blob_rejects_non_proxy_strategy():
 		raise AssertionError("Expected upload_session_blob to reject non-proxy strategies.")
 
 
+def test_ingest_upload_session_content_uses_upload_target_for_non_proxy(monkeypatch):
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.api.uploads",
+		"ifitwala_drive.services.uploads.sessions",
+	)
+	session_doc = FakeDoc(
+		{
+			"name": "DUS-0001",
+			"session_key": "sess-0001",
+			"status": "created",
+			"tmp_object_key": "tmp/DUS-0001/essay.txt",
+			"storage_backend": "gcs",
+			"owner_doctype": "Task Submission",
+			"owner_name": "TSUB-0001",
+			"intended_slot": "submission",
+			"upload_contract_json": '{"upload_strategy":"resumable_put","upload_target":{"method":"PUT","url":"https://upload.invalid/session","headers":{"Content-Type":"text/plain"}}}',
+		}
+	)
+	_install_fake_frappe(docs_map={("Drive Upload Session", "DUS-0001"): session_doc})
+	module = _load_module("ifitwala_drive.api.uploads")
+	uploads: list[tuple[dict[str, object], bytes]] = []
+
+	def _fake_upload_bytes_to_target(*, upload_target: dict[str, object], content: bytes):
+		uploads.append((upload_target, content))
+
+	monkeypatch.setattr(module, "_upload_bytes_to_target", _fake_upload_bytes_to_target)
+
+	response = module.ingest_upload_session_content(
+		upload_session_id="DUS-0001",
+		content=b"hello",
+	)
+
+	assert response == {
+		"upload_session_id": "DUS-0001",
+		"status": "uploaded",
+		"received_size_bytes": 5,
+	}
+	assert uploads == [
+		(
+			{
+				"method": "PUT",
+				"url": "https://upload.invalid/session",
+				"headers": {"Content-Type": "text/plain"},
+			},
+			b"hello",
+		)
+	]
+	assert session_doc.status == "uploaded"
+	assert session_doc.received_size_bytes == 5
+
+
 def test_create_drive_file_artifacts_recovers_from_duplicate_inserts():
 	_purge_modules(
 		"frappe",
