@@ -124,8 +124,11 @@ def _install_fake_frappe(*, exists_map=None, value_map=None, docs_map=None):
 	frappe.scrub = lambda value: str(value or "").strip().lower().replace(" ", "_")
 	frappe.logger = lambda: types.SimpleNamespace(info=lambda *a, **k: None)
 	frappe.whitelist = lambda *args, **kwargs: lambda fn: fn
+	utils = types.ModuleType("frappe.utils")
+	utils.now_datetime = lambda: None
 
 	sys.modules["frappe"] = frappe
+	sys.modules["frappe.utils"] = utils
 
 
 def _install_fake_sessions(recorder):
@@ -391,3 +394,97 @@ def test_upload_org_communication_attachment_rejects_incomplete_class_context():
 		)
 
 	assert "payload" not in recorder
+
+
+def test_org_communication_attachment_grant_services_use_ed_authorized_read_context(monkeypatch):
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.integration.ifitwala_ed_org_communications",
+	)
+	drive_file = FakeDoc(
+		{
+			"name": "DF-0001",
+			"owner_doctype": "Org Communication",
+			"owner_name": "COMM-0001",
+			"status": "active",
+			"preview_status": "ready",
+		}
+	)
+	_install_fake_frappe(
+		exists_map={
+			("Drive File", "DF-0001"): True,
+		},
+		docs_map={("Drive File", "DF-0001"): drive_file},
+	)
+	_ensure_ed_repo_on_path()
+	importlib.import_module("ifitwala_ed")
+	importlib.import_module("ifitwala_ed.integrations")
+	importlib.import_module("ifitwala_ed.integrations.drive")
+	delegate_calls = []
+	delegate = types.ModuleType("ifitwala_ed.integrations.drive.org_communications")
+	delegate.assert_org_communication_attachment_read_access = (
+		lambda org_communication, row_name: delegate_calls.append((org_communication, row_name))
+		or {
+			"org_communication": "COMM-0001",
+			"row_name": "row-001",
+			"drive_file_id": "DF-0001",
+			"file_id": "FILE-0001",
+		}
+	)
+	sys.modules["ifitwala_ed.integrations.drive.org_communications"] = delegate
+
+	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_org_communications")
+	preview_docs = []
+	download_docs = []
+	grant_calls = []
+
+	monkeypatch.setattr(module, "_assert_can_issue_preview", lambda doc: preview_docs.append(doc.name))
+	monkeypatch.setattr(module, "_assert_can_issue_download", lambda doc: download_docs.append(doc.name))
+
+	def _fake_issue_grant(*, doc, grant_kind, payload=None):
+		grant_calls.append(
+			{
+				"doc": doc.name,
+				"grant_kind": grant_kind,
+				"payload": payload,
+			}
+		)
+		return {"url": f"https://{grant_kind}.example.com/{doc.name}"}
+
+	monkeypatch.setattr(module, "_issue_grant", _fake_issue_grant)
+
+	preview_response = module.issue_org_communication_attachment_preview_grant_service(
+		{
+			"org_communication": "COMM-0001",
+			"row_name": "row-001",
+			"derivative_role": "thumb",
+		}
+	)
+	download_response = module.issue_org_communication_attachment_download_grant_service(
+		{
+			"org_communication": "COMM-0001",
+			"row_name": "row-001",
+		}
+	)
+
+	assert delegate_calls == [("COMM-0001", "row-001"), ("COMM-0001", "row-001")]
+	assert preview_docs == ["DF-0001"]
+	assert download_docs == ["DF-0001"]
+	assert preview_response == {"url": "https://preview.example.com/DF-0001"}
+	assert download_response == {"url": "https://download.example.com/DF-0001"}
+	assert grant_calls == [
+		{
+			"doc": "DF-0001",
+			"grant_kind": "preview",
+			"payload": {
+				"org_communication": "COMM-0001",
+				"row_name": "row-001",
+				"derivative_role": "thumb",
+			},
+		},
+		{
+			"doc": "DF-0001",
+			"grant_kind": "download",
+			"payload": None,
+		},
+	]

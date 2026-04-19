@@ -126,6 +126,7 @@ For Ifitwala_Ed-owned portals:
 
 - the SPA must not call `ifitwala_drive.api.access.issue_preview_grant` or `issue_download_grant` directly
 - Ed should validate the business surface first, then call Drive to issue a short-lived grant, then redirect
+- Org Communication staff, student, and guardian reads should use the narrow communications wrappers (`ifitwala_drive.api.communications.issue_org_communication_attachment_preview_grant` / `issue_org_communication_attachment_download_grant`) so Drive can trust Ed's audience contract instead of re-checking raw `Org Communication` role permissions on the portal user
 
 Direct Drive grant APIs remain valid for:
 

@@ -312,11 +312,21 @@ def test_communications_wrapper_maps_explicit_payload():
 			"ifitwala_drive.services.integration.ifitwala_ed_org_communications"
 		)
 
-		def _service(payload):
-			recorder["payload"] = payload
+		def _upload_service(payload):
+			recorder["upload"] = payload
 			return {"status": "ok"}
 
-		service_module.upload_org_communication_attachment_service = _service
+		def _download_service(payload):
+			recorder["download"] = payload
+			return {"status": "ok"}
+
+		def _preview_service(payload):
+			recorder["preview"] = payload
+			return {"status": "ok"}
+
+		service_module.upload_org_communication_attachment_service = _upload_service
+		service_module.issue_org_communication_attachment_download_grant_service = _download_service
+		service_module.issue_org_communication_attachment_preview_grant_service = _preview_service
 		sys.modules["ifitwala_drive.services.integration.ifitwala_ed_org_communications"] = service_module
 
 		module = _load_module("ifitwala_drive.api.communications")
@@ -326,12 +336,30 @@ def test_communications_wrapper_maps_explicit_payload():
 			row_name="ROW-0001",
 			idempotency_key="retry-comm-001",
 		)
+		module.issue_org_communication_attachment_download_grant(
+			org_communication="COMM-0001",
+			row_name="ROW-0001",
+		)
+		module.issue_org_communication_attachment_preview_grant(
+			org_communication="COMM-0001",
+			row_name="ROW-0001",
+			derivative_role="thumb",
+		)
 
-		assert recorder["payload"] == {
+		assert recorder["upload"] == {
 			"org_communication": "COMM-0001",
 			"filename_original": "announcement.pdf",
 			"row_name": "ROW-0001",
 			"idempotency_key": "retry-comm-001",
+		}
+		assert recorder["download"] == {
+			"org_communication": "COMM-0001",
+			"row_name": "ROW-0001",
+		}
+		assert recorder["preview"] == {
+			"org_communication": "COMM-0001",
+			"row_name": "ROW-0001",
+			"derivative_role": "thumb",
 		}
 	finally:
 		_purge_modules(
