@@ -107,6 +107,7 @@ Goal:
 
 - Drive metadata becomes sole governance authority
 - completed in code
+- historical governed files are backfilled into authoritative Drive session/file/version records before cleanup
 - historical `File Classification` rows are removed only through an explicit migration patch once matching `Drive File` authority exists
 
 ### Phase 4
@@ -117,6 +118,11 @@ Goal:
 
 - Drive becomes sole derivative authority
 - Ed hot read paths stop probing storage directly
+
+Status:
+
+- completed in code for governed profile-image delivery
+- Ed now resolves profile-image compatibility variants from Drive derivative roles instead of separate governed files
 
 ### Phase 5
 

@@ -133,6 +133,6 @@ Current code still shows these transitional behaviors:
 
 - Drive still emits native `File` compatibility projections for current Ed surfaces
 - historical `File Classification` rows still require cleanup through the Ed migration patch
-- Ed read and derivative paths still need cleanup so the native `File` compatibility projection can eventually be removed
+- some older Ed docs and Frappe-only tests still describe the retired `File Classification` and Ed-side derivative model and must be updated before they are trusted as design guidance
 
 These are migration constraints, not target architecture.

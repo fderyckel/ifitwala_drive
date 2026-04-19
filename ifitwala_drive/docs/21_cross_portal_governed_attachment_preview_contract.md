@@ -162,6 +162,7 @@ Recommended fields:
 Recommended derivative roles in the first contract:
 
 - `thumb`
+- `card` for governed profile-image list/card surfaces
 - `viewer_preview`
 - `pdf_page_1`
 
@@ -249,11 +250,12 @@ Test refs:
 
 Refined delivery split:
 
-- list/card image surfaces in Ifitwala_Ed should request the `thumb` derivative
+- list/card attachment surfaces in Ifitwala_Ed should request the `thumb` derivative
+- governed profile-image card surfaces may request the `card` derivative where the original avatar contract needs a larger but still bounded image
 - richer image preview surfaces should request `viewer_preview`
 - PDF preview continues to use `pdf_page_1`
 - `issue_preview_grant(...)` should therefore accept `derivative_role`, with current richer-preview behavior preserved as the compatibility default during rollout
-- finalize/replace flows for supported image files should keep `thumb` and `viewer_preview` derivative rows scheduled as the normal path, with worker enqueue happening after the governing transaction commits
+- finalize/replace flows for supported image files should keep `thumb` and `viewer_preview` derivative rows scheduled as the normal path, with `card` added for `profile_image` governed files and worker enqueue happening after the governing transaction commits
 
 Ed/Drive boundary rule:
 

@@ -191,6 +191,38 @@ def test_sync_preview_pipeline_enqueues_preview_job_for_supported_image():
 	}
 
 
+def test_sync_preview_pipeline_enqueues_card_derivative_for_profile_images():
+	drive_file = FakeDoc(
+		{
+			"doctype": "Drive File",
+			"name": "DF-0003",
+			"file": "FILE-0003",
+			"current_version": "DFV-0003",
+			"content_hash": "sha256:profile123",
+			"slot": "profile_image",
+		}
+	)
+	_install_fake_frappe(docs_map={("Drive File", "DF-0003"): drive_file})
+	module = _load_module()
+
+	result = module.sync_preview_pipeline_for_current_version(
+		drive_file_doc=drive_file,
+		mime_type="image/png",
+	)
+
+	assert result["preview_status"] == "pending"
+	assert result["derivative_ids"] == ["DFD-0001", "DFD-0002", "DFD-0003"]
+	assert result["drive_processing_job_id"] == "DPJ-0001"
+
+	job_doc = FakeDoc._docs_map[("Drive Processing Job", "DPJ-0001")]
+	payload = json.loads(job_doc.payload_json)
+	assert payload == {
+		"derivative_roles": ["viewer_preview", "card", "thumb"],
+		"drive_file_version": "DFV-0003",
+		"mime_type": "image/png",
+	}
+
+
 def test_sync_preview_pipeline_enqueues_preview_job_for_supported_pdf():
 	drive_file = FakeDoc(
 		{

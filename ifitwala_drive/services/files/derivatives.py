@@ -16,7 +16,7 @@ DEFAULT_PDF_PREVIEW_DERIVATIVE_ROLE = "pdf_page_1"
 _IMAGE_PREVIEW_ROLES = ("thumb", "viewer_preview")
 _PDF_PREVIEW_ROLES = (DEFAULT_PDF_PREVIEW_DERIVATIVE_ROLE,)
 _PREVIEW_JOB_STATUSES = ("queued", "running")
-_DERIVATIVE_RENDER_ORDER = ("viewer_preview", "pdf_page_1", "thumb")
+_DERIVATIVE_RENDER_ORDER = ("viewer_preview", "card", "pdf_page_1", "thumb")
 _SUPPORTED_IMAGE_PREVIEW_MIME_TYPES = {
 	"image/jpeg",
 	"image/jpg",
@@ -34,6 +34,12 @@ _IMAGE_DERIVATIVE_SPECS = {
 	"viewer_preview": {
 		"max_width": 960,
 		"quality": 80,
+		"output_format": "WEBP",
+		"mime_type": "image/webp",
+	},
+	"card": {
+		"max_width": 400,
+		"quality": 78,
 		"output_format": "WEBP",
 		"mime_type": "image/webp",
 	},
@@ -248,6 +254,23 @@ def primary_preview_derivative_role_for_mime_type(mime_type: str | None) -> str:
 		preview_plan_for_mime_type(mime_type).get("primary_derivative_role")
 		or DEFAULT_PREVIEW_DERIVATIVE_ROLE
 	)
+
+
+def _is_profile_image_drive_file(drive_file_doc) -> bool:
+	return str(getattr(drive_file_doc, "slot", "") or "").strip() == "profile_image"
+
+
+def preview_plan_for_drive_file(drive_file_doc, mime_type: str | None) -> dict[str, Any]:
+	plan = dict(preview_plan_for_mime_type(mime_type))
+	if not plan["supported"]:
+		return plan
+
+	normalized_mime = str(mime_type or "").strip().lower()
+	if normalized_mime in _SUPPORTED_IMAGE_PREVIEW_MIME_TYPES and _is_profile_image_drive_file(
+		drive_file_doc
+	):
+		plan["derivative_roles"] = _ordered_derivative_roles([*(plan.get("derivative_roles") or []), "card"])
+	return plan
 
 
 def _enqueue_preview_job_execution(job_name: str, queue_name: str) -> None:
@@ -637,7 +660,7 @@ def run_preview_job(*, drive_processing_job_id: str) -> dict[str, Any]:
 			.lower()
 			or None
 		)
-		plan = preview_plan_for_mime_type(mime_type)
+		plan = preview_plan_for_drive_file(drive_file_doc, mime_type)
 		primary_derivative_role = str(plan.get("primary_derivative_role") or DEFAULT_PREVIEW_DERIVATIVE_ROLE)
 		source_hash = (
 			str(getattr(drive_file_version_doc, "content_hash", "") or "").strip()
@@ -800,7 +823,7 @@ def sync_preview_pipeline_for_current_version(
 	drive_file_doc,
 	mime_type: str | None,
 ) -> dict[str, Any]:
-	plan = preview_plan_for_mime_type(mime_type)
+	plan = preview_plan_for_drive_file(drive_file_doc, mime_type)
 	drive_file_doc.preview_status = plan["preview_status"]
 	if not plan["supported"]:
 		return {
@@ -906,7 +929,8 @@ def reconcile_preview_derivatives_service(
 			continue
 
 		mime_type = frappe.db.get_value("Drive File Version", current_version, "mime_type")
-		plan = preview_plan_for_mime_type(mime_type)
+		drive_file_doc = frappe.get_doc("Drive File", drive_file_id)
+		plan = preview_plan_for_drive_file(drive_file_doc, mime_type)
 		if not plan["supported"]:
 			continue
 

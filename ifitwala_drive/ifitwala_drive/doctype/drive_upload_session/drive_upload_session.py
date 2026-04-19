@@ -29,14 +29,10 @@ _OPTIONAL_SCHOOL_SUBJECT_TYPES = {"Employee", "Organization"}
 class DriveUploadSession(Document):
 	"""Authoritative upload-session record for governed Drive uploads.
 
-	This DocType is intentionally lightweight:
-	- it does NOT replace File Classification
-	- it does NOT finalize governed files by itself
-	- it exists to make upload lifecycle explicit, resumable-ready, and auditable
-
-	The final governed file must still be created through the authoritative
-	dispatcher / Drive service boundary that creates File + File Classification
-	atomically. This preserves the locked Ifitwala_Ed governance contract.
+	This DocType is the authoritative persisted contract for governed upload
+	lifecycle. Drive owns session creation, blob ingress, finalize execution,
+	storage placement, and canonical governed-file metadata; Ifitwala_Ed owns
+	workflow context validation and post-finalize business mutation.
 	"""
 
 	def before_insert(self) -> None:
