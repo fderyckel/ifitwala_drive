@@ -1,255 +1,136 @@
-# Coupling with Ifitwala_Ed
+# Coupling With Ifitwala_Ed
 
-## Non-negotiable position
+Status: LOCKED boundary contract
+Date: 2026-04-19
+Code refs:
+- `ifitwala_ed/integrations/drive/bridge.py`
+- `ifitwala_ed/utilities/governed_uploads.py`
+- `ifitwala_drive/services/uploads/finalize.py`
+- `ifitwala_drive/services/files/access.py`
 
-Ifitwala_drive is separate as an app boundary, but **tightly coupled to Ifitwala_Ed at all times**.
+## Bottom line
 
-That means:
+- Ed remains the workflow and permission authority.
+- Drive remains the governed file execution authority.
+- Neither app may reach through the other app's internals to finish its job.
+- Current code still contains leaks; those leaks are transitional defects, not approved architecture.
 
-* Ifitwala_Ed remains the business, permission, and workflow authority.
-* Ifitwala_drive remains the file-platform authority.
-* Neither should drift into the other’s job.
+## 1. The boundary
 
-In practical terms:
+### 1.1 Ed owns
 
-* Ed decides what a file means.
-* Ed decides whether the user can act on the owning record.
-* Drive decides how the file is uploaded, stored, secured, granted, previewed, and browsed.
-* Drive folder trees are browse projections, not governance truth.
+- workflow meaning
+- which business record owns the file
+- tenant scope
+- who may upload, replace, open, preview, or delete in product context
+- which post-finalize business mutation should run
 
-## Integration rule
+### 1.2 Drive owns
 
-Ifitwala_Ed should stop thinking in:
+- upload session lifecycle
+- blob ingress
+- temporary object handling
+- finalize
+- storage identity
+- versions
+- bindings
+- derivatives
+- grants
 
-* raw `File`
-* raw attachment path
-* generic upload widget
+## 2. Allowed interactions
 
-And start thinking in:
+### 2.1 Session creation
 
-* Drive resource
-* Drive submission artifact
-* Drive media reference
-* Drive upload session
-* Drive canonical file/ref URL
+Ed may ask Drive to create an upload session using a workflow identifier and the workflow-specific business identifiers required to resolve the spec.
 
-Important boundary:
+### 2.2 Finalize
 
-* Ifitwala_Ed builds the governed upload contract
-* Ifitwala_drive validates contract completeness at the boundary
-* Ifitwala_drive must not become the place where admissions, task, or media workflow rules are authored
+Drive finalizes the upload and creates authoritative Drive records.
 
-### MIME boundary rule
+Ed participates only through the approved integration surface for:
 
-For any Ed wrapper that sends `mime_type_hint` to Drive:
+- authoritative workflow-spec resolution and validation
+- post-finalize business mutation
 
-* `mime_type_hint` describes the expected file bytes, not the outer HTTP request envelope
-* Ed must derive it from the uploaded file object when available, typically `request.files["file"].mimetype` or `.content_type`
-* if no trustworthy file-object MIME is available, Ed should fall back to `filename_original`
-* Ed must never forward `frappe.request.mimetype` or the top-level request `Content-Type` from a multipart upload endpoint, because on `upload_file`-style flows that value is usually `multipart/form-data`
-* Drive must continue inspecting the uploaded bytes at finalize time and fail closed on mismatches
+### 2.3 Read/open/preview
 
-Concrete anti-pattern:
+Ed authorizes the surface-specific action.
 
-* browser uploads that arrive through `/api/method/upload_file` often have `frappe.request.mimetype == "multipart/form-data"`
-* forwarding that value to Drive is a contract bug and will cause finalize-time rejection when the bytes are actually `image/png`, `image/jpeg`, `application/pdf`, and so on
+Drive issues the download or preview grant.
 
-Cross-app deployment rule:
+## 3. Forbidden interactions
 
-* if `Ifitwala_Ed` starts calling a new `ifitwala_drive.api.*` wrapper, that wrapper export is part of the runtime contract
-* the thin API export and the underlying integration service must ship together
-* `bench clear-cache` is not sufficient for new Python exports; running app processes must be restarted after deploy
-* browser testing is not valid until the deployed module surface is verified from bench console
-* if the upload/finalize path enqueues Drive follow-up work, the queue names used at the enqueue boundary are also part of the runtime contract and must match or safely normalize against the live worker topology
+### 3.1 Forbidden on the Ed side
 
-Recommended verification:
+Ed must not:
 
-```python
-import ifitwala_drive.api.media as m
-hasattr(m, "upload_guardian_image")
-m.__file__
+- load and mutate `Drive Upload Session` directly as part of upload ingress
+- call Drive storage backends directly
+- write temporary objects into Drive storage
+- rename or move finalized Drive objects
+- generate governed derivatives outside Drive
+- treat `File Classification` as authority for new work
 
-import ifitwala_drive.services.integration.ifitwala_ed_media as i
-hasattr(i, "upload_guardian_image_service")
-i.__file__
-```
+### 3.2 Forbidden on the Drive side
 
-## Example integrations
+Drive must not:
 
-### Task resource
+- import Ed dispatcher/file-routing internals to finish governed finalization
+- import Ed image-derivative helpers
+- rely on Ed-local storage paths as file truth
+- treat Ed compatibility projections as primary governance records
 
-Task stores:
+## 4. Integration surface direction
 
-* bound resource IDs / canonical refs
+Target shape:
 
-Drive stores:
+- one narrow Ed integration module resolves `GovernedUploadSpec` by `workflow_id`
+- one narrow Ed integration module runs post-finalize business mutation by `workflow_id`
 
-* actual file/resource metadata
-* versions
-* folder placement
-* preview state
+This is preferable to many wrapper-specific imports spread across both repos.
 
-### Task submission
+Workflow-specific wrapper exports may exist temporarily during migration, but they are compatibility shims only.
 
-Task Submission stores:
+## 5. MIME contract
 
-* one or more Drive artifact references
+Ed is responsible for deriving `mime_type_hint` correctly.
 
-Drive stores:
+Rules:
 
-* file versions
-* slot `submission`
-* student subject ownership
-* retention metadata
+- use the uploaded file object's MIME when available
+- otherwise fall back to filename-based resolution
+- never forward the multipart transport envelope as the file MIME
 
-This preserves your locked rule that deleting student files must not break grades or analytics.
+Drive remains responsible for inspecting bytes and failing closed on mismatch.
 
-### Org Communication attachment
+## 6. Read contract
 
-Org Communication stores:
+For private governed media:
 
-* the authored class announcement
-* attachment rows shown in archive/detail
-* external links when the teacher shares a URL instead of uploading a file
+- Ed decides whether the current user may perform the surface action
+- Drive decides which artifact to serve and issues the grant
 
-Drive stores:
+The browser must not be taught to guess:
 
-* the governed class-communication file
-* one deterministic attachment slot per row
-* folder placement under the authoritative course and student-group context
-* preview/download grants for archive/history access
+- storage paths
+- derivative paths
+- raw private file URLs
 
-Boundary rule:
+## 7. Deployment and evolution rule
 
-* Ed owns who can see the communication and whether the author can still access their own archive copy
-* Drive owns upload, classification, binding, storage, preview, and grant issuance
+Because the apps are tightly coupled:
 
-### Admissions
+- cross-app contract changes must land together
+- docs must be updated together
+- tests must cover the shared boundary
 
-Student Applicant stores:
+But tight coupling is not permission to call each other's internals arbitrarily.
 
-* required document refs
-* review state
+## 8. Current-runtime violations to remove
 
-Drive stores:
+Current code still shows these defects:
 
-* applicant-owned files
-* slots like `identity_passport`, `prior_transcript`, etc.
+- Ed upload helpers that write temp blobs and mutate upload sessions directly
+- Drive finalize code that imports Ed dispatcher logic
 
-### Organization/school media
-
-Ifitwala_Ed surfaces continue to use:
-
-* organization media picker
-* governed upload flow
-* canonical references
-
-This already matches your organization-media extension.
-
-## UX guidance for coupling
-
-### Context first
-
-Inside Ifitwala_Ed surfaces, users should mostly see:
-
-* Add resource
-* Reuse resource
-* Upload work
-* Replace submission
-* Choose organization media
-
-not:
-
-* “browse bucket”
-* “pick random storage path”
-
-### Drive surface when needed
-
-Provide a Drive browser for:
-
-* teacher libraries
-* course/shared resources
-* admin search/retrieval
-* organization media management
-
-But keep the ownership rule clear:
-
-* the folder tree is a Drive read model
-* permission still roots in the owning Ed document
-* folder membership is never the legal source of file visibility
-
----
-
-# 5) Phased rollout
-
-## Phase 0 — foundation
-
-Goal:
-
-* keep costs low
-* lock architecture
-* stop drift
-
-Deliverables:
-
-* Ifitwala_drive app skeleton
-* canonical service boundary
-* upload session model
-* preserved classification/slot model
-* object-storage abstraction
-* Ed integration wrappers
-
-## Phase 1 — first real governed flows
-
-Migrate first:
-
-* task resources
-* task submissions
-* applicant documents
-* organization media
-
-Why these first:
-
-* highest product value
-* strongest governance need
-* already partially specified in your docs.
-
-## Phase 2 — Drive UX
-
-Add:
-
-* teacher resource library
-* shared team/course folders
-* search/filter
-* Drive browser
-* resource reuse flows
-* template/workspace distribution UX
-
-## Phase 3 — processing and optimization
-
-Add only when justified:
-
-* richer previews
-* derivative generation expansion
-* scanning
-* quota dashboards
-* lifecycle automation
-* cost analytics
-
-## Phase 4 — Press-operated scale
-
-When customer count/load justifies it:
-
-* bucket policy automation
-* worker topology by tenant class
-* environment class policy
-* cost and quota surfaces in Ifitwala_Press
-* possible split of services/workers
-
-## Things explicitly not to do too early
-
-* full consumer-grade generic drive clone
-* deep infra complexity before product fit
-* PG-specific over-optimization as architecture center
-* externalized permission graph systems before your simpler ownership/context model is exhausted
-* blind mass file duplication for classroom workflows
+These patterns must be removed during the boundary refactor.

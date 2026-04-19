@@ -1,267 +1,216 @@
-# System architecture
+# System Architecture
 
-## High-level split
+Status: LOCKED target architecture
+Date: 2026-04-19
+Code refs:
+- `ifitwala_drive/api/uploads.py`
+- `ifitwala_drive/services/uploads/finalize.py`
+- `ifitwala_drive/services/files/creation.py`
+- `ifitwala_drive/services/files/derivatives.py`
+Test refs: Pending as part of the boundary refactor
 
-### Ifitwala_Ed
+## Bottom line
+
+- Drive is the sole governance and execution boundary for governed files.
+- Ed remains the workflow and permission authority.
+- Drive is not a storage proxy and not a generic consumer cloud drive.
+- `File Classification` is not part of the target Drive architecture and must not survive as a parallel authority.
+
+## 1. System split
+
+### 1.1 Ifitwala_Ed
 
 Owns:
 
-* academic workflows
-* admissions workflows
-* task/submission/business context
-* portfolio, applicant, employee, referral, etc.
+- academic, admissions, and business workflows
+- owner/context resolution
+- tenant scope and permission checks
+- workflow-specific read/open visibility rules
+- post-finalize business mutation
 
-### Ifitwala_drive
+### 1.2 Ifitwala_drive
 
 Owns:
 
-* governed upload sessions
-* file classification
-* slots
-* versions
-* canonical references
-* file routing/storage abstraction
-* preview state
-* derivative state
-* erasure state
-* audit events
+- upload sessions
+- blob ingress
+- temporary object handling
+- governed storage identity
+- file/version/binding records
+- derivatives and previews
+- canonical refs
+- download/preview grants
+- audit and erasure execution
 
-### Ifitwala_Press
+### 1.3 Ifitwala_Press later
 
 Owns later:
 
-* tenant/container provisioning
-* bucket bindings
-* quota/cost monitoring
-* worker topology
-* lifecycle and ops
+- provisioning
+- bucket bindings
+- quota/cost controls
+- worker topology
+- environment policy
 
-This matches both your current direction and the existing architecture note that physical storage may later separate from app runtime and DB without changing the business contract.
+## 2. Core architecture rule
 
-## Deployment shape for early phase
+All governed writes go through Drive.
 
-Because you want low cost and demo customers first:
+That means:
 
-* one tenant/site
-* one DB
-* one Redis
-* one paired container image or paired deployment containing:
+- Drive owns the session state machine
+- Drive owns blob ingress
+- Drive owns finalize
+- Drive owns the storage object key after finalize
 
-  * `ifitwala_ed`
-  * `ifitwala_drive`
+Ed may validate workflow context before the request reaches Drive, but Ed must not perform governed file execution itself.
 
-But the architecture must preserve later separation of:
+## 3. Canonical domain model
 
-* app runtime,
-* DB,
-* storage bucket,
-* workers.
+### 3.1 `Drive Upload Session`
 
-That is already in your locked storage-boundary thinking.
+The upload session is the authoritative pre-finalize contract.
 
-## Core design rule
+It stores:
 
-**All new governed file writes go through Ifitwala_drive APIs.**
+- resolved workflow contract
+- temporary object identity
+- filename and expected byte contract
+- upload strategy
+- session status
 
-The old rule remains:
+### 3.2 `Drive File`
 
-> all file writes go through the dispatcher; direct `File.insert()` in business logic is an architectural violation.
+The governed file identity.
 
-In the new architecture, the “dispatcher” becomes the Drive service boundary.
+It stores:
 
-## Domain model
+- owner
+- organization/school scope
+- slot
+- canonical ref
+- current version pointer
+- active lifecycle state
 
-Recommended core doctypes/services for Ifitwala_drive:
+### 3.3 `Drive File Version`
 
-### `Drive File`
+Immutable version records for blob history.
 
-The user-facing governed file record.
+Drive versions are authoritative.
 
-Fields conceptually include:
+### 3.4 `Drive Binding`
 
-* current file/version pointer
-* owning doctype / docname
-* organization
-* school
-* slot
-* classification
-* purpose
-* primary subject
-* status
-* current preview status
-* current malware/validation state
+The product-facing relationship between a governed file and a bound surface or row.
 
-Current implemented shape also includes:
+Bindings support:
 
-* `current_version_no`
-* `current_version`
-* `legal_hold`
-* `erasure_state`
-* canonical `storage_object_key`
+- resource reuse
+- surface lookup
+- context retrieval
 
-This means Drive File now carries both the active version pointer and the minimum erasure posture needed for deterministic file-domain erasure.
+Bindings do not replace owner/slot governance.
 
-### `Drive File Classification`
+### 3.5 `Drive File Derivative`
 
-This should preserve your current 1:1 classification concept, or absorb it as Drive’s canonical metadata layer.
+The only derivative authority.
 
-Your existing required fields already include:
+Thumbnails, previews, and profile-media variants belong here.
 
-* attached_doctype
-* attached_name
-* primary_subject_type / id
-* data_class
-* purpose
-* retention_policy
-* slot
-* organization
-* school
-* legal_hold
-* erasure_state
-* version_number
-* source_file
-* content_hash
-* upload_source
-* ip_address.
+### 3.6 Audit and erasure
 
-### `Drive Upload Session`
+Drive owns:
 
-First-class resumable upload/session object.
+- access event recording
+- erasure execution against stored versions and derivatives
 
-Needed for:
+## 4. Authority of metadata
 
-* large files
-* unstable school networks
-* student interruptions
-* multi-part uploads
-* retries
+Target authority lives in Drive-owned records:
 
-### `Drive Version`
+- `Drive Upload Session`
+- `Drive File`
+- `Drive File Version`
+- `Drive Binding`
+- `Drive File Derivative`
 
-Immutable version row.
-Keep versioning per slot. That matches your current architecture.
+Drive must not depend on Ed-local governance records as primary truth.
 
-Current implementation note:
+If temporary compatibility projections still exist elsewhere during migration:
 
-* governed finalize creates `version_no = 1`
-* replacements append a new immutable `Drive File Version`
-* `Drive File.current_version` and `current_version_no` advance without changing the governed file identity
+- they are derived from Drive
+- they are not primary truth
+- they must be removable
 
-### `Drive Processing Job`
+## 5. Storage model
 
-Tracks:
+Drive storage is opaque to Ed.
 
-* preview generation
-* derivative generation
-* validation/scanning
-* indexing
-* reconciliation
+Drive owns:
 
-### `Drive Access Event`
+- storage backend selection
+- object key generation
+- temporary object lifecycle
+- final object identity
+- derivative storage
 
-Audit/event log for:
+Ed must not:
 
-* upload
-* replace
-* download grant
-* preview access
-* delete
-* erasure action
+- call Drive storage backends directly
+- write temporary blobs
+- rename finalized Drive objects
+- infer object identity from file URLs
 
-Current implementation now records minimal audit events for:
+## 6. Execution model
 
-* upload
-* replace
-* download grant issuance
-* preview grant issuance
-* erase
+### 6.1 Synchronous path
 
-This is intentionally compact audit, not a second workflow engine.
+1. create upload session
+2. receive blob directly or via Drive proxy
+3. validate bytes and finalize
+4. create Drive file/version/binding
+5. run post-finalize business mutation
+6. return canonical artifact identifiers
 
-### `Drive Erasure Request`
+### 6.2 Asynchronous path
 
-File-domain erasure request object.
+Drive handles asynchronously:
 
-Current implementation supports:
+- derivative generation
+- preview generation
+- scans
+- indexing
+- reconciliation
 
-* subject-scoped request creation
-* execution after approval
-* deterministic deletion across all stored versions for a governed file
-* blocked execution when `legal_hold` is active
-* result counters for deleted vs blocked files
+## 7. Folder and browse model
 
-### `Drive Resource Binding`
+Drive may expose folders and browse views.
 
-Useful as explicit bindings for:
+Folders are:
 
-* task resource
-* lesson resource
-* submission artifact
-* applicant document
-* portfolio evidence
-* organization media
+- navigation and reuse aids
+- not governance truth
 
-## Documentation and downstream coordination rule
+Browse state must not replace:
 
-Whenever Drive behavior changes, the relevant docs must be updated with:
+- owner
+- slot
+- organization/school scope
+- permission checks
 
-* the technical behavior change
-* the design or architecture decision behind it
-* any downstream impact on Ifitwala_Ed
+## 8. End-state rule for `File Classification`
 
-If the change affects file delivery semantics for Ifitwala_Ed, that downstream app must be informed explicitly. This is part of the engineering contract, not release polish.
+Drive does not need a `Drive File Classification` mirror of the old Ed model.
 
-## Slot model
+The refactor target is:
 
-Do not weaken this.
-Slots are one of the strongest parts of your current governance model.
+- governed semantics live in Drive-owned metadata
+- Ed-owned `File Classification` is removed through migration
 
-Files are identified semantically by slots such as:
+## 9. Current-runtime note
 
-* `submission`
-* `feedback`
-* `rubric_evidence`
-* `identity_passport`
-* `portfolio_artefact`
-* `school_logo__<school>`
-* `organization_media__<media_key>`
+Current code still contains cross-app leaks and transitional compatibility logic.
 
-Slot rules control:
+That current-runtime gap is tracked in the Ed-side implementation note and the coupling contract:
 
-* replacement vs multiplicity
-* versioning
-* retention
-* deletion scope
-* auditability
-
-## Folder/navigation model
-
-You want real folder navigation, so include it.
-But folders must remain subordinate to governance, not the source of truth.
-
-Recommended:
-
-* folders for browse/search UX
-* resources can live in navigable teacher/team/shared areas
-* actual compliance semantics still come from:
-
-  * owning document
-  * subject
-  * slot
-  * classification
-  * retention
-
-In other words:
-
-* folders are a navigation aid,
-* not the legal/semantic authority.
-
-## Template distribution model
-
-For “copy blank template to a whole student group,” use:
-
-* template resource
-* per-student work item/workspace
-* lazy derivative creation only when needed
-
-Do not force immediate physical duplication of every blob for every student unless there is a hard product need.
+- `ifitwala_ed/docs/files_and_policies/files_03_implementation.md`
+- `ifitwala_drive/docs/04_coupling_with_ifiwala_ed.md`

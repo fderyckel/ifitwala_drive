@@ -1,987 +1,213 @@
 # Canonical API Contracts
 
-Core rules:
+Status: LOCKED target API direction
+Date: 2026-04-19
+Related docs:
 
-* all new governed uploads go through Drive services
-* no file becomes meaningful without governance metadata
-* context first, Drive second
-* Ifitwala_Ed remains the business, permission, and workflow authority
-* Ifitwala_drive remains the file-platform authority
+- `ifitwala_drive/docs/02_system_architecture.md`
+- `ifitwala_drive/docs/04_coupling_with_ifiwala_ed.md`
+- `ifitwala_ed/docs/files_and_policies/files_07_education_file_semantics_and_cross_app_contract.md`
 
----
+## Bottom line
 
-# `ifitwala_drive_canonical_api_contract_v1.md`
+- The stable contract should be small.
+- Drive APIs are governed file APIs, not raw attachment helpers.
+- Workflow semantics come from Ed through a versioned workflow contract.
+- The browser never receives guessed storage paths as product truth.
 
-## Status
+## 1. API design rules
 
-**LOCKED — v1 canonical API direction**
+### 1.1 Context first
 
-This contract defines the initial API surface between:
-
-* **Ifitwala_Ed** as workflow/domain authority
-* **Ifitwala_drive** as governed file-platform boundary
-
-This is the contract Ifitwala_Ed should code against.
-This is **not** a generic public API design.
-It is a tight internal product boundary.
-
----
-
-## 1. API design principles
-
-### 1.1 Drive APIs are governed-contract endpoints, not raw file endpoints
-
-Ifitwala_Ed should not call low-level file mechanics directly.
-
-The core Drive APIs should stay generic:
-
-* `create_upload_session`
-* `finalize_upload_session`
-* `abort_upload_session`
-* grant / browse APIs
-
-Workflow-specific wrapper exports may still exist for Ed ergonomics, but they are compatibility shims only. They must not own the business semantics they carry.
-
-Bad:
-
-* generic upload file
-* generic attach file
-* raw path retrieval
+The API should be called in workflow terms, not raw file mechanics.
 
 Good:
 
-* create upload session for task submission
-* upload applicant document
-* issue preview grant for organization media
-* list files for lesson context
+- create upload session for `workflow_id = task.submission`
+- finalize upload session
+- issue preview grant for a Drive file
 
-This matches the coupling note: Ifitwala_Ed should stop thinking in raw `File`, raw attachment path, and generic upload widgets, and start thinking in Drive resources, submission artifacts, media refs, upload sessions, and canonical refs.
+Bad:
+
+- generic attach file
+- raw file move
+- raw private path retrieval
 
 ### 1.2 Fail closed
 
-If required governance context is missing, the API must reject the request.
-No fallback to generic attach behavior.
+If governance context is missing or invalid:
 
-### 1.3 Canonical references only
+- reject the request
+- do not fall back to generic attach behavior
+
+### 1.3 Canonical refs and grants only
 
 Consumers may receive:
 
-* Drive file IDs
-* canonical refs
-* short-lived preview/download grants
+- `drive_file_id`
+- `drive_file_version_id`
+- `canonical_ref`
+- short-lived download/preview grants
 
 Consumers must not construct storage paths.
 
-### 1.4 Business-document owner is mandatory
+## 2. Cross-app integration surface
 
-Every create/finalize call must carry enough context to resolve one authoritative business-document owner.
+The preferred long-term cross-app contract is:
 
-Uploader is audit only.
-Subject is not owner.
+### 2.1 Ed -> Drive
 
-Business meaning still belongs to Ed:
+- `create_upload_session(workflow_id, workflow_payload, filename_original, mime_type_hint, expected_size_bytes, upload_source, idempotency_key)`
+- `finalize_upload_session(upload_session_id, received_size_bytes, content_hash?)`
+- `abort_upload_session(upload_session_id)`
+- `issue_download_grant(drive_file_id | canonical_ref)`
+- `issue_preview_grant(drive_file_id | canonical_ref, derivative_role?)`
 
-* Ed builds the governed contract
-* Drive stores and executes against that contract
-* Drive does not become a second admissions, tasks, or media rules engine
+### 2.2 Drive -> Ed
 
----
+- resolve authoritative `GovernedUploadSpec` for `workflow_id`
+- validate finalize context where the workflow requires a fresh business check
+- run post-finalize business mutation
 
-## 2. API surface overview
+The long-term goal is one narrow integration surface, not many wrapper-specific imports.
 
-The v1 API is grouped into:
-
-1. Upload/session APIs
-2. File creation/version APIs
-3. Domain wrapper APIs
-4. Browse/search APIs
-5. Access/grant APIs
-6. Erasure APIs
-
----
-
-# 3. Upload / session APIs
-
-These APIs exist to make upload lifecycle explicit and resumable-ready.
-
-## 3.1 `create_upload_session`
+## 3. Session creation contract
 
 ### Purpose
 
-Create an upload session before any governed file is finalized.
+Create a governed upload session before bytes are finalized.
 
-### Called by
+### Required conceptual inputs
 
-* task resource upload UI
-* task submission UI
-* applicant document upload UI
-* organization media upload UI
-* class announcement attachment upload UI
-* future lesson/portfolio flows
-
-### Required request shape
-
-```json
-{
-  "owner_doctype": "Task Submission",
-  "owner_name": "TSUB-0001",
-  "attached_doctype": "Task Submission",
-  "attached_name": "TSUB-0001",
-  "organization": "ORG-0001",
-  "school": "SCH-0001",
-  "folder": "optional-drive-folder-id",
-  "primary_subject_type": "student",
-  "primary_subject_id": "STU-0001",
-  "data_class": "assessment",
-  "purpose": "assessment_submission",
-  "retention_policy": "until_school_exit_plus_6m",
-  "slot": "submission",
-  "secondary_subjects": [
-    {
-      "subject_type": "student",
-      "subject_id": "STU-0002",
-      "role": "co-owner"
-    }
-  ],
-  "filename_original": "essay.docx",
-  "mime_type_hint": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "expected_size_bytes": 543210,
-  "is_private": 1,
-  "upload_source": "SPA"
-}
-```
+- `workflow_id`
+- `workflow_payload`
+  business identifiers needed to resolve the workflow contract
+- `filename_original`
+- `mime_type_hint`
+- `expected_size_bytes`
+- `upload_source`
+- optional `idempotency_key`
 
 ### Required behavior
 
-* validates governance intent
-* validates owner context
-* validates slot presence
-* creates `Drive Upload Session`
-* persists the negotiated upload contract on `Drive Upload Session`
-* returns upload session info + temporary upload target/grant
+- resolve or validate the authoritative workflow spec
+- persist the resolved contract on `Drive Upload Session`
+- negotiate an upload target and strategy
+- return session identifiers and upload target info
 
-### Response shape
+### Response contract
 
-```json
-{
-  "upload_session_id": "DUS-0001",
-  "session_key": "opaque-session-key",
-  "status": "created",
-  "expires_on": "2026-03-17 10:00:00",
-  "upload_strategy": "resumable_put",
-  "upload_target": {
-    "method": "PUT",
-    "url": "provider-issued-resumable-session-uri-or-proxy-endpoint",
-    "headers": {}
-  }
-}
-```
+At minimum:
 
-Notes:
+- `upload_session_id`
+- `session_key`
+- `status`
+- `expires_on`
+- `upload_strategy`
+- `upload_target`
 
-* `proxy_post` remains the local-only fallback.
-* `upload_session_blob` must reject any session whose persisted `upload_strategy` is not `proxy_post`.
+## 4. Blob ingress contract
 
-### Caller MIME contract
+### `upload_session_blob`
 
-`mime_type_hint` is the caller's claim about the uploaded file bytes that Drive will inspect during finalize.
-It is not the transport MIME of the outer HTTP request.
+Purpose:
+
+- receive bytes only for proxy/local upload strategies
+
+Rules:
+
+- valid only when the session upload strategy is `proxy_post`
+- Drive writes the temporary object
+- Drive advances session state
+- Ed must not bypass this API by calling storage backends directly
+
+## 5. Finalize contract
+
+### Purpose
+
+Turn an uploaded temporary object into a governed Drive file.
+
+### Required inputs
+
+- `upload_session_id`
+- `received_size_bytes`
+- optional `content_hash`
+
+### Required behavior
+
+- validate session state
+- verify temporary object existence
+- inspect uploaded bytes
+- finalize object placement
+- create authoritative Drive file/version/binding records
+- run allowed post-finalize business mutation
+- enqueue async derivatives/previews/scans using runtime-valid queues
+
+### Response contract
+
+At minimum:
+
+- `drive_file_id`
+- `drive_file_version_id`
+- `canonical_ref`
+- upload session terminal `status`
+- `preview_status`
+
+The response must not rely on raw private file URLs as the primary browser contract.
+
+## 6. Abort contract
+
+### Purpose
+
+Abort a pending upload session and invalidate its temporary upload target.
+
+### Required behavior
+
+- mark the session terminal
+- delete temporary objects when present
+- refuse future blob or finalize actions for the session
+
+## 7. Access grant contracts
+
+### `issue_download_grant`
+
+Rules:
+
+- resolve by `drive_file_id` or `canonical_ref`
+- enforce read permission through the approved boundary
+- return a short-lived download contract
+
+### `issue_preview_grant`
+
+Rules:
+
+- resolve by `drive_file_id` or `canonical_ref`
+- select the ready derivative when the preview contract requires one
+- return a short-lived preview contract
+
+## 8. MIME contract
+
+`mime_type_hint` is the caller's claim about the uploaded bytes, not the outer request envelope.
 
 Therefore:
 
-* callers must derive `mime_type_hint` from the uploaded file object when available
-* on Frappe multipart endpoints, prefer the file object's `mimetype` or `content_type`
-* for raw-content helper calls, prefer an explicit per-file MIME and otherwise fall back to `filename_original`
-* transport-envelope values such as `multipart/form-data` are invalid hints and must never be forwarded to Drive
-* if a caller forwards an envelope MIME instead of the file MIME, Drive is expected to reject the upload at finalize time
+- callers should derive it from the uploaded file object when available
+- callers may fall back to filename-based resolution
+- callers must not forward `multipart/form-data` as the file MIME
+- Drive remains responsible for byte inspection and rejection on mismatch
 
-Concrete Ed rule:
+## 9. Transitional wrapper rule
 
-* on `/api/method/upload_file` flows, `frappe.request.mimetype` usually describes the multipart envelope, not the uploaded file
-* Ed wrappers must not pass `frappe.request.mimetype` through as `mime_type_hint`
+Workflow-specific wrapper exports may exist during migration for ergonomics or compatibility.
 
----
+But:
 
-## 3.2 `finalize_upload_session`
+- they are not the desired long-term contract
+- they must delegate to the canonical session/finalize/grant behavior
+- they must not become a second place where workflow semantics are authored
 
-### Purpose
+## 10. Current-runtime note
 
-Confirm upload completion and create the governed file record.
+Current code still contains wrapper-heavy and cross-import-heavy paths.
 
-### Required request shape
-
-```json
-{
-  "upload_session_id": "DUS-0001",
-  "received_size_bytes": 543210,
-  "content_hash": "sha256-optional-or-required-by-policy"
-}
-```
-
-### Required behavior
-
-* verifies session is valid and not expired
-* verifies upload receipt
-* verifies the temporary object exists in storage
-* inspects the uploaded head bytes before governed finalization
-* rejects dangerous executable/script MIME types and hint mismatches
-* creates authoritative governed file record
-* creates initial version
-* records a minimal upload audit event
-* queues heavy async work if needed
-* resolves any post-finalize async queue onto a queue name that is valid for the active Frappe runtime before calling `frappe.enqueue(...)`
-* returns canonical Drive artifact info
-
-Runtime queue rule:
-
-* Drive may persist semantic processing classes such as `drive_default` on internal job rows
-* those semantic labels must not be passed directly into `frappe.enqueue(...)` unless the live site has matching custom worker queues configured
-* otherwise the enqueue boundary must normalize them to standard runtime-valid queues
-
-### Response shape
-
-```json
-{
-  "drive_file_id": "DF-0001",
-  "drive_file_version_id": "DFV-0001",
-  "file_id": "FILE-0001",
-  "canonical_ref": "drv:ORG-0001:DF-0001",
-  "status": "completed",
-  "preview_status": "pending"
-}
-```
-
-Implementation note:
-
-* the current response `status` is the `Drive Upload Session` terminal status (`completed`), not the `Drive File.status`
-* consumers that need the governed-file lifecycle state should use `drive_file_id` and then Drive file retrieval/browse surfaces
-
----
-
-## 3.3 `abort_upload_session`
-
-### Purpose
-
-Cancel a session that will not be used.
-
-### Request
-
-```json
-{
-  "upload_session_id": "DUS-0001"
-}
-```
-
-### Response
-
-```json
-{
-  "upload_session_id": "DUS-0001",
-  "status": "aborted"
-}
-```
-
----
-
-# 4. File creation / version APIs
-
-These are the authoritative file-domain entrypoints.
-
-## 4.1 `create_and_classify_file`
-
-### Purpose
-
-Single authoritative creation path for governed file creation.
-
-This is the Drive-era continuation of the dispatcher-only rule from the current Ifitwala_Ed architecture.
-
-### Called by
-
-Usually internal service code after upload finalization, but may also be used by trusted server-side workflows.
-
-### Required request shape
-
-```json
-{
-  "file_artifact": {
-    "file_id": "FILE-0001",
-    "filename_original": "essay.docx",
-    "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "size_bytes": 543210,
-    "content_hash": "sha256..."
-  },
-  "governance": {
-    "owner_doctype": "Task Submission",
-    "owner_name": "TSUB-0001",
-    "attached_doctype": "Task Submission",
-    "attached_name": "TSUB-0001",
-    "organization": "ORG-0001",
-    "school": "SCH-0001",
-    "primary_subject_type": "student",
-    "primary_subject_id": "STU-0001",
-    "data_class": "assessment",
-    "purpose": "assessment_submission",
-    "retention_policy": "until_school_exit_plus_6m",
-    "slot": "submission",
-    "is_private": 1,
-    "upload_source": "SPA"
-  },
-  "secondary_subjects": [],
-  "folder": "optional-drive-folder-id"
-}
-```
-
-### Response
-
-```json
-{
-  "drive_file_id": "DF-0001",
-  "drive_file_version_id": "DFV-0001",
-  "canonical_ref": "drv:ORG-0001:DF-0001",
-  "status": "active"
-}
-```
-
----
-
-## 4.2 `replace_drive_file_version`
-
-### Purpose
-
-Replace the current version of a governed file in a version-safe way.
-
-### Request
-
-```json
-{
-  "drive_file_id": "DF-0001",
-  "new_file_artifact": {
-    "file_id": "FILE-0002",
-    "storage_object_key": "files/ab/cd/object-v2.docx",
-    "filename_original": "essay_v2.docx",
-    "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "size_bytes": 545000,
-    "content_hash": "sha256..."
-  },
-  "reason": "replace"
-}
-```
-
-### Required behavior
-
-* validates actor can replace for this owner/slot/context
-* increments version
-* marks old current version non-current
-* updates the governed file's current file pointer and storage object key
-* resets preview status to `pending`
-* records a minimal replace audit event
-* preserves same governed file identity
-
-### Response
-
-```json
-{
-  "drive_file_id": "DF-0001",
-  "drive_file_version_id": "DFV-0002",
-  "current_version_no": 2,
-  "status": "active"
-}
-```
-
----
-
-# 5. Domain wrapper APIs
-
-These exist so Ifitwala_Ed does not have to reconstruct request envelopes everywhere.
-
-They are thin Ed-facing compatibility wrappers around the canonical Drive services.
-They must delegate to Ed-owned contract builders and must not author workflow meaning inside Drive.
-
-Wrapper contract:
-
-* every documented wrapper must exist as an exported callable in the relevant `ifitwala_drive.api.*` module
-* every exported wrapper must delegate to one authoritative service function
-* tests must cover service contract behavior
-* tests must cover API export/delegation behavior
-* adding a new wrapper is incomplete until the exported API surface is deployed and verified in the running site
-
-### Picture upload wrapper rule
-
-This rule applies to the current picture-oriented wrappers:
-
-* `ifitwala_drive.api.media.upload_student_image`
-* `ifitwala_drive.api.media.upload_guardian_image`
-* `ifitwala_drive.api.media.upload_employee_image`
-* `ifitwala_drive.api.admissions.upload_applicant_profile_image`
-* `ifitwala_drive.api.admissions.upload_applicant_guardian_image`
-* `ifitwala_drive.api.communications.upload_org_communication_attachment`
-
-For these wrappers:
-
-* `filename_original` is required
-* `mime_type_hint` must describe the actual image bytes expected at finalize time
-* callers in `ifitwala_ed` must derive `mime_type_hint` from the uploaded file object when available, or from `filename_original` as a fallback
-* transport-envelope MIME values such as `multipart/form-data` are invalid and must never be forwarded to Drive
-* Drive still performs authoritative byte inspection during finalize and must reject mismatches
-
-## 5.2 `upload_org_communication_attachment`
-
-### Purpose
-
-Upload a governed file attached to an `Org Communication` with authoritative context from Ifitwala_Ed.
-
-### Required request shape
-
-```json
-{
-  "org_communication": "COMM-0001",
-  "row_name": "optional-existing-attached-document-row",
-  "filename_original": "announcement.pdf",
-  "mime_type_hint": "application/pdf",
-  "expected_size_bytes": 123456
-}
-```
-
-### Governance implied by wrapper
-
-* owner_doctype = `Org Communication`
-* attached_doctype/name = `Org Communication` / communication id
-* primary_subject_type = `Organization`
-* data_class = `administrative`
-* purpose = `administrative`
-* retention_policy = `fixed_7y`
-* slot prefix = `communication_attachment__`
-* folder placement derives from the Ed-owned authoritative context:
-  * class context when `course` + `student_group` + `school` are all present
-  * otherwise school context when `school` is authoritative
-  * otherwise organization context
-* partial class context must fail closed before session creation or folder resolution; Drive must not crash and must not silently fall back when `student_group` is present but required class fields are missing
-
-## 5.1 `upload_task_resource`
-
-### Purpose
-
-Upload or register a resource attached to a Task.
-
-### Required request shape
-
-```json
-{
-  "task": "TASK-0001",
-  "row_name": "optional-existing-attached-document-row",
-  "filename_original": "worksheet.pdf",
-  "mime_type_hint": "application/pdf",
-  "expected_size_bytes": 123456
-}
-```
-
-### Governance implied by wrapper
-
-* owner_doctype = `Task`
-* owner_name = task id
-* attached_doctype/name = `Task` / task id in the compatibility slice
-* primary_subject = owning organization derived from `Task.default_course -> Course.school -> School.organization`
-* slot = `supporting_material__<row_name>`
-* data_class = `academic`
-* purpose = `learning_resource`
-* retention_policy = `until_program_end_plus_1y`
-
-### Response
-
-Upload session metadata including the authoritative `row_name` / slot for the compatibility attachment row.
-
----
-
-## 5.2 `upload_task_submission_artifact`
-
-### Purpose
-
-Upload a student submission artifact.
-
-This must preserve the locked task submission semantics:
-
-* file is evidence of work
-* not the grade
-* slot is mandatory
-* primary subject is student
-* deletion must not break grades/analytics.
-
-### Required request shape
-
-```json
-{
-  "task_submission": "TSUB-0001",
-  "student": "STU-0001",
-  "slot": "submission",
-  "filename_original": "essay.docx",
-  "mime_type_hint": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "expected_size_bytes": 543210
-}
-```
-
-### Response
-
-Upload session or finalized Drive file artifact depending on flow stage.
-
----
-
-## 5.3 `upload_applicant_document`
-
-### Purpose
-
-Upload an admissions document.
-
-Must preserve the locked ownership rule:
-
-* owner is `Student Applicant`
-* never Student
-* never Guardian.
-
-### Request
-
-```json
-{
-  "student_applicant": "APP-0001",
-  "slot": "identity_passport",
-  "filename_original": "passport.pdf",
-  "mime_type_hint": "application/pdf",
-  "expected_size_bytes": 222222
-}
-```
-
-### Response
-
-Upload session or finalized Drive file artifact.
-
----
-
-## 5.4 `upload_portfolio_evidence`
-
-### Purpose
-
-Upload portfolio/journal artifact.
-
-### Request
-
-```json
-{
-  "portfolio_entry": "PORT-0001",
-  "student": "STU-0001",
-  "slot": "portfolio_artefact",
-  "filename_original": "reflection.jpg",
-  "mime_type_hint": "image/jpeg",
-  "expected_size_bytes": 111111
-}
-```
-
----
-
-## 5.5 `upload_organization_media`
-
-### Purpose
-
-Upload organization/school reusable media.
-
-Must preserve:
-
-* organization-owned media
-* school optional
-* reuse-first behavior
-* no side media governance system.
-
-### Request
-
-```json
-{
-  "organization": "ORG-0001",
-  "school": "SCH-0001",
-  "slot": "organization_media__homepage_hero",
-  "filename_original": "hero.jpg",
-  "mime_type_hint": "image/jpeg",
-  "expected_size_bytes": 333333
-}
-```
-
----
-
-# 6. Browse / search APIs
-
-These power the secondary Drive surface and reuse flows.
-
-## 6.1 `list_folder_items`
-
-### Purpose
-
-List folders/files within a Drive folder.
-
-### Request
-
-```json
-{
-  "folder": "FOLDER-0001",
-  "include_folders": 1,
-  "include_files": 1,
-  "limit": 50,
-  "offset": 0
-}
-```
-
-### Response
-
-```json
-{
-  "folder": {
-    "id": "FOLDER-0001",
-    "title": "Course Resources",
-    "path_cache": "org-0001/course-resources",
-    "context_path": "Organization / Course Resources",
-    "breadcrumbs": [
-      {
-        "id": "FOLDER-ROOT",
-        "title": "Organization",
-        "path_cache": "org-0001"
-      },
-      {
-        "id": "FOLDER-0001",
-        "title": "Course Resources",
-        "path_cache": "org-0001/course-resources"
-      }
-    ]
-  },
-  "items": [
-    {
-      "item_type": "folder",
-      "id": "FOLDER-0002",
-      "title": "Week 1",
-      "path_cache": "org-0001/course-resources/week-1",
-      "context_path": "Organization / Course Resources / Week 1"
-    },
-    {
-      "item_type": "file",
-      "id": "DF-0001",
-      "title": "worksheet.pdf",
-      "binding_role": "task_resource",
-      "preview_status": "ready",
-      "canonical_ref": "drv:ORG-0001:DF-0001",
-      "folder_path": "org-0001/course-resources",
-      "context_path": "Organization / Course Resources",
-      "can_preview": true,
-      "can_download": true
-    }
-  ]
-}
-```
-
----
-
-## 6.2 `list_context_files`
-
-### Purpose
-
-List governed file artifacts bound to a given business context.
-
-This is the main context-first retrieval API.
-
-### Request
-
-```json
-{
-  "doctype": "Task Submission",
-  "name": "TSUB-0001",
-  "binding_role": "submission_artifact"
-}
-```
-
-### Response
-
-```json
-{
-  "context": {
-    "doctype": "Task Submission",
-    "name": "TSUB-0001"
-  },
-  "folders": [],
-  "files": [
-    {
-      "id": "DF-0001",
-      "drive_file_id": "DF-0001",
-      "canonical_ref": "drv:ORG-0001:DF-0001",
-      "slot": "submission",
-      "title": "essay.docx",
-      "current_version_no": 2,
-      "preview_status": "pending",
-      "folder_path": "student/task-0001/submissions",
-      "context_path": "Student / TASK-0001 / Submissions",
-      "attached_to": {
-        "doctype": "Task Submission",
-        "name": "TSUB-0001"
-      },
-      "can_preview": false,
-      "can_download": true
-    }
-  ],
-  "items": [
-    {
-      "id": "DF-0001",
-      "drive_file_id": "DF-0001",
-      "canonical_ref": "drv:ORG-0001:DF-0001",
-      "slot": "submission",
-      "title": "essay.docx",
-      "current_version_no": 2,
-      "preview_status": "pending",
-      "folder_path": "student/task-0001/submissions",
-      "context_path": "Student / TASK-0001 / Submissions",
-      "attached_to": {
-        "doctype": "Task Submission",
-        "name": "TSUB-0001"
-      },
-      "can_preview": false,
-      "can_download": true,
-      "item_type": "file"
-    }
-  ]
-}
-```
-
-`folders` and `items` are additive browse projections.
-`files` remains the binding-centric file list for compatibility with existing consumers.
-Folder-structured contexts such as `Employee`, `Student Applicant`, or `Task` may populate `folders` and include folder rows in `items`.
-
----
-
-## 6.3 `search_drive_files`
-
-### Purpose
-
-Search files across an authorized Drive surface.
-
-This should stay narrow in v1.
-Not a full enterprise search engine.
-
-### Request
-
-```json
-{
-  "query": "worksheet",
-  "folder": "optional-folder-id",
-  "binding_role": "task_resource",
-  "limit": 25
-}
-```
-
----
-
-# 7. Access / grant APIs
-
-## 7.1 `issue_download_grant`
-
-### Purpose
-
-Return a short-lived download grant for a Drive file.
-
-### Request
-
-```json
-{
-  "drive_file_id": "DF-0001"
-}
-```
-
-### Response
-
-```json
-{
-  "grant_type": "signed_url or private_url",
-  "url": "short-lived-download-url",
-  "expires_on": "2026-03-17 10:10:00"
-}
-```
-
-Must enforce:
-
-* user can see owning doc
-* user can download in this context
-* file is `active`
-
----
-
-## 7.2 `issue_preview_grant`
-
-### Purpose
-
-Return a short-lived preview grant.
-
-### Request
-
-```json
-{
-  "drive_file_id": "DF-0001"
-}
-```
-
-### Response
-
-```json
-{
-  "grant_type": "signed_url or private_url",
-  "url": "short-lived-preview-url",
-  "expires_on": "2026-03-17 10:10:00",
-  "preview_status": "ready"
-}
-```
-
-Must enforce:
-
-* user can see owning doc
-* file is `active`
-* `preview_status` is `ready`
-
----
-
-# 8. Erasure APIs
-
-These can stay admin/system-facing in v1.
-
-## 8.1 `create_drive_erasure_request`
-
-### Purpose
-
-Create a file-domain erasure request by subject/scope.
-
-### Request
-
-```json
-{
-  "data_subject_type": "student",
-  "data_subject_id": "STU-0001",
-  "scope": "files_only",
-  "request_reason": "GDPR request"
-}
-```
-
-Notes:
-
-* current supported scopes are `all`, `files_only`, and `slot_only`
-* `slot_filter` is required when `scope = "slot_only"`
-* newly created requests start as `draft` unless explicitly elevated by trusted server-side flow
-
----
-
-## 8.2 `execute_drive_erasure_request`
-
-### Purpose
-
-Execute erasure once approved.
-
-### Response should include:
-
-* deleted count
-* blocked count
-* slots touched
-* final status
-
-This must preserve the minimal-audit/no-content-remnant posture already locked in your GDPR notes.
-
-Current implementation behavior:
-
-* execution requires the request status to be `approved` or already `executing`
-* all stored object keys across the governed file and its recorded versions are deleted
-* active bindings for erased files are deactivated
-* `Drive File.status` becomes `erased`
-* `Drive File.erasure_state` becomes `erased` or `blocked_legal`
-* current `File` rows are scrubbed of direct `file_url` access
-* each successful file erasure records a minimal `Drive Access Event`
-
-Example response:
-
-```json
-{
-  "erasure_request_id": "DER-0001",
-  "status": "completed",
-  "deleted_count": 3,
-  "blocked_count": 1,
-  "slots_touched": ["submission", "feedback"]
-}
-```
-
----
-
-# 9. What Ifitwala_Ed stores after calling Drive
-
-Ifitwala_Ed should primarily store:
-
-* `drive_file_id`
-* `drive_file_version_id` where useful
-* `canonical_ref`
-* binding-level metadata if needed
-
-It should **not** depend on:
-
-* raw storage paths
-* `/public` or `/private` paths
-* bucket keys
-* generic attachment URL guessing.
-
----
-
-# 10. What is intentionally postponed
-
-Not in the first contract:
-
-* generalized external guest links
-* collaborative docs
-* public sharing engine
-* deep permission graph system
-* advanced search/indexing
-* massive preview matrix
-* all domains at once
-
-The first target remains:
-
-* task resources
-* task submissions
-* applicant documents
-* organization media
-* basic folders/browse.
-
----
-
-# 11. Implementation note
-
-The `api/*` modules should stay thin and delegate to services:
-
-* `api/uploads.py`
-* `api/files.py`
-* `api/resources.py`
-* `api/submissions.py`
-* `api/admissions.py`
-* `api/media.py`
-* `api/access.py`
-* `api/folders.py`
-* `api/erasure.py`
-
-while the real logic lives in:
-
-* `services/uploads/`
-* `services/files/`
-* `services/audit/`
-* `services/governance/`
-* `services/storage/`
-* `services/access/`
-* `services/integration/`
-
-## Downstream note for Ifitwala_Ed
-
-Ifitwala_Ed should now treat the following as first-class Drive contract outputs:
-
-* `drive_file_id`
-* `drive_file_version_id`
-* `canonical_ref`
-
-Ifitwala_Ed file delivery logic must not assume:
-
-* replacement leaves version identity unchanged
-* erasure can be modeled as only a `File` row concern
-* direct `file_url` values remain durable after erasure or future delivery changes
-
-Any Ed slice that delivers files, stores file references, or exposes replace/erase controls must be informed when these contracts change.
+Those are transitional implementation details, not the target API model.
