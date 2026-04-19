@@ -132,7 +132,7 @@ But tight coupling is not permission to call each other's internals arbitrarily.
 Current code still shows these transitional behaviors:
 
 - Drive still emits native `File` compatibility projections for current Ed surfaces
-- Drive may still emit temporary `File Classification` projections while migration continues
-- Ed read and derivative paths still need cleanup so those projections can be removed
+- historical `File Classification` rows still require cleanup through the Ed migration patch
+- Ed read and derivative paths still need cleanup so the native `File` compatibility projection can eventually be removed
 
 These are migration constraints, not target architecture.

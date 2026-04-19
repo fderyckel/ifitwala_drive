@@ -727,15 +727,6 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 	created_file = FakeDoc._docs_map[("File", "FILE-0001")]
 	assert getattr(created_file.flags, "governed_upload", False) is True
 	assert getattr(created_file.flags, "drive_compat_projection", False) is True
-	classification_doc = FakeDoc._docs_map[("File Classification", "FC-0001")]
-	assert classification_doc.file == "FILE-0001"
-	assert classification_doc.slot == "submission"
-	assert classification_doc.primary_subject_type == "Student"
-	assert classification_doc.primary_subject_id == "STU-0001"
-	assert classification_doc.is_current_version == 1
-	assert classification_doc.secondary_subjects == [
-		{"subject_type": "Student", "subject_id": "STU-0002", "role": "co-owner"}
-	]
 
 
 def test_finalize_rejects_task_submission_context_drift(monkeypatch):

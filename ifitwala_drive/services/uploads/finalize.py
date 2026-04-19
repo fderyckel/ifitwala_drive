@@ -12,7 +12,6 @@ from ifitwala_drive.services.audit.events import record_drive_access_event
 from ifitwala_drive.services.concurrency import drive_lock
 from ifitwala_drive.services.files.creation import create_drive_file_artifacts
 from ifitwala_drive.services.files.projections import (
-	ensure_file_classification_projection,
 	ensure_native_file_projection,
 )
 from ifitwala_drive.services.integration.ifitwala_ed_bridge import (
@@ -193,7 +192,6 @@ def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 			storage_artifact=storage_artifact,
 			finalize_contract=finalize_contract,
 		)
-		ensure_file_classification_projection(upload_session_doc=doc, file_doc=created)
 		drive_artifacts = create_drive_file_artifacts(
 			upload_session_doc=doc,
 			file_id=created.name,

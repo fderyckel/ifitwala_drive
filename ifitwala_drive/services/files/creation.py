@@ -9,6 +9,18 @@ from ifitwala_drive.services.files.derivatives import sync_preview_pipeline_for_
 from ifitwala_drive.services.files.versions import create_initial_drive_file_version
 
 
+def _get_all_rows(doctype: str, *, filters: dict[str, Any], fields: list[str]) -> list[dict[str, Any]]:
+	get_all = getattr(frappe, "get_all", None)
+	if not callable(get_all):
+		return []
+
+	try:
+		rows = get_all(doctype, filters=filters, fields=fields, limit=0)
+	except TypeError:
+		rows = get_all(doctype, filters=filters, fields=fields)
+	return rows or []
+
+
 def _build_canonical_ref(*, organization: str | None, drive_file_id: str) -> str:
 	scope = (organization or "unknown").strip() or "unknown"
 	return f"drv:{scope}:{drive_file_id}"
@@ -58,6 +70,34 @@ def _build_primary_binding_key(*, drive_file_id: str, upload_session_doc, bindin
 	return "|".join(str(part or "").strip() for part in parts)
 
 
+def _slot_identity_filters(upload_session_doc) -> dict[str, Any]:
+	return {
+		"owner_doctype": upload_session_doc.owner_doctype,
+		"owner_name": upload_session_doc.owner_name,
+		"attached_doctype": upload_session_doc.attached_doctype,
+		"attached_name": upload_session_doc.attached_name,
+		"primary_subject_type": upload_session_doc.intended_primary_subject_type,
+		"primary_subject_id": upload_session_doc.intended_primary_subject_id,
+		"slot": upload_session_doc.intended_slot,
+		"status": "active",
+	}
+
+
+def _supersede_previous_drive_files(*, upload_session_doc, current_drive_file_id: str) -> None:
+	filters = {
+		**_slot_identity_filters(upload_session_doc),
+		"name": ["!=", current_drive_file_id],
+	}
+	for row in _get_all_rows("Drive File", filters=filters, fields=["name"]):
+		frappe.db.set_value(
+			"Drive File",
+			row["name"],
+			"status",
+			"superseded",
+			update_modified=False,
+		)
+
+
 def _create_primary_binding(
 	*,
 	drive_file_id: str,
@@ -77,7 +117,6 @@ def _create_primary_binding(
 	lock_key = "|".join(
 		[
 			"binding",
-			drive_file_id,
 			upload_session_doc.attached_doctype,
 			upload_session_doc.attached_name,
 			binding_role,
@@ -100,6 +139,28 @@ def _create_primary_binding(
 		)
 		if existing:
 			return existing
+
+		for row in _get_all_rows(
+			"Drive Binding",
+			filters={
+				"binding_doctype": upload_session_doc.attached_doctype,
+				"binding_name": upload_session_doc.attached_name,
+				"binding_role": binding_role,
+				"slot": upload_session_doc.intended_slot,
+				"is_primary": 1,
+				"status": "active",
+			},
+			fields=["name", "drive_file"],
+		):
+			if row.get("drive_file") == drive_file_id:
+				return row.get("name")
+			frappe.db.set_value(
+				"Drive Binding",
+				row["name"],
+				"status",
+				"superseded",
+				update_modified=False,
+			)
 
 		binding = frappe.get_doc(
 			{
@@ -221,6 +282,10 @@ def create_drive_file_artifacts(
 			mime_type=storage_artifact.get("mime_type"),
 		)
 		drive_file.save(ignore_permissions=True)
+		_supersede_previous_drive_files(
+			upload_session_doc=upload_session_doc,
+			current_drive_file_id=drive_file.name,
+		)
 
 		binding_id = _create_primary_binding(
 			drive_file_id=drive_file.name,

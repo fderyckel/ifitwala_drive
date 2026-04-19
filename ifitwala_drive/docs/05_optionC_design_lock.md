@@ -106,7 +106,8 @@ Authority collapse.
 Goal:
 
 - Drive metadata becomes sole governance authority
-- `File Classification` is migrated off and removed
+- completed in code
+- historical `File Classification` rows are removed only through an explicit migration patch once matching `Drive File` authority exists
 
 ### Phase 4
 

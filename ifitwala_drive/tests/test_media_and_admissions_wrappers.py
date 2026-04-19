@@ -141,6 +141,30 @@ def _install_fake_frappe(*, exists_map=None, value_map=None, docs_map=None):
 	frappe.whitelist = lambda *args, **kwargs: lambda fn: fn
 	frappe.local = types.SimpleNamespace(request_ip="127.0.0.1")
 	frappe.bold = lambda value: str(value)
+	frappe.get_all = lambda doctype, fields=None, filters=None, order_by=None, limit=None, pluck=None: [
+		candidate_name
+		if pluck == "name"
+		else (
+			getattr(doc, pluck, None)
+			if pluck
+			else {field: getattr(doc, field, None) for field in (fields or [])}
+		)
+		for (candidate_doctype, candidate_name), doc in docs_map.items()
+		if candidate_doctype == doctype
+		and (
+			not filters
+			or all(
+				(
+					getattr(doc, fieldname, None) in value[1]
+					if isinstance(value, list) and len(value) == 2 and value[0] == "in"
+					else getattr(doc, fieldname, None) != value[1]
+					if isinstance(value, list) and len(value) == 2 and value[0] == "!="
+					else getattr(doc, fieldname, None) == value
+				)
+				for fieldname, value in filters.items()
+			)
+		)
+	][: limit or None]
 
 	sys.modules["frappe"] = frappe
 	return db_set_calls
@@ -742,8 +766,17 @@ def test_run_admissions_post_finalize_resets_review_state():
 			},
 			("Applicant Document", "ADOC-0001", "document_type"): "Passport",
 			("Applicant Document Type", "Passport", "code"): "passport",
-			("File Classification", (("file", "FILE-0001"),), "name"): "FC-0001",
-		}
+		},
+		docs_map={
+			("Drive File", "DF-0001"): FakeDoc(
+				{
+					"name": "DF-0001",
+					"file": "FILE-0001",
+					"status": "active",
+					"canonical_ref": "drv:ORG-0001:DF-0001",
+				}
+			),
+		},
 	)
 
 	admissions_portal = types.ModuleType("ifitwala_ed.admission.admissions_portal")
@@ -781,7 +814,8 @@ def test_run_admissions_post_finalize_resets_review_state():
 		CreatedFile(),
 	)
 
-	assert response["classification"] == "FC-0001"
+	assert response["drive_file_id"] == "DF-0001"
+	assert response["canonical_ref"] == "drv:ORG-0001:DF-0001"
 	assert response["applicant_document_item"] == "ADI-0001"
 	assert db_set_calls[0][0] == "Applicant Document Item"
 
@@ -789,9 +823,17 @@ def test_run_admissions_post_finalize_resets_review_state():
 def test_run_admissions_post_finalize_updates_applicant_profile_image():
 	_purge_modules("frappe", "ifitwala_drive.services.integration.ifitwala_ed_admissions")
 	db_set_calls = _install_fake_frappe(
-		value_map={
-			("File Classification", (("file", "FILE-0001"),), "name"): "FC-0003",
-		}
+		value_map={},
+		docs_map={
+			("Drive File", "DF-0003"): FakeDoc(
+				{
+					"name": "DF-0003",
+					"file": "FILE-0001",
+					"status": "active",
+					"canonical_ref": "drv:ORG-0001:DF-0003",
+				}
+			),
+		},
 	)
 	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_admissions")
 
@@ -810,7 +852,8 @@ def test_run_admissions_post_finalize_updates_applicant_profile_image():
 		CreatedFile(),
 	)
 
-	assert response["classification"] == "FC-0003"
+	assert response["drive_file_id"] == "DF-0003"
+	assert response["canonical_ref"] == "drv:ORG-0001:DF-0003"
 	assert response["file_url"] == "/private/files/profile.jpg"
 	assert db_set_calls[0][0] == "Student Applicant"
 	assert db_set_calls[0][2] == "applicant_image"
@@ -819,9 +862,17 @@ def test_run_admissions_post_finalize_updates_applicant_profile_image():
 def test_run_admissions_post_finalize_updates_guardian_image_row():
 	_purge_modules("frappe", "ifitwala_drive.services.integration.ifitwala_ed_admissions")
 	db_set_calls = _install_fake_frappe(
-		value_map={
-			("File Classification", (("file", "FILE-0001"),), "name"): "FC-0004",
-		}
+		value_map={},
+		docs_map={
+			("Drive File", "DF-0004"): FakeDoc(
+				{
+					"name": "DF-0004",
+					"file": "FILE-0001",
+					"status": "active",
+					"canonical_ref": "drv:ORG-0001:DF-0004",
+				}
+			),
+		},
 	)
 	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_admissions")
 
@@ -840,7 +891,8 @@ def test_run_admissions_post_finalize_updates_guardian_image_row():
 		CreatedFile(),
 	)
 
-	assert response["classification"] == "FC-0004"
+	assert response["drive_file_id"] == "DF-0004"
+	assert response["canonical_ref"] == "drv:ORG-0001:DF-0004"
 	assert response["guardian_row_name"] == "ROW-0001"
 	assert db_set_calls[0][0] == "Student Applicant Guardian"
 	assert db_set_calls[0][2] == "guardian_image"
@@ -849,9 +901,17 @@ def test_run_admissions_post_finalize_updates_guardian_image_row():
 def test_run_admissions_post_finalize_returns_health_upload_metadata():
 	_purge_modules("frappe", "ifitwala_drive.services.integration.ifitwala_ed_admissions")
 	_install_fake_frappe(
-		value_map={
-			("File Classification", (("file", "FILE-0001"),), "name"): "FC-0002",
-		}
+		value_map={},
+		docs_map={
+			("Drive File", "DF-0002"): FakeDoc(
+				{
+					"name": "DF-0002",
+					"file": "FILE-0001",
+					"status": "active",
+					"canonical_ref": "drv:ORG-0001:DF-0002",
+				}
+			),
+		},
 	)
 	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_admissions")
 
@@ -870,6 +930,7 @@ def test_run_admissions_post_finalize_returns_health_upload_metadata():
 		CreatedFile(),
 	)
 
-	assert response["classification"] == "FC-0002"
+	assert response["drive_file_id"] == "DF-0002"
+	assert response["canonical_ref"] == "drv:ORG-0001:DF-0002"
 	assert response["file_url"] == "/private/files/mmr-proof.png"
 	assert response["applicant_health_profile"] == "AHP-0001"
