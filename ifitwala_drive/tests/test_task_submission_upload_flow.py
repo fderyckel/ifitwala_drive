@@ -75,6 +75,8 @@ class FakeDoc:
 				"Drive Binding": "DB",
 				"Drive Processing Job": "DPJ",
 				"Drive Folder": "DRF",
+				"File": "FILE",
+				"File Classification": "FC",
 			}
 			prefix = prefix_map.get(doctype, "DOC")
 			next_value = self._insert_counters.get(prefix, 0) + 1
@@ -133,7 +135,7 @@ def _install_fake_frappe(
 
 			return False
 
-		def get_value(self, doctype, name, fieldname):
+		def get_value(self, doctype, name, fieldname, as_dict=False):
 			if isinstance(name, dict):
 				key = (doctype, tuple(sorted(name.items())), fieldname)
 				if key in value_map:
@@ -146,6 +148,8 @@ def _install_fake_frappe(
 						if fieldname == "name":
 							return candidate_name
 						if isinstance(fieldname, (list, tuple)):
+							if as_dict:
+								return {field: getattr(doc, field, None) for field in fieldname}
 							return [getattr(doc, field, None) for field in fieldname]
 						return getattr(doc, fieldname, None)
 				return None
@@ -159,9 +163,20 @@ def _install_fake_frappe(
 				return None
 
 			if isinstance(fieldname, (list, tuple)):
+				if as_dict:
+					return {field: getattr(doc, field, None) for field in fieldname}
 				return [getattr(doc, field, None) for field in fieldname]
 
 			return getattr(doc, fieldname, None)
+
+		def set_value(self, doctype, name, fieldname, value=None, update_modified=True):
+			doc = docs_map[(doctype, name)]
+			if isinstance(fieldname, dict):
+				for key, field_value in fieldname.items():
+					setattr(doc, key, field_value)
+			else:
+				setattr(doc, fieldname, value)
+			return doc
 
 	def _throw(message):
 		raise RuntimeError(message)
@@ -190,6 +205,20 @@ def _install_fake_frappe(
 	frappe.conf = {}
 	frappe.get_doc = _get_doc
 	frappe.get_cached_doc = lambda doctype, name: docs_map[(doctype, name)]
+	frappe.get_all = lambda doctype, fields=None, filters=None, pluck=None: [
+		candidate_name
+		if pluck == "name"
+		else (
+			getattr(doc, pluck, None)
+			if pluck
+			else {field: getattr(doc, field, None) for field in (fields or [])}
+		)
+		for (candidate_doctype, candidate_name), doc in docs_map.items()
+		if candidate_doctype == doctype
+		and (
+			not filters or all(getattr(doc, fieldname, None) == value for fieldname, value in filters.items())
+		)
+	]
 	frappe.DuplicateEntryError = DuplicateEntryError
 	frappe.log_error = lambda *args, **kwargs: None
 	frappe.get_traceback = lambda: "traceback"
@@ -220,7 +249,7 @@ def _install_fake_frappe(
 	return file_doc_requests
 
 
-def _install_fake_ifitwala_ed(*, dispatcher_recorder: dict):
+def _install_fake_ifitwala_ed(*, dispatcher_recorder: dict | None = None, install_dispatcher: bool = True):
 	import frappe
 
 	ed_package_root = Path(__file__).resolve().parents[2].parent / "ifitwala_ed" / "ifitwala_ed"
@@ -228,13 +257,16 @@ def _install_fake_ifitwala_ed(*, dispatcher_recorder: dict):
 	integrations_package_root = ed_package_root / "integrations"
 	drive_integrations_package_root = integrations_package_root / "drive"
 
-	dispatcher = types.ModuleType("ifitwala_ed.utilities.file_dispatcher")
+	dispatcher = None
+	if install_dispatcher:
+		dispatcher = types.ModuleType("ifitwala_ed.utilities.file_dispatcher")
 
-	def create_and_classify_file(**kwargs):
-		dispatcher_recorder["call"] = kwargs
-		return types.SimpleNamespace(name="FILE-0001")
+		def create_and_classify_file(**kwargs):
+			if dispatcher_recorder is not None:
+				dispatcher_recorder["call"] = kwargs
+			return types.SimpleNamespace(name="FILE-0001")
 
-	dispatcher.create_and_classify_file = create_and_classify_file
+		dispatcher.create_and_classify_file = create_and_classify_file
 
 	file_management = types.ModuleType("ifitwala_ed.utilities.file_management")
 	file_management.get_settings = lambda: object()
@@ -330,9 +362,10 @@ def _install_fake_ifitwala_ed(*, dispatcher_recorder: dict):
 
 	utilities = types.ModuleType("ifitwala_ed.utilities")
 	utilities.__path__ = [str(utilities_package_root)]
-	utilities.file_dispatcher = dispatcher
 	utilities.file_management = file_management
 	utilities.file_classification_contract = file_classification_contract
+	if dispatcher is not None:
+		utilities.file_dispatcher = dispatcher
 
 	integrations = types.ModuleType("ifitwala_ed.integrations")
 	integrations.__path__ = [str(integrations_package_root)]
@@ -352,12 +385,13 @@ def _install_fake_ifitwala_ed(*, dispatcher_recorder: dict):
 
 	sys.modules["ifitwala_ed"] = ifitwala_ed
 	sys.modules["ifitwala_ed.utilities"] = utilities
-	sys.modules["ifitwala_ed.utilities.file_dispatcher"] = dispatcher
 	sys.modules["ifitwala_ed.utilities.file_management"] = file_management
 	sys.modules["ifitwala_ed.utilities.file_classification_contract"] = file_classification_contract
 	sys.modules["ifitwala_ed.integrations"] = integrations
 	sys.modules["ifitwala_ed.integrations.drive"] = drive_integrations
 	sys.modules["ifitwala_ed.integrations.drive.bridge"] = bridge
+	if dispatcher is not None:
+		sys.modules["ifitwala_ed.utilities.file_dispatcher"] = dispatcher
 
 
 def _load_module(module_name: str):
@@ -609,6 +643,7 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 	file_doc_requests = _install_fake_frappe(
 		exists_map={
 			("Task Submission", "TSUB-0001"): True,
+			("File", "Home/Attachments"): True,
 		},
 		value_map={
 			("School", "SCH-0001", "organization"): "ORG-0001",
@@ -618,15 +653,14 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 			("Task Submission", "TSUB-0001"): task_submission,
 		},
 		now=now,
-		forbid_file_doc=True,
 	)
-	dispatcher_recorder: dict[str, dict] = {}
-	_install_fake_ifitwala_ed(dispatcher_recorder=dispatcher_recorder)
+	_install_fake_ifitwala_ed(install_dispatcher=False)
 	module = _load_module("ifitwala_drive.services.uploads.finalize")
 	sys.modules["magic"] = types.SimpleNamespace(
 		from_buffer=lambda content,
 		mime=True: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 	)
+	finalized_artifact: dict[str, str] = {}
 
 	class FakeStorage:
 		backend_name = "gcs"
@@ -645,9 +679,10 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 			assert final_key.startswith("files/")
 			assert final_key.endswith(".docx")
 			assert len(final_key.split("/")[-1].split(".")[0]) == 64
+			finalized_artifact["file_url"] = f"https://storage.ifitwala.invalid/object/{final_key}"
 			return {
 				"object_key": final_key,
-				"file_url": f"https://storage.ifitwala.invalid/object/{final_key}",
+				"file_url": finalized_artifact["file_url"],
 			}
 
 		def abort_temporary_object(self, *, object_key: str) -> None:
@@ -670,7 +705,7 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 		"canonical_ref": "drv:ORG-0001:DF-0001",
 		"status": "completed",
 		"preview_status": "not_applicable",
-		"file_url": None,
+		"file_url": finalized_artifact["file_url"],
 	}
 	assert session_doc.status == "completed"
 	assert session_doc.file == "FILE-0001"
@@ -678,17 +713,29 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 	assert session_doc.drive_file_version == "DFV-0001"
 	assert session_doc.canonical_ref == "drv:ORG-0001:DF-0001"
 	assert session_doc.content_hash == "sha256:abc123"
-	assert dispatcher_recorder["call"]["classification"]["slot"] == "submission"
-	assert dispatcher_recorder["call"]["classification"]["primary_subject_type"] == "Student"
-	assert dispatcher_recorder["call"]["secondary_subjects"] == [
+	assert len(file_doc_requests) == 1
+	assert file_doc_requests[0] == {
+		"doctype": "File",
+		"attached_to_doctype": "Task Submission",
+		"attached_to_name": "TSUB-0001",
+		"is_private": 1,
+		"file_name": "essay.docx",
+		"file_url": finalized_artifact["file_url"],
+		"folder": "Home/Attachments",
+		"file_size": 543210,
+	}
+	created_file = FakeDoc._docs_map[("File", "FILE-0001")]
+	assert getattr(created_file.flags, "governed_upload", False) is True
+	assert getattr(created_file.flags, "drive_compat_projection", False) is True
+	classification_doc = FakeDoc._docs_map[("File Classification", "FC-0001")]
+	assert classification_doc.file == "FILE-0001"
+	assert classification_doc.slot == "submission"
+	assert classification_doc.primary_subject_type == "Student"
+	assert classification_doc.primary_subject_id == "STU-0001"
+	assert classification_doc.is_current_version == 1
+	assert classification_doc.secondary_subjects == [
 		{"subject_type": "Student", "subject_id": "STU-0002", "role": "co-owner"}
 	]
-	assert dispatcher_recorder["call"]["context_override"] == {
-		"student": "STU-0001",
-		"task_name": "TASK-0001",
-		"routing": "task_submission",
-	}
-	assert file_doc_requests == []
 
 
 def test_finalize_rejects_task_submission_context_drift(monkeypatch):

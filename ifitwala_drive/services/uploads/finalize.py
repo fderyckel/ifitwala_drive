@@ -11,6 +11,10 @@ from frappe.utils import get_datetime, now_datetime
 from ifitwala_drive.services.audit.events import record_drive_access_event
 from ifitwala_drive.services.concurrency import drive_lock
 from ifitwala_drive.services.files.creation import create_drive_file_artifacts
+from ifitwala_drive.services.files.projections import (
+	ensure_file_classification_projection,
+	ensure_native_file_projection,
+)
 from ifitwala_drive.services.integration.ifitwala_ed_bridge import (
 	resolve_finalize_contract,
 	run_post_finalize,
@@ -27,41 +31,6 @@ _FINALIZE_POLL_SECONDS = 0.25
 _STALE_FINALIZING_SECONDS = 90
 
 
-def _call_authoritative_create_and_classify_file(
-	*,
-	file_kwargs: dict[str, Any],
-	classification: dict[str, Any],
-	secondary_subjects: list[dict[str, Any]] | None = None,
-	context_override: dict[str, Any] | None = None,
-):
-	try:
-		from ifitwala_ed.utilities.file_dispatcher import create_and_classify_file
-	except ImportError as exc:
-		frappe.throw(
-			_("Authoritative Ifitwala_Ed dispatcher is unavailable for governed finalization: {0}").format(
-				exc
-			)
-		)
-
-	return create_and_classify_file(
-		file_kwargs=file_kwargs,
-		classification=classification,
-		secondary_subjects=secondary_subjects,
-		context_override=context_override,
-	)
-
-
-def _get_secondary_subjects(doc) -> list[dict[str, Any]]:
-	return [
-		{
-			"subject_type": row.subject_type,
-			"subject_id": row.subject_id,
-			"role": getattr(row, "role", None) or "referenced",
-		}
-		for row in (doc.secondary_subjects or [])
-	]
-
-
 def _build_final_object_key(doc) -> str:
 	return build_upload_object_key(
 		session_key=getattr(doc, "session_key", None) or getattr(doc, "name", None) or "",
@@ -72,41 +41,6 @@ def _build_final_object_key(doc) -> str:
 		slot=getattr(doc, "intended_slot", None) or "",
 		filename=getattr(doc, "filename_original", None) or "upload.bin",
 	)
-
-
-def _build_file_kwargs(
-	doc,
-	storage_artifact: dict[str, Any],
-	finalize_contract: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-	file_url = storage_artifact.get("file_url") or storage_artifact.get("object_key")
-	attached_field = (finalize_contract or {}).get("attached_field_override")
-
-	file_kwargs = {
-		"attached_to_doctype": doc.attached_doctype,
-		"attached_to_name": doc.attached_name,
-		"is_private": doc.is_private,
-		"file_name": doc.filename_original,
-		"file_url": file_url,
-	}
-	if attached_field:
-		file_kwargs["attached_to_field"] = attached_field
-
-	return file_kwargs
-
-
-def _build_classification(doc) -> dict[str, Any]:
-	return {
-		"primary_subject_type": doc.intended_primary_subject_type,
-		"primary_subject_id": doc.intended_primary_subject_id,
-		"data_class": doc.intended_data_class,
-		"purpose": doc.intended_purpose,
-		"retention_policy": doc.intended_retention_policy,
-		"slot": doc.intended_slot,
-		"organization": doc.organization,
-		"school": doc.school,
-		"upload_source": doc.upload_source,
-	}
 
 
 def _coerce_datetime(value: Any) -> datetime | None:
@@ -254,12 +188,12 @@ def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 			storage_artifact["size_bytes"] = doc.received_size_bytes
 		if getattr(doc, "content_hash", None):
 			storage_artifact["content_hash"] = doc.content_hash
-		created = _call_authoritative_create_and_classify_file(
-			file_kwargs=_build_file_kwargs(doc, storage_artifact, finalize_contract),
-			classification=_build_classification(doc),
-			secondary_subjects=_get_secondary_subjects(doc),
-			context_override=(finalize_contract or {}).get("context_override"),
+		created = ensure_native_file_projection(
+			upload_session_doc=doc,
+			storage_artifact=storage_artifact,
+			finalize_contract=finalize_contract,
 		)
+		ensure_file_classification_projection(upload_session_doc=doc, file_doc=created)
 		drive_artifacts = create_drive_file_artifacts(
 			upload_session_doc=doc,
 			file_id=created.name,

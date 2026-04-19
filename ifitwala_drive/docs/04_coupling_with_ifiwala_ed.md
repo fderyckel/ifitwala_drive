@@ -13,7 +13,8 @@ Code refs:
 - Ed remains the workflow and permission authority.
 - Drive remains the governed file execution authority.
 - Neither app may reach through the other app's internals to finish its job.
-- Current code still contains leaks; those leaks are transitional defects, not approved architecture.
+- Ingress and finalize now follow the locked boundary.
+- Remaining migration work is about removing compatibility baggage, not reopening the boundary.
 
 ## 1. The boundary
 
@@ -126,11 +127,12 @@ Because the apps are tightly coupled:
 
 But tight coupling is not permission to call each other's internals arbitrarily.
 
-## 8. Current-runtime violations to remove
+## 8. Remaining migration work
 
-Current code still shows these defects:
+Current code still shows these transitional behaviors:
 
-- Ed upload helpers that write temp blobs and mutate upload sessions directly
-- Drive finalize code that imports Ed dispatcher logic
+- Drive still emits native `File` compatibility projections for current Ed surfaces
+- Drive may still emit temporary `File Classification` projections while migration continues
+- Ed read and derivative paths still need cleanup so those projections can be removed
 
-These patterns must be removed during the boundary refactor.
+These are migration constraints, not target architecture.

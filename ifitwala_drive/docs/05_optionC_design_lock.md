@@ -97,8 +97,7 @@ Boundary cleanup.
 
 Goal:
 
-- Ed stops writing temp objects or mutating sessions
-- Drive stops importing Ed dispatcher/file-routing internals
+- completed in code
 
 ### Phase 3
 
