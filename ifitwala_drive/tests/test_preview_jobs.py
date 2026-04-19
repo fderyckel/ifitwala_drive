@@ -67,7 +67,13 @@ def _install_fake_frappe(*, docs_map=None, now=None):
 	now = now or datetime(2026, 4, 16, 14, 0, 0)
 	enqueue_calls: list[dict[str, object]] = []
 
+	class _AfterCommit:
+		def add(self, callback):
+			callback()
+
 	class FakeDB:
+		after_commit = _AfterCommit()
+
 		def exists(self, doctype, name=None):
 			if isinstance(name, dict):
 				for candidate_doctype, candidate_name in list(FakeDoc._docs_map):
@@ -96,6 +102,22 @@ def _install_fake_frappe(*, docs_map=None, now=None):
 				return None
 			return getattr(doc, fieldname, None)
 
+		def get_all(self, doctype, filters=None, fields=None):
+			filters = filters or {}
+			fields = fields or ["name"]
+			rows = []
+			for candidate_doctype, candidate_name in list(FakeDoc._docs_map):
+				if candidate_doctype != doctype:
+					continue
+				doc = FakeDoc._docs_map[(candidate_doctype, candidate_name)]
+				if not _matches(doc, filters):
+					continue
+				row = {}
+				for fieldname in fields:
+					row[fieldname] = candidate_name if fieldname == "name" else getattr(doc, fieldname, None)
+				rows.append(row)
+			return rows
+
 	def _throw(message, exc=None):
 		raise RuntimeError(message)
 
@@ -109,6 +131,7 @@ def _install_fake_frappe(*, docs_map=None, now=None):
 	frappe._ = lambda message: message
 	frappe.db = FakeDB()
 	frappe.get_doc = _get_doc
+	frappe.get_all = frappe.db.get_all
 	frappe.DuplicateEntryError = RuntimeError
 	frappe.enqueue = lambda method, **kwargs: enqueue_calls.append({"method": method, **kwargs})
 
@@ -605,3 +628,133 @@ def test_run_preview_job_marks_failed_when_renderer_unavailable(monkeypatch):
 	assert thumb.error_code == "preview_runtime_missing"
 	assert viewer.status == "failed"
 	assert viewer.error_code == "preview_runtime_missing"
+
+
+def test_reconcile_preview_derivatives_service_requeues_missing_thumb():
+	now = datetime(2026, 4, 16, 14, 0, 0)
+	drive_file = FakeDoc(
+		{
+			"doctype": "Drive File",
+			"name": "DF-0100",
+			"file": "FILE-0100",
+			"status": "active",
+			"current_version": "DFV-0100",
+			"preview_status": "ready",
+			"content_hash": "sha256:image-source",
+		}
+	)
+	version = FakeDoc(
+		{
+			"doctype": "Drive File Version",
+			"name": "DFV-0100",
+			"drive_file": "DF-0100",
+			"mime_type": "image/png",
+		}
+	)
+	viewer = FakeDoc(
+		{
+			"doctype": "Drive File Derivative",
+			"name": "DFD-0100",
+			"drive_file": "DF-0100",
+			"drive_file_version": "DFV-0100",
+			"derivative_role": "viewer_preview",
+			"status": "ready",
+			"modified": now,
+		}
+	)
+	enqueue_calls = _install_fake_frappe(
+		docs_map={
+			("Drive File", "DF-0100"): drive_file,
+			("Drive File Version", "DFV-0100"): version,
+			("Drive File Derivative", "DFD-0100"): viewer,
+		},
+		now=now,
+	)
+	module = _load_module()
+
+	result = module.reconcile_preview_derivatives_service(limit=10, stalled_minutes=20, cooldown_minutes=60)
+
+	assert result["status"] == "completed"
+	assert result["requeued"] == 1
+	assert result["reasons"] == {"missing:thumb": 1}
+	assert drive_file.preview_status == "pending"
+
+	thumb = FakeDoc._docs_map[("Drive File Derivative", "DFD-0001")]
+	assert thumb.derivative_role == "thumb"
+	assert thumb.status == "pending"
+	assert thumb.drive_file_version == "DFV-0100"
+
+	job = FakeDoc._docs_map[("Drive Processing Job", "DPJ-0001")]
+	assert job.job_type == "preview"
+	assert job.status == "queued"
+	assert enqueue_calls == [
+		{
+			"method": "ifitwala_drive.services.files.derivatives.run_preview_job",
+			"queue": "default",
+			"job_id": "drive-preview:DPJ-0001",
+			"drive_processing_job_id": "DPJ-0001",
+		}
+	]
+
+
+def test_reconcile_preview_derivatives_service_skips_runtime_missing_failures():
+	now = datetime(2026, 4, 16, 14, 0, 0)
+	drive_file = FakeDoc(
+		{
+			"doctype": "Drive File",
+			"name": "DF-0200",
+			"file": "FILE-0200",
+			"status": "active",
+			"current_version": "DFV-0200",
+			"preview_status": "failed",
+			"content_hash": "sha256:image-source",
+		}
+	)
+	version = FakeDoc(
+		{
+			"doctype": "Drive File Version",
+			"name": "DFV-0200",
+			"drive_file": "DF-0200",
+			"mime_type": "image/png",
+		}
+	)
+	thumb = FakeDoc(
+		{
+			"doctype": "Drive File Derivative",
+			"name": "DFD-0200",
+			"drive_file": "DF-0200",
+			"drive_file_version": "DFV-0200",
+			"derivative_role": "thumb",
+			"status": "failed",
+			"error_code": "preview_runtime_missing",
+			"modified": datetime(2026, 4, 16, 12, 0, 0),
+		}
+	)
+	viewer = FakeDoc(
+		{
+			"doctype": "Drive File Derivative",
+			"name": "DFD-0201",
+			"drive_file": "DF-0200",
+			"drive_file_version": "DFV-0200",
+			"derivative_role": "viewer_preview",
+			"status": "ready",
+			"modified": now,
+		}
+	)
+	enqueue_calls = _install_fake_frappe(
+		docs_map={
+			("Drive File", "DF-0200"): drive_file,
+			("Drive File Version", "DFV-0200"): version,
+			("Drive File Derivative", "DFD-0200"): thumb,
+			("Drive File Derivative", "DFD-0201"): viewer,
+		},
+		now=now,
+	)
+	module = _load_module()
+
+	result = module.reconcile_preview_derivatives_service(limit=10, stalled_minutes=20, cooldown_minutes=60)
+
+	assert result["status"] == "completed"
+	assert result["requeued"] == 0
+	assert result["reasons"] == {}
+	assert enqueue_calls == []

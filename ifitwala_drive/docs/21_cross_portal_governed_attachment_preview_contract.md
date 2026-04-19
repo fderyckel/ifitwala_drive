@@ -252,6 +252,7 @@ Refined delivery split:
 - richer image preview surfaces should request `viewer_preview`
 - PDF preview continues to use `pdf_page_1`
 - `issue_preview_grant(...)` should therefore accept `derivative_role`, with current richer-preview behavior preserved as the compatibility default during rollout
+- finalize/replace flows for supported image files should keep `thumb` and `viewer_preview` derivative rows scheduled as the normal path, with worker enqueue happening after the governing transaction commits
 
 Ed/Drive boundary rule:
 
@@ -287,6 +288,7 @@ Failure posture:
 - preview failure must never block normal file ownership or download semantics
 - unsupported files remain valid governed files
 - heavy processing must stay off hot request paths
+- bounded worker-driven reconciliation may repair missing or stale current-version derivatives, but read routes in Ed must not mutate Drive state on `GET`
 
 ## Storage Contract
 

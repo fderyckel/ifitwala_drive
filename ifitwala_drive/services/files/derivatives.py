@@ -51,6 +51,10 @@ _ERROR_CODE_GENERATION_FAILED = "preview_generation_failed"
 _ERROR_CODE_RUNTIME_MISSING = "preview_runtime_missing"
 _ERROR_CODE_SOURCE_READ_FAILED = "source_read_failed"
 _STALE_DERIVATIVE_GRACE_DAYS = 30
+_FAILED_RECONCILIATION_ERROR_CODES = {
+	_ERROR_CODE_UNSUPPORTED,
+	_ERROR_CODE_RUNTIME_MISSING,
+}
 
 
 def _get_all(doctype: str, *, filters: dict[str, Any], fields: list[str]) -> list[dict[str, Any]]:
@@ -259,6 +263,15 @@ def _enqueue_preview_job_execution(job_name: str, queue_name: str) -> None:
 	)
 
 
+def _schedule_preview_job_execution(job_name: str, queue_name: str) -> None:
+	after_commit = getattr(getattr(frappe, "db", None), "after_commit", None)
+	add = getattr(after_commit, "add", None)
+	if callable(add):
+		add(lambda: _enqueue_preview_job_execution(job_name, queue_name))
+		return
+	_enqueue_preview_job_execution(job_name, queue_name)
+
+
 def _ensure_derivative_row(
 	*,
 	drive_file_id: str,
@@ -340,7 +353,7 @@ def _ensure_preview_job(
 		}
 	)
 	job.insert(ignore_permissions=True)
-	_enqueue_preview_job_execution(job.name, queue_name)
+	_schedule_preview_job_execution(job.name, queue_name)
 	return job.name
 
 
@@ -818,4 +831,154 @@ def sync_preview_pipeline_for_current_version(
 		"preview_status": drive_file_doc.preview_status,
 		"derivative_ids": derivative_ids,
 		"drive_processing_job_id": job_id,
+	}
+
+
+def _preview_job_activity_timestamp(job_row: dict[str, Any]) -> datetime | None:
+	for fieldname in ("finished_on", "started_on", "modified", "creation"):
+		resolved = _coerce_datetime(job_row.get(fieldname))
+		if resolved is not None:
+			return resolved
+	return None
+
+
+def _preview_job_state_for_drive_file(*, drive_file_id: str, now: datetime, cooldown_minutes: int) -> str:
+	cutoff = now - timedelta(minutes=max(int(cooldown_minutes or 0), 0))
+	latest_activity: datetime | None = None
+	latest_status = ""
+
+	for row in _get_all(
+		"Drive Processing Job",
+		filters={"job_type": "preview", "drive_file": drive_file_id},
+		fields=["name", "status", "finished_on", "started_on", "modified", "creation"],
+	):
+		status = str(row.get("status") or "").strip().lower()
+		if status in _PREVIEW_JOB_STATUSES:
+			return "active"
+		activity_on = _preview_job_activity_timestamp(row)
+		if activity_on is None:
+			continue
+		if latest_activity is None or activity_on > latest_activity:
+			latest_activity = activity_on
+			latest_status = status
+
+	if latest_activity is not None and latest_activity >= cutoff:
+		return "cooldown"
+	if latest_status == "failed":
+		return "failed"
+	return "idle"
+
+
+def _should_retry_failed_derivative(row: dict[str, Any]) -> bool:
+	error_code = str(row.get("error_code") or "").strip()
+	return error_code not in _FAILED_RECONCILIATION_ERROR_CODES
+
+
+def reconcile_preview_derivatives_service(
+	*,
+	limit: int = 100,
+	stalled_minutes: int = 20,
+	cooldown_minutes: int = 60,
+) -> dict[str, Any]:
+	resolved_limit = max(int(limit or 0), 0)
+	resolved_stalled_minutes = max(int(stalled_minutes or 0), 1)
+	resolved_cooldown_minutes = max(int(cooldown_minutes or 0), 0)
+	now = now_datetime()
+
+	scanned = 0
+	requeued = 0
+	skipped_active = 0
+	skipped_cooldown = 0
+	skipped_terminal = 0
+	reasons: dict[str, int] = {}
+
+	for row in _get_all(
+		"Drive File",
+		filters={"status": "active"},
+		fields=["name", "current_version", "preview_status", "content_hash"],
+	):
+		if resolved_limit and scanned >= resolved_limit:
+			break
+
+		drive_file_id = str(row.get("name") or "").strip()
+		current_version = str(row.get("current_version") or "").strip()
+		if not drive_file_id or not current_version:
+			continue
+
+		mime_type = frappe.db.get_value("Drive File Version", current_version, "mime_type")
+		plan = preview_plan_for_mime_type(mime_type)
+		if not plan["supported"]:
+			continue
+
+		derivative_rows = {
+			str(candidate.get("derivative_role") or "").strip(): candidate
+			for candidate in _get_all(
+				"Drive File Derivative",
+				filters={"drive_file": drive_file_id, "drive_file_version": current_version},
+				fields=["name", "derivative_role", "status", "modified", "error_code"],
+			)
+		}
+		expected_roles = [str(role or "").strip() for role in plan["derivative_roles"]]
+
+		reconcile_reason = ""
+		for derivative_role in expected_roles:
+			derivative_row = derivative_rows.get(derivative_role)
+			if not derivative_row:
+				reconcile_reason = f"missing:{derivative_role}"
+				break
+
+			status = str(derivative_row.get("status") or "").strip().lower()
+			modified_on = _coerce_datetime(derivative_row.get("modified"))
+			is_stalled = modified_on is None or modified_on <= now - timedelta(
+				minutes=resolved_stalled_minutes
+			)
+			if status in {"pending", "processing"} and is_stalled:
+				reconcile_reason = f"stalled:{derivative_role}"
+				break
+			if status == "failed" and is_stalled and _should_retry_failed_derivative(derivative_row):
+				reconcile_reason = f"retry_failed:{derivative_role}"
+				break
+			if status in {"unsupported"}:
+				reconcile_reason = ""
+				break
+
+		if not reconcile_reason and str(row.get("preview_status") or "").strip().lower() == "pending":
+			reconcile_reason = "missing_job"
+
+		if not reconcile_reason:
+			continue
+
+		scanned += 1
+		job_state = _preview_job_state_for_drive_file(
+			drive_file_id=drive_file_id,
+			now=now,
+			cooldown_minutes=resolved_cooldown_minutes,
+		)
+		if job_state == "active":
+			skipped_active += 1
+			continue
+		if job_state == "cooldown":
+			skipped_cooldown += 1
+			continue
+		if job_state == "failed" and reconcile_reason.startswith("retry_failed:"):
+			skipped_terminal += 1
+			continue
+
+		drive_file_doc = frappe.get_doc("Drive File", drive_file_id)
+		sync_preview_pipeline_for_current_version(
+			drive_file_doc=drive_file_doc,
+			mime_type=mime_type,
+		)
+		drive_file_doc.save(ignore_permissions=True)
+		requeued += 1
+		reasons[reconcile_reason] = reasons.get(reconcile_reason, 0) + 1
+
+	return {
+		"status": "completed",
+		"scanned": scanned,
+		"requeued": requeued,
+		"skipped_active": skipped_active,
+		"skipped_cooldown": skipped_cooldown,
+		"skipped_terminal": skipped_terminal,
+		"reasons": reasons,
 	}
