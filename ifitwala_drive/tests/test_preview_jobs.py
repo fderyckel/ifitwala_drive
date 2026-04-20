@@ -242,7 +242,7 @@ def test_sync_preview_pipeline_enqueues_preview_job_for_supported_pdf():
 	)
 
 	assert result["preview_status"] == "pending"
-	assert result["derivative_ids"] == ["DFD-0001"]
+	assert result["derivative_ids"] == ["DFD-0001", "DFD-0002"]
 	assert result["drive_processing_job_id"] == "DPJ-0001"
 	assert enqueue_calls == [
 		{
@@ -256,7 +256,7 @@ def test_sync_preview_pipeline_enqueues_preview_job_for_supported_pdf():
 	job_doc = FakeDoc._docs_map[("Drive Processing Job", "DPJ-0001")]
 	payload = json.loads(job_doc.payload_json)
 	assert payload == {
-		"derivative_roles": ["pdf_page_1"],
+		"derivative_roles": ["pdf_card", "pdf_page_1"],
 		"drive_file_version": "DFV-0002",
 		"mime_type": "application/pdf",
 	}
@@ -404,7 +404,7 @@ def test_run_preview_job_marks_viewer_and_thumb_ready(monkeypatch):
 	]
 
 
-def test_run_preview_job_marks_pdf_first_page_ready(monkeypatch):
+def test_run_preview_job_marks_pdf_card_and_first_page_ready(monkeypatch):
 	drive_file = FakeDoc(
 		{
 			"doctype": "Drive File",
@@ -433,6 +433,16 @@ def test_run_preview_job_marks_pdf_first_page_ready(monkeypatch):
 			"name": "DFD-0001",
 			"drive_file": "DF-0002",
 			"drive_file_version": "DFV-0002",
+			"derivative_role": "pdf_card",
+			"status": "pending",
+		}
+	)
+	pdf_page_rich = FakeDoc(
+		{
+			"doctype": "Drive File Derivative",
+			"name": "DFD-0002",
+			"drive_file": "DF-0002",
+			"drive_file_version": "DFV-0002",
 			"derivative_role": "pdf_page_1",
 			"status": "pending",
 		}
@@ -450,7 +460,7 @@ def test_run_preview_job_marks_pdf_first_page_ready(monkeypatch):
 				{
 					"drive_file_version": "DFV-0002",
 					"mime_type": "application/pdf",
-					"derivative_roles": ["pdf_page_1"],
+					"derivative_roles": ["pdf_card", "pdf_page_1"],
 				},
 				sort_keys=True,
 			),
@@ -461,6 +471,7 @@ def test_run_preview_job_marks_pdf_first_page_ready(monkeypatch):
 			("Drive File", "DF-0002"): drive_file,
 			("Drive File Version", "DFV-0002"): version,
 			("Drive File Derivative", "DFD-0001"): pdf_page,
+			("Drive File Derivative", "DFD-0002"): pdf_page_rich,
 			("Drive Processing Job", "DPJ-0001"): job,
 		}
 	)
@@ -493,39 +504,62 @@ def test_run_preview_job_marks_pdf_first_page_ready(monkeypatch):
 	monkeypatch.setattr(
 		module,
 		"_render_pdf_derivative",
-		lambda *, source_content, derivative_role: {
-			"content": b"rendered-pdf-page-1",
-			"mime_type": "image/png",
-			"file_extension": "png",
-			"width": 960,
-			"height": 1357,
-			"size_bytes": len(b"rendered-pdf-page-1"),
-			"page_count": 4,
-		},
+		lambda *, source_content, derivative_role: (
+			{
+				"content": b"rendered-pdf-card",
+				"mime_type": "image/jpeg",
+				"file_extension": "jpg",
+				"width": 560,
+				"height": 792,
+				"size_bytes": len(b"rendered-pdf-card"),
+				"page_count": 4,
+			}
+			if derivative_role == "pdf_card"
+			else {
+				"content": b"rendered-pdf-page-1",
+				"mime_type": "image/jpeg",
+				"file_extension": "jpg",
+				"width": 960,
+				"height": 1357,
+				"size_bytes": len(b"rendered-pdf-page-1"),
+				"page_count": 4,
+			}
+		),
 	)
 
 	result = module.run_preview_job(drive_processing_job_id="DPJ-0001")
 
 	assert result["status"] == "completed"
 	assert result["preview_status"] == "ready"
-	assert result["ready_roles"] == ["pdf_page_1"]
+	assert result["ready_roles"] == ["pdf_card", "pdf_page_1"]
 	assert result["failed_roles"] == []
 	assert drive_file.preview_status == "ready"
 	assert job.status == "completed"
 
 	assert pdf_page.status == "ready"
-	assert pdf_page.storage_object_key == "derivatives/DF-0002/DFV-0002/pdf_page_1.png"
-	assert pdf_page.mime_type == "image/png"
-	assert pdf_page.width == 960
-	assert pdf_page.height == 1357
+	assert pdf_page.storage_object_key == "derivatives/DF-0002/DFV-0002/pdf_card.jpg"
+	assert pdf_page.mime_type == "image/jpeg"
+	assert pdf_page.width == 560
+	assert pdf_page.height == 792
 	assert pdf_page.page_count == 4
+	assert pdf_page_rich.status == "ready"
+	assert pdf_page_rich.storage_object_key == "derivatives/DF-0002/DFV-0002/pdf_page_1.jpg"
+	assert pdf_page_rich.mime_type == "image/jpeg"
+	assert pdf_page_rich.width == 960
+	assert pdf_page_rich.height == 1357
+	assert pdf_page_rich.page_count == 4
 
 	assert storage.writes == [
 		{
-			"object_key": "derivatives/DF-0002/DFV-0002/pdf_page_1.png",
+			"object_key": "derivatives/DF-0002/DFV-0002/pdf_card.jpg",
+			"content": b"rendered-pdf-card",
+			"mime_type": "image/jpeg",
+		},
+		{
+			"object_key": "derivatives/DF-0002/DFV-0002/pdf_page_1.jpg",
 			"content": b"rendered-pdf-page-1",
-			"mime_type": "image/png",
-		}
+			"mime_type": "image/jpeg",
+		},
 	]
 
 

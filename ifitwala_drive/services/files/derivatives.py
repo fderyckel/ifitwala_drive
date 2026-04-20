@@ -13,11 +13,12 @@ from ifitwala_drive.services.queueing import resolve_enqueue_queue
 from ifitwala_drive.services.storage.base import build_object_key, get_storage_backend
 
 DEFAULT_PREVIEW_DERIVATIVE_ROLE = "viewer_preview"
+PDF_CARD_DERIVATIVE_ROLE = "pdf_card"
 DEFAULT_PDF_PREVIEW_DERIVATIVE_ROLE = "pdf_page_1"
 _IMAGE_PREVIEW_ROLES = ("thumb", "viewer_preview")
-_PDF_PREVIEW_ROLES = (DEFAULT_PDF_PREVIEW_DERIVATIVE_ROLE,)
+_PDF_PREVIEW_ROLES = (PDF_CARD_DERIVATIVE_ROLE, DEFAULT_PDF_PREVIEW_DERIVATIVE_ROLE)
 _PREVIEW_JOB_STATUSES = ("queued", "running")
-_DERIVATIVE_RENDER_ORDER = ("viewer_preview", "card", "pdf_page_1", "thumb")
+_DERIVATIVE_RENDER_ORDER = ("viewer_preview", "card", PDF_CARD_DERIVATIVE_ROLE, "pdf_page_1", "thumb")
 _SUPPORTED_IMAGE_PREVIEW_MIME_TYPES = {
 	"image/jpeg",
 	"image/jpg",
@@ -46,11 +47,19 @@ _IMAGE_DERIVATIVE_SPECS = {
 	},
 }
 _PDF_DERIVATIVE_SPECS = {
+	"pdf_card": {
+		"max_width": 560,
+		"output_format": "jpeg",
+		"mime_type": "image/jpeg",
+		"file_extension": "jpg",
+		"jpg_quality": 70,
+	},
 	"pdf_page_1": {
 		"max_width": 960,
-		"output_format": "png",
-		"mime_type": "image/png",
-		"file_extension": "png",
+		"output_format": "jpeg",
+		"mime_type": "image/jpeg",
+		"file_extension": "jpg",
+		"jpg_quality": 82,
 	},
 }
 _ERROR_CODE_UNSUPPORTED = "unsupported_mime_type"
@@ -497,7 +506,10 @@ def _render_pdf_derivative(*, source_content: bytes, derivative_role: str) -> di
 				scale = 1.0
 
 		pixmap = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), alpha=False)
-		content = pixmap.tobytes(spec["output_format"])
+		render_options: dict[str, Any] = {}
+		if str(spec.get("output_format") or "").strip().lower() in {"jpg", "jpeg"}:
+			render_options["jpg_quality"] = int(spec.get("jpg_quality") or 95)
+		content = pixmap.tobytes(spec["output_format"], **render_options)
 		return {
 			"content": content,
 			"mime_type": spec["mime_type"],

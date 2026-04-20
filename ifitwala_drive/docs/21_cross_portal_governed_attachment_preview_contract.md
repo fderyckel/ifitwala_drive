@@ -4,7 +4,7 @@
 
 **Proposed canonical contract for cross-app implementation**
 
-Date: 2026-04-18
+Date: 2026-04-20
 
 Code refs:
 
@@ -66,8 +66,8 @@ Drive currently has:
 - `Drive File` with a file-level `preview_status`
 - `Drive File Version` for immutable original-file versions
 - `Drive File Derivative` for version-bound derivative metadata
-- derivative-role resolution for preview grants, with `viewer_preview` preferred for images, `pdf_page_1` preferred for PDFs, and explicit `derivative_role` support for thumbnail callers
-- async `preview` jobs that create image derivatives and first-page PDF derivatives for supported MIME types
+- derivative-role resolution for preview grants, with `viewer_preview` preferred for images, `pdf_page_1` preferred for richer PDF previews, and explicit `derivative_role` support for thumbnail/card callers
+- async `preview` jobs that create image derivatives plus card-sized and richer first-page PDF derivatives for supported MIME types
 - provider-neutral final-object reads for `local` and `gcs` storage backends
 - version replacement that marks old derivatives `stale` and creates new pending derivative rows/jobs
 - derivative erasure that deletes derivative blobs and metadata together with the owning governed file
@@ -163,6 +163,7 @@ Recommended derivative roles in the first contract:
 
 - `thumb`
 - `card` for governed profile-image list/card surfaces; this role is now part of the live Drive derivative schema
+- `pdf_card` for list/card PDF first-page previews
 - `viewer_preview`
 - `pdf_page_1`
 
@@ -250,13 +251,13 @@ Test refs:
 
 Refined delivery split:
 
-- list/card attachment surfaces in Ifitwala_Ed should request the `thumb` derivative
-- the attachment `thumb` derivative should be large enough for current inline preview cards, not a micro-thumbnail that is immediately upscaled and blurred by Ed surfaces
+- list/card attachment surfaces in Ifitwala_Ed should request card-sized derivatives: `thumb` for images and `pdf_card` for PDFs
+- the attachment card derivatives should be large enough for current inline preview cards, not micro-thumbnails that are immediately upscaled and blurred by Ed surfaces
 - governed profile-image card surfaces may request the `card` derivative where the original avatar contract needs a larger but still bounded image
 - richer image preview surfaces should request `viewer_preview`
-- PDF preview continues to use `pdf_page_1`
+- richer PDF preview surfaces should request `pdf_page_1`, while inline PDF cards should request `pdf_card`
 - `issue_preview_grant(...)` should therefore accept `derivative_role`, with current richer-preview behavior preserved as the compatibility default during rollout
-- finalize/replace flows for supported image files should keep `thumb` and `viewer_preview` derivative rows scheduled as the normal path, with `card` added for `profile_image` governed files and worker enqueue happening after the governing transaction commits
+- finalize/replace flows for supported image files should keep `thumb` and `viewer_preview` derivative rows scheduled as the normal path, with `card` added for `profile_image` governed files; PDF flows should schedule both `pdf_card` and `pdf_page_1`, with worker enqueue happening after the governing transaction commits
 - derivative reconciliation should also requeue current-version derivatives when the active render spec changes, so existing ready thumbnails/previews do not stay permanently undersized or stale after a derivative-tuning deploy
 
 Ed/Drive boundary rule:

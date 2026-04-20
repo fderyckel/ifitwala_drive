@@ -424,7 +424,7 @@ def test_issue_preview_grant_uses_ready_pdf_first_page_derivative(monkeypatch):
 			"derivative_role": "pdf_page_1",
 			"status": "ready",
 			"storage_backend": "gcs",
-			"storage_object_key": "derivatives/policy/pdf-page-1.png",
+			"storage_object_key": "derivatives/policy/pdf-page-1.jpg",
 		}
 	)
 	_install_fake_frappe(
@@ -443,10 +443,10 @@ def test_issue_preview_grant_uses_ready_pdf_first_page_derivative(monkeypatch):
 			raise AssertionError("Download grant should not be issued in this test.")
 
 		def issue_preview_grant(self, *, object_key, file_url, expires_on, filename=None):
-			assert object_key == "derivatives/policy/pdf-page-1.png"
+			assert object_key == "derivatives/policy/pdf-page-1.jpg"
 			assert file_url is None
 			assert filename == "policy.pdf"
-			return {"grant_type": "signed_url", "url": "https://preview.invalid/policy-page-1.png"}
+			return {"grant_type": "signed_url", "url": "https://preview.invalid/policy-page-1.jpg"}
 
 	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
 
@@ -454,7 +454,83 @@ def test_issue_preview_grant_uses_ready_pdf_first_page_derivative(monkeypatch):
 
 	assert response == {
 		"grant_type": "signed_url",
-		"url": "https://preview.invalid/policy-page-1.png",
+		"url": "https://preview.invalid/policy-page-1.jpg",
+		"expires_on": "2026-03-19 10:10:00",
+		"preview_status": "ready",
+	}
+
+
+def test_issue_preview_grant_uses_explicit_pdf_card_derivative_when_requested(monkeypatch):
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.audit.events",
+		"ifitwala_drive.services.files.derivatives",
+		"ifitwala_drive.services.files.access",
+	)
+	drive_file = FakeDoc(
+		{
+			"name": "DF-0008",
+			"status": "active",
+			"preview_status": "ready",
+			"owner_doctype": "Task Submission",
+			"owner_name": "TSUB-0001",
+			"file": "FILE-0008",
+			"current_version": "DFV-0008",
+			"display_name": "policy.pdf",
+			"storage_backend": "gcs",
+			"storage_object_key": "files/original/policy.pdf",
+		}
+	)
+	task_submission = FakeDoc({"name": "TSUB-0001"})
+	version_doc = FakeDoc(
+		{
+			"name": "DFV-0008",
+			"drive_file": "DF-0008",
+			"mime_type": "application/pdf",
+		}
+	)
+	file_doc = FakeDoc(
+		{"name": "FILE-0008", "file_url": "https://storage.ifitwala.invalid/original/policy.pdf"}
+	)
+	derivative_doc = FakeDoc(
+		{
+			"name": "DFD-0008",
+			"drive_file": "DF-0008",
+			"drive_file_version": "DFV-0008",
+			"derivative_role": "pdf_card",
+			"status": "ready",
+			"storage_backend": "gcs",
+			"storage_object_key": "derivatives/policy/pdf-card.jpg",
+		}
+	)
+	_install_fake_frappe(
+		docs_map={
+			("Drive File", "DF-0008"): drive_file,
+			("Task Submission", "TSUB-0001"): task_submission,
+			("Drive File Version", "DFV-0008"): version_doc,
+			("File", "FILE-0008"): file_doc,
+			("Drive File Derivative", "DFD-0008"): derivative_doc,
+		},
+	)
+	module = _load_module("ifitwala_drive.services.files.access")
+
+	class FakeStorage:
+		def issue_download_grant(self, *, object_key, file_url, expires_on, filename=None):
+			raise AssertionError("Download grant should not be issued in this test.")
+
+		def issue_preview_grant(self, *, object_key, file_url, expires_on, filename=None):
+			assert object_key == "derivatives/policy/pdf-card.jpg"
+			assert file_url is None
+			assert filename == "policy.pdf"
+			return {"grant_type": "signed_url", "url": "https://preview.invalid/policy-card.jpg"}
+
+	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
+
+	response = module.issue_preview_grant_service({"drive_file_id": "DF-0008", "derivative_role": "pdf_card"})
+
+	assert response == {
+		"grant_type": "signed_url",
+		"url": "https://preview.invalid/policy-card.jpg",
 		"expires_on": "2026-03-19 10:10:00",
 		"preview_status": "ready",
 	}
