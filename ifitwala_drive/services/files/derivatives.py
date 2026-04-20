@@ -230,6 +230,62 @@ def resolve_ready_preview_derivative(
 	}
 
 
+def _expected_derivative_source_hash_for_drive_file(*, drive_file_doc, derivative_role: str) -> str | None:
+	current_version = str(getattr(drive_file_doc, "current_version", "") or "").strip()
+	if not current_version:
+		return None
+
+	content_hash = (
+		str(frappe.db.get_value("Drive File Version", current_version, "content_hash") or "").strip()
+		or str(getattr(drive_file_doc, "content_hash", "") or "").strip()
+		or None
+	)
+	return _build_derivative_source_hash(content_hash=content_hash, derivative_role=derivative_role)
+
+
+def resolve_ready_preview_derivative_state(
+	*,
+	drive_file_doc,
+	derivative_role: str = DEFAULT_PREVIEW_DERIVATIVE_ROLE,
+) -> dict[str, Any]:
+	derivative = resolve_ready_preview_derivative(
+		drive_file_doc=drive_file_doc,
+		derivative_role=derivative_role,
+	)
+	if not derivative:
+		return {
+			"state": "missing",
+			"derivative": None,
+			"expected_source_hash": _expected_derivative_source_hash_for_drive_file(
+				drive_file_doc=drive_file_doc,
+				derivative_role=derivative_role,
+			),
+			"resolved_source_hash": None,
+		}
+	expected_source_hash = _expected_derivative_source_hash_for_drive_file(
+		drive_file_doc=drive_file_doc,
+		derivative_role=derivative_role,
+	)
+	resolved_source_hash = (
+		str(frappe.db.get_value("Drive File Derivative", derivative.get("name"), "source_hash") or "").strip()
+		or None
+	)
+	if expected_source_hash and resolved_source_hash != expected_source_hash:
+		return {
+			"state": "stale",
+			"derivative": derivative,
+			"expected_source_hash": expected_source_hash,
+			"resolved_source_hash": resolved_source_hash,
+		}
+
+	return {
+		"state": "ready",
+		"derivative": derivative,
+		"expected_source_hash": expected_source_hash,
+		"resolved_source_hash": resolved_source_hash,
+	}
+
+
 def _derivative_spec_signature(derivative_role: str) -> str:
 	spec = _IMAGE_DERIVATIVE_SPECS.get(derivative_role) or _PDF_DERIVATIVE_SPECS.get(derivative_role)
 	if not spec:
@@ -893,6 +949,75 @@ def sync_preview_pipeline_for_current_version(
 		"preview_status": drive_file_doc.preview_status,
 		"derivative_ids": derivative_ids,
 		"drive_processing_job_id": job_id,
+	}
+
+
+def request_preview_derivative_refresh(
+	*,
+	drive_file_doc,
+	derivative_roles: list[str],
+	mime_type: str | None,
+) -> dict[str, Any]:
+	plan = preview_plan_for_drive_file(drive_file_doc, mime_type)
+	if not plan["supported"]:
+		return {
+			"scheduled": False,
+			"derivative_ids": [],
+			"drive_processing_job_id": None,
+			"derivative_roles": [],
+		}
+
+	allowed_roles = set(str(role or "").strip() for role in (plan.get("derivative_roles") or []))
+	requested_roles = _ordered_derivative_roles(
+		[
+			str(role or "").strip()
+			for role in (derivative_roles or [])
+			if str(role or "").strip() in allowed_roles
+		]
+	)
+	if not requested_roles:
+		return {
+			"scheduled": False,
+			"derivative_ids": [],
+			"drive_processing_job_id": None,
+			"derivative_roles": [],
+		}
+
+	drive_file_id = str(getattr(drive_file_doc, "name", "") or "").strip()
+	drive_file_version_id = str(getattr(drive_file_doc, "current_version", "") or "").strip()
+	if not drive_file_id or not drive_file_version_id:
+		return {
+			"scheduled": False,
+			"derivative_ids": [],
+			"drive_processing_job_id": None,
+			"derivative_roles": requested_roles,
+		}
+
+	source_hash = (
+		str(frappe.db.get_value("Drive File Version", drive_file_version_id, "content_hash") or "").strip()
+		or str(getattr(drive_file_doc, "content_hash", "") or "").strip()
+		or None
+	)
+	derivative_ids = [
+		_ensure_derivative_row(
+			drive_file_id=drive_file_id,
+			drive_file_version_id=drive_file_version_id,
+			derivative_role=role,
+			source_hash=_build_derivative_source_hash(content_hash=source_hash, derivative_role=role),
+		)
+		for role in requested_roles
+	]
+	job_id = _ensure_preview_job(
+		drive_file_doc=drive_file_doc,
+		mime_type=mime_type,
+		derivative_roles=requested_roles,
+		queue_name=plan["queue_name"],
+	)
+	return {
+		"scheduled": True,
+		"derivative_ids": derivative_ids,
+		"drive_processing_job_id": job_id,
+		"derivative_roles": requested_roles,
 	}
 
 

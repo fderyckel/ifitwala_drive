@@ -10,7 +10,9 @@ from frappe.utils import now_datetime
 from ifitwala_drive.services.audit.events import record_drive_access_event
 from ifitwala_drive.services.files.derivatives import (
 	primary_preview_derivative_role_for_mime_type,
+	request_preview_derivative_refresh,
 	resolve_ready_preview_derivative,
+	resolve_ready_preview_derivative_state,
 )
 from ifitwala_drive.services.storage.base import get_storage_backend
 
@@ -95,11 +97,28 @@ def _issue_grant(*, doc, grant_kind: str, payload: dict[str, Any] | None = None)
 			drive_file_doc=doc,
 			derivative_role=derivative_role,
 		)
+		derivative_state = None
+		if explicit_derivative_role:
+			derivative_state = resolve_ready_preview_derivative_state(
+				drive_file_doc=doc,
+				derivative_role=derivative_role,
+			)
+			preview_derivative = (
+				derivative_state.get("derivative") if derivative_state.get("state") == "ready" else None
+			)
 		if preview_derivative and preview_derivative.get("storage_object_key"):
 			storage_backend = preview_derivative.get("storage_backend") or storage_backend
 			object_key = preview_derivative.get("storage_object_key")
 			response_file_url = None
 		elif explicit_derivative_role:
+			try:
+				request_preview_derivative_refresh(
+					drive_file_doc=doc,
+					derivative_roles=[explicit_derivative_role],
+					mime_type=mime_type,
+				)
+			except Exception:
+				pass
 			frappe.throw(
 				_("Preview grant cannot be issued for Drive File without a ready derivative: {0}").format(
 					explicit_derivative_role
