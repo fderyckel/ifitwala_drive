@@ -107,10 +107,10 @@ At minimum:
 - `upload_strategy`
 - `upload_target`
 
-Transition note:
+Current rule:
 
-- current runtime still accepts the older explicit governance fields on `create_upload_session(...)`
-- new work should treat `workflow_id` + `workflow_payload` as the canonical contract
+- the public `create_upload_session(...)` API is workflow-spec only
+- migration/backfill code must use internal service helpers or explicit `Drive Upload Session` materialization, not the public API
 
 ## 4. Blob ingress contract
 

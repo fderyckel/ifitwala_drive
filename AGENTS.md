@@ -25,10 +25,11 @@ Ifitwala_drive exists to make file workflows in Ifitwala_Ed:
 Its job is to own:
 
 - upload sessions
-- file classification
+- workflow-spec governed finalize
 - slot enforcement
 - version lineage
 - canonical references
+- authoritative Drive metadata
 - storage abstraction
 - preview / derivative state
 - file audit / erasure state
@@ -59,15 +60,15 @@ There must be **no direct business-logic `File.insert()` path** for governed flo
 Any new governed upload must go through an authoritative Drive service or wrapper equivalent to:
 
 - `create_upload_session(...)`
-- `finalize_upload(...)`
-- `create_and_classify_file(...)`
-- `replace_version(...)`
+- `ingest_upload_session_content(...)`
+- `finalize_upload_session(...)`
+- `replace_drive_file_version(...)`
 
-This preserves the existing locked dispatcher-only architecture. Any business flow bypassing it is a bug.  See the governance notes: all file writes go through the dispatcher; direct `File.insert()` in business logic is forbidden, and hooks must remain “dumb” finalizers only.
+Drive owns the governed finalize transaction end-to-end. Compatibility `File` rows may still exist for Frappe-native surfaces, but they are projections, not the governance authority.
 
 ### 2.2 No file becomes meaningful without governance metadata
 
-A file must not be finalized without classification metadata.
+A file must not be finalized without governance metadata.
 
 Minimum required governance includes:
 
@@ -81,8 +82,9 @@ Minimum required governance includes:
 - slot
 - organization
 - school where required
+- workflow id / contract version / workflow payload
 
-This is already locked in the existing `File Classification` contract and must remain true in Ifitwala_drive.
+This is locked in the current Drive metadata and workflow-spec contract, not in `File Classification`.
 
 ### 2.3 No orphan files
 
@@ -195,16 +197,31 @@ Never invent:
 
 Work from authoritative files and docs.
 
+When touching governed uploads, file links, attachment DTOs, preview/open/download routes, thumbnails, or derivative behavior, read in this order:
+
+1. `ifitwala_drive/docs/05_optionC_design_lock.md`
+2. `ifitwala_drive/docs/04_coupling_with_ifiwala_ed.md`
+3. `ifitwala_drive/docs/06_api_contracts.md`
+4. `../ifitwala_ed/ifitwala_ed/docs/files_and_policies/files_03_implementation.md`
+5. `../ifitwala_ed/ifitwala_ed/docs/files_and_policies/files_07_education_file_semantics_and_cross_app_contract.md`
+6. `../ifitwala_ed/ifitwala_ed/docs/files_and_policies/files_08_cross_portal_governed_attachment_preview_contract.md`
+
+Those files define the live boundary:
+
+- Drive is the sole governed-file execution and metadata authority.
+- Ed owns workflow meaning and surface authorization.
+- Vue/API contracts must expose server-owned `open_url` / `preview_url` / `thumbnail_url` style DTOs or surface-specific equivalents, not raw storage topology.
+
 ### 4.2 Preserve current governance intent
 If refactoring from Ifitwala_Ed into Ifitwala_drive, preserve:
-- dispatcher-only discipline
-- classification invariants
+- workflow-spec boundary discipline
+- Drive metadata authority
 - erasure posture
 - canonical URL discipline
 - ownership rules for tasks, admissions, portfolio, organization media
 
 ### 4.3 Legacy tolerance
-The system may tolerate legacy unclassified files temporarily, but no new governed flow may rely on them. This is already locked as a production-safe migration rule. :contentReference[oaicite:7]{index=7}
+The system may tolerate compatibility `File` projections and migrated historical records temporarily, but no new governed flow may rely on `File Classification`, raw storage paths, or undocumented upload payload shapes.
 
 ### 4.4 Async by default for heavy work
 Never block hot user flows on:

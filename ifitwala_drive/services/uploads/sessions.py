@@ -42,9 +42,13 @@ def _workflow_contract_metadata(payload: dict[str, Any]) -> dict[str, Any] | Non
 	contract_version = str(payload.get("contract_version") or "").strip()
 	if not workflow_id:
 		return None
+	workflow_payload = payload.get("workflow_payload")
+	if not isinstance(workflow_payload, dict):
+		workflow_payload = {}
 	return {
 		"workflow_id": workflow_id,
 		"contract_version": contract_version or None,
+		"workflow_payload": workflow_payload,
 	}
 
 

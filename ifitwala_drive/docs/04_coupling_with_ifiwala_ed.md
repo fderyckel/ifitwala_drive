@@ -144,7 +144,6 @@ Current code still shows these transitional behaviors:
 - Drive still emits native `File` compatibility projections for current Ed surfaces
 - historical `File Classification` rows still require cleanup through the Ed migration patch
 - Ed compatibility read helpers may still expose profile-image slot names, but those names now resolve strictly through Drive derivatives and grant routes
-- generic `create_upload_session(...)` still accepts older explicit governance fields during transition, even though the workflow-spec path is now the canonical internal runtime path
 - some historical audit/discussion notes may still mention the retired `File Classification` and Ed-side derivative model and must not be treated as runtime design guidance
 
 These are migration constraints, not target architecture.

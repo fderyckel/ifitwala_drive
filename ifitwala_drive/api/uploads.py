@@ -187,59 +187,31 @@ def ingest_upload_session_content(
 
 @frappe.whitelist()
 def create_upload_session(
-	owner_doctype: str | None = None,
-	owner_name: str | None = None,
-	attached_doctype: str | None = None,
-	attached_name: str | None = None,
-	organization: str | None = None,
-	primary_subject_type: str | None = None,
-	primary_subject_id: str | None = None,
-	data_class: str | None = None,
-	purpose: str | None = None,
-	retention_policy: str | None = None,
-	slot: str | None = None,
-	filename_original: str | None = None,
 	workflow_id: str | None = None,
 	workflow_payload: dict[str, Any] | None = None,
 	contract_version: str | None = None,
-	school: str | None = None,
-	folder: str | None = None,
-	secondary_subjects: list[dict[str, Any]] | None = None,
+	filename_original: str | None = None,
 	mime_type_hint: str | None = None,
 	expected_size_bytes: int | str | None = None,
-	is_private: int | bool | None = None,
 	idempotency_key: str | None = None,
 	upload_source: str | None = None,
 ) -> dict[str, Any]:
 	"""Create a Drive Upload Session and return an upload target.
 
-	This is the canonical entrypoint for new governed uploads.
-	It accepts either the workflow-spec contract (`workflow_id` + `workflow_payload`)
-	or the older explicit governance fields during transition.
+	This public API is workflow-spec only. Migration/backfill tooling must use
+	internal services or explicit `Drive Upload Session` materialization instead.
 	"""
+	if not str(workflow_id or "").strip():
+		frappe.throw(_("workflow_id is required."))
+
 	return create_upload_session_service(
 		compact_payload(
 			workflow_id=workflow_id,
 			workflow_payload=workflow_payload,
 			contract_version=contract_version,
-			owner_doctype=owner_doctype,
-			owner_name=owner_name,
-			attached_doctype=attached_doctype,
-			attached_name=attached_name,
-			organization=organization,
-			school=school,
-			folder=folder,
-			primary_subject_type=primary_subject_type,
-			primary_subject_id=primary_subject_id,
-			data_class=data_class,
-			purpose=purpose,
-			retention_policy=retention_policy,
-			slot=slot,
-			secondary_subjects=secondary_subjects,
 			filename_original=filename_original,
 			mime_type_hint=mime_type_hint,
 			expected_size_bytes=expected_size_bytes,
-			is_private=is_private,
 			idempotency_key=idempotency_key,
 			upload_source=upload_source,
 		)

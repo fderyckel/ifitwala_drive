@@ -229,17 +229,8 @@ def test_access_and_upload_wrappers_map_explicit_payloads():
 			reason="replace",
 		)
 		uploads_api.create_upload_session(
-			owner_doctype="Task Submission",
-			owner_name="TSUB-0001",
-			attached_doctype="Task Submission",
-			attached_name="TSUB-0001",
-			organization="ORG-0001",
-			primary_subject_type="Student",
-			primary_subject_id="STU-0001",
-			data_class="assessment",
-			purpose="assessment_submission",
-			retention_policy="until_school_exit_plus_6m",
-			slot="submission",
+			workflow_id="task.submission",
+			workflow_payload={"task_submission": "TSUB-0001", "student": "STU-0001"},
 			filename_original="essay.docx",
 			idempotency_key="retry-upload-001",
 		)
@@ -265,17 +256,8 @@ def test_access_and_upload_wrappers_map_explicit_payloads():
 			"reason": "replace",
 		}
 		assert recorder["create"] == {
-			"owner_doctype": "Task Submission",
-			"owner_name": "TSUB-0001",
-			"attached_doctype": "Task Submission",
-			"attached_name": "TSUB-0001",
-			"organization": "ORG-0001",
-			"primary_subject_type": "Student",
-			"primary_subject_id": "STU-0001",
-			"data_class": "assessment",
-			"purpose": "assessment_submission",
-			"retention_policy": "until_school_exit_plus_6m",
-			"slot": "submission",
+			"workflow_id": "task.submission",
+			"workflow_payload": {"task_submission": "TSUB-0001", "student": "STU-0001"},
 			"filename_original": "essay.docx",
 			"idempotency_key": "retry-upload-001",
 		}
