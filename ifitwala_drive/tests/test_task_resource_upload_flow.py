@@ -138,6 +138,9 @@ def _install_fake_frappe(*, exists_map=None, value_map=None, docs_map=None):
 	frappe.whitelist = lambda *args, **kwargs: lambda fn: fn
 
 	sys.modules["frappe"] = frappe
+	frappe_utils = types.ModuleType("frappe.utils")
+	frappe_utils.now_datetime = lambda: None
+	sys.modules["frappe.utils"] = frappe_utils
 
 
 def _install_fake_sessions(recorder):
@@ -307,3 +310,89 @@ def test_run_task_post_finalize_appends_compatibility_attachment_row():
 	assert row.public == 0
 	assert row.section_break_sbex == "worksheet.pdf"
 	assert task.saved == 1
+
+
+def test_material_grant_services_use_authorized_delegate_context(monkeypatch):
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.integration.ifitwala_ed_materials",
+	)
+	_install_fake_frappe(
+		exists_map={("Drive File", "DF-0001"): True},
+		docs_map={
+			("Drive File", "DF-0001"): FakeDoc(
+				{
+					"name": "DF-0001",
+					"owner_doctype": "Supporting Material",
+					"owner_name": "MAT-0001",
+					"status": "active",
+					"preview_status": "ready",
+				}
+			),
+		},
+	)
+	_ensure_ed_repo_on_path()
+	importlib.import_module("ifitwala_ed")
+	importlib.import_module("ifitwala_ed.integrations")
+	importlib.import_module("ifitwala_ed.integrations.drive")
+	delegate_calls = []
+	delegate = types.ModuleType("ifitwala_ed.integrations.drive.materials")
+	delegate.assert_supporting_material_read_access = lambda material, placement=None: delegate_calls.append(
+		(material, placement)
+	) or {
+		"material": "MAT-0001",
+		"placement": placement,
+		"drive_file_id": "DF-0001",
+		"file_id": "FILE-0001",
+	}
+	sys.modules["ifitwala_ed.integrations.drive.materials"] = delegate
+
+	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_materials")
+	preview_docs = []
+	download_docs = []
+	grant_calls = []
+
+	monkeypatch.setattr(module, "_assert_can_issue_preview", lambda doc: preview_docs.append(doc.name))
+	monkeypatch.setattr(module, "_assert_can_issue_download", lambda doc: download_docs.append(doc.name))
+
+	def _fake_issue_grant(*, doc, grant_kind, payload=None):
+		grant_calls.append({"doc": doc.name, "grant_kind": grant_kind, "payload": payload})
+		return {"url": f"https://{grant_kind}.example.com/{doc.name}"}
+
+	monkeypatch.setattr(module, "_issue_grant", _fake_issue_grant)
+
+	preview_response = module.issue_supporting_material_preview_grant_service(
+		{
+			"material": "MAT-0001",
+			"placement": "MAT-PLC-1",
+			"derivative_role": "thumb",
+		}
+	)
+	download_response = module.issue_supporting_material_download_grant_service(
+		{
+			"material": "MAT-0001",
+			"placement": "MAT-PLC-1",
+		}
+	)
+
+	assert delegate_calls == [("MAT-0001", "MAT-PLC-1"), ("MAT-0001", "MAT-PLC-1")]
+	assert preview_docs == ["DF-0001"]
+	assert download_docs == ["DF-0001"]
+	assert preview_response == {"url": "https://preview.example.com/DF-0001"}
+	assert download_response == {"url": "https://download.example.com/DF-0001"}
+	assert grant_calls == [
+		{
+			"doc": "DF-0001",
+			"grant_kind": "preview",
+			"payload": {
+				"material": "MAT-0001",
+				"placement": "MAT-PLC-1",
+				"derivative_role": "thumb",
+			},
+		},
+		{
+			"doc": "DF-0001",
+			"grant_kind": "download",
+			"payload": None,
+		},
+	]

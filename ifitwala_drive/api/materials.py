@@ -6,6 +6,8 @@ import frappe
 
 from ifitwala_drive.api._payloads import compact_payload
 from ifitwala_drive.services.integration.ifitwala_ed_materials import (
+	issue_supporting_material_download_grant_service,
+	issue_supporting_material_preview_grant_service,
 	upload_supporting_material_service,
 )
 
@@ -30,5 +32,30 @@ def upload_supporting_material(
 			expected_size_bytes=expected_size_bytes,
 			idempotency_key=idempotency_key,
 			upload_source=upload_source,
+		)
+	)
+
+
+@frappe.whitelist()
+def issue_supporting_material_download_grant(
+	material: str,
+	placement: str | None = None,
+) -> dict[str, Any]:
+	return issue_supporting_material_download_grant_service(
+		compact_payload(material=material, placement=placement)
+	)
+
+
+@frappe.whitelist()
+def issue_supporting_material_preview_grant(
+	material: str,
+	placement: str | None = None,
+	derivative_role: str | None = None,
+) -> dict[str, Any]:
+	return issue_supporting_material_preview_grant_service(
+		compact_payload(
+			material=material,
+			placement=placement,
+			derivative_role=derivative_role,
 		)
 	)

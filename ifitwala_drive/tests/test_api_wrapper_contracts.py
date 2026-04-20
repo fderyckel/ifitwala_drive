@@ -349,3 +349,63 @@ def test_communications_wrapper_maps_explicit_payload():
 			"ifitwala_drive.api.communications",
 			"ifitwala_drive.services.integration.ifitwala_ed_org_communications",
 		)
+
+
+def test_materials_wrapper_maps_grant_payload():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.api.materials",
+		"ifitwala_drive.services.integration.ifitwala_ed_materials",
+	)
+	try:
+		_install_fake_frappe()
+		recorder = {}
+		service_module = types.ModuleType("ifitwala_drive.services.integration.ifitwala_ed_materials")
+
+		service_module.upload_supporting_material_service = lambda payload: recorder.setdefault(
+			"upload", payload
+		) or {"status": "ok"}
+		service_module.issue_supporting_material_download_grant_service = lambda payload: recorder.setdefault(
+			"download", payload
+		) or {"status": "ok"}
+		service_module.issue_supporting_material_preview_grant_service = lambda payload: recorder.setdefault(
+			"preview", payload
+		) or {"status": "ok"}
+		sys.modules["ifitwala_drive.services.integration.ifitwala_ed_materials"] = service_module
+
+		module = _load_module("ifitwala_drive.api.materials")
+		module.upload_supporting_material(
+			material="MAT-0001",
+			filename_original="worksheet.pdf",
+			idempotency_key="retry-mat-001",
+		)
+		module.issue_supporting_material_download_grant(
+			material="MAT-0001",
+			placement="MAT-PLC-1",
+		)
+		module.issue_supporting_material_preview_grant(
+			material="MAT-0001",
+			placement="MAT-PLC-1",
+			derivative_role="thumb",
+		)
+
+		assert recorder["upload"] == {
+			"material": "MAT-0001",
+			"filename_original": "worksheet.pdf",
+			"idempotency_key": "retry-mat-001",
+		}
+		assert recorder["download"] == {
+			"material": "MAT-0001",
+			"placement": "MAT-PLC-1",
+		}
+		assert recorder["preview"] == {
+			"material": "MAT-0001",
+			"placement": "MAT-PLC-1",
+			"derivative_role": "thumb",
+		}
+	finally:
+		_purge_modules(
+			"frappe",
+			"ifitwala_drive.api.materials",
+			"ifitwala_drive.services.integration.ifitwala_ed_materials",
+		)
