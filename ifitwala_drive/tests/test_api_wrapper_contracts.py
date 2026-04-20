@@ -382,10 +382,12 @@ def test_materials_wrapper_maps_grant_payload():
 		module.issue_supporting_material_download_grant(
 			material="MAT-0001",
 			placement="MAT-PLC-1",
+			drive_file_id="DF-0001",
 		)
 		module.issue_supporting_material_preview_grant(
 			material="MAT-0001",
 			placement="MAT-PLC-1",
+			drive_file_id="DF-0001",
 			derivative_role="thumb",
 		)
 
@@ -397,10 +399,12 @@ def test_materials_wrapper_maps_grant_payload():
 		assert recorder["download"] == {
 			"material": "MAT-0001",
 			"placement": "MAT-PLC-1",
+			"drive_file_id": "DF-0001",
 		}
 		assert recorder["preview"] == {
 			"material": "MAT-0001",
 			"placement": "MAT-PLC-1",
+			"drive_file_id": "DF-0001",
 			"derivative_role": "thumb",
 		}
 	finally:

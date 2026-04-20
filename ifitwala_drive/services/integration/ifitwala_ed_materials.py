@@ -37,17 +37,32 @@ def assert_supporting_material_upload_access(material: str, *, permission_type: 
 	)
 
 
-def assert_supporting_material_read_access(material: str, *, placement: str | None = None) -> dict[str, Any]:
-	return _call_delegate("assert_supporting_material_read_access", material, placement=placement)
+def assert_supporting_material_read_access(
+	material: str,
+	*,
+	placement: str | None = None,
+	drive_file_id: str | None = None,
+) -> dict[str, Any]:
+	delegate_kwargs = {}
+	if placement is not None:
+		delegate_kwargs["placement"] = placement
+	if drive_file_id is not None:
+		delegate_kwargs["drive_file_id"] = drive_file_id
+	return _call_delegate("assert_supporting_material_read_access", material, **delegate_kwargs)
 
 
 def _get_authorized_supporting_material_drive_file(payload: dict[str, Any]):
 	material = str(payload.get("material") or "").strip()
 	placement = str(payload.get("placement") or "").strip() or None
+	drive_file_id = str(payload.get("drive_file_id") or "").strip() or None
 	if not material:
 		frappe.throw(_("Missing required field: material"))
 
-	context = assert_supporting_material_read_access(material, placement=placement)
+	context = assert_supporting_material_read_access(
+		material,
+		placement=placement,
+		drive_file_id=drive_file_id,
+	)
 	drive_file_id = str(context.get("drive_file_id") or "").strip()
 	if not drive_file_id:
 		frappe.throw(_("Governed attachment file was not found."))

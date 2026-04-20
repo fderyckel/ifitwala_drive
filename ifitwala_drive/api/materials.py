@@ -40,9 +40,10 @@ def upload_supporting_material(
 def issue_supporting_material_download_grant(
 	material: str,
 	placement: str | None = None,
+	drive_file_id: str | None = None,
 ) -> dict[str, Any]:
 	return issue_supporting_material_download_grant_service(
-		compact_payload(material=material, placement=placement)
+		compact_payload(material=material, placement=placement, drive_file_id=drive_file_id)
 	)
 
 
@@ -50,12 +51,14 @@ def issue_supporting_material_download_grant(
 def issue_supporting_material_preview_grant(
 	material: str,
 	placement: str | None = None,
+	drive_file_id: str | None = None,
 	derivative_role: str | None = None,
 ) -> dict[str, Any]:
 	return issue_supporting_material_preview_grant_service(
 		compact_payload(
 			material=material,
 			placement=placement,
+			drive_file_id=drive_file_id,
 			derivative_role=derivative_role,
 		)
 	)

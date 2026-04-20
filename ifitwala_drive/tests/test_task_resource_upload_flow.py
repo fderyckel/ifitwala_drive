@@ -337,14 +337,17 @@ def test_material_grant_services_use_authorized_delegate_context(monkeypatch):
 	importlib.import_module("ifitwala_ed.integrations.drive")
 	delegate_calls = []
 	delegate = types.ModuleType("ifitwala_ed.integrations.drive.materials")
-	delegate.assert_supporting_material_read_access = lambda material, placement=None: delegate_calls.append(
-		(material, placement)
-	) or {
-		"material": "MAT-0001",
-		"placement": placement,
-		"drive_file_id": "DF-0001",
-		"file_id": "FILE-0001",
-	}
+	delegate.assert_supporting_material_read_access = (
+		lambda material, placement=None, drive_file_id=None: delegate_calls.append(
+			(material, placement, drive_file_id)
+		)
+		or {
+			"material": "MAT-0001",
+			"placement": placement,
+			"drive_file_id": "DF-0001",
+			"file_id": "FILE-0001",
+		}
+	)
 	sys.modules["ifitwala_ed.integrations.drive.materials"] = delegate
 
 	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_materials")
@@ -375,7 +378,10 @@ def test_material_grant_services_use_authorized_delegate_context(monkeypatch):
 		}
 	)
 
-	assert delegate_calls == [("MAT-0001", "MAT-PLC-1"), ("MAT-0001", "MAT-PLC-1")]
+	assert delegate_calls == [
+		("MAT-0001", "MAT-PLC-1", None),
+		("MAT-0001", "MAT-PLC-1", None),
+	]
 	assert preview_docs == ["DF-0001"]
 	assert download_docs == ["DF-0001"]
 	assert preview_response == {"url": "https://preview.example.com/DF-0001"}

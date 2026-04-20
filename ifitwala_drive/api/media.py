@@ -8,6 +8,8 @@ from ifitwala_drive.services.integration.ifitwala_ed_media import (
 	issue_employee_image_preview_grant_service,
 	issue_guardian_image_download_grant_service,
 	issue_guardian_image_preview_grant_service,
+	issue_public_website_media_download_grant_service,
+	issue_public_website_media_preview_grant_service,
 	issue_student_image_download_grant_service,
 	issue_student_image_preview_grant_service,
 	upload_employee_image_service,
@@ -119,6 +121,30 @@ def issue_student_image_preview_grant(
 	return issue_student_image_preview_grant_service(
 		compact_payload(
 			student=student,
+			file_id=file_id,
+			derivative_role=derivative_role,
+		)
+	)
+
+
+@frappe.whitelist()
+def issue_public_website_media_download_grant(
+	file_id: str,
+) -> dict[str, object]:
+	return issue_public_website_media_download_grant_service(
+		compact_payload(
+			file_id=file_id,
+		)
+	)
+
+
+@frappe.whitelist()
+def issue_public_website_media_preview_grant(
+	file_id: str,
+	derivative_role: str | None = None,
+) -> dict[str, object]:
+	return issue_public_website_media_preview_grant_service(
+		compact_payload(
 			file_id=file_id,
 			derivative_role=derivative_role,
 		)
@@ -266,6 +292,8 @@ __all__ = (
 	"issue_employee_image_preview_grant",
 	"issue_guardian_image_download_grant",
 	"issue_guardian_image_preview_grant",
+	"issue_public_website_media_download_grant",
+	"issue_public_website_media_preview_grant",
 	"issue_student_image_download_grant",
 	"issue_student_image_preview_grant",
 	"upload_employee_image",

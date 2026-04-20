@@ -251,7 +251,7 @@ Test refs:
 
 Refined delivery split:
 
-- list/card attachment surfaces in Ifitwala_Ed should request card-sized derivatives: `thumb` for images and `pdf_card` for PDFs
+- list/card attachment surfaces in Ifitwala_Ed should request `viewer_preview` for images and `pdf_card` for PDFs; `thumb` remains available for truly small-image surfaces such as avatars and compact profile-image slots
 - the attachment card derivatives should be large enough for current inline preview cards, not micro-thumbnails that are immediately upscaled and blurred by Ed surfaces
 - governed profile-image card surfaces may request the `card` derivative where the original avatar contract needs a larger but still bounded image
 - richer image preview surfaces should request `viewer_preview`

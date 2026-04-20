@@ -55,6 +55,10 @@ def assert_guardian_image_read_access(guardian: str, *, file_name: str) -> dict[
 	return _call_delegate("assert_guardian_image_read_access", guardian, file_name=file_name)
 
 
+def assert_public_website_media_read_access(*, file_name: str) -> dict[str, Any]:
+	return _call_delegate("assert_public_website_media_read_access", file_name=file_name)
+
+
 def _build_organization_media_contract(
 	*,
 	organization: str,
@@ -474,6 +478,30 @@ def _get_authorized_guardian_image_drive_file(payload: dict[str, Any]):
 	return context, drive_file_doc
 
 
+def _get_authorized_public_website_media_drive_file(payload: dict[str, Any]):
+	file_id = str(payload.get("file_id") or "").strip()
+	if not file_id:
+		frappe.throw(_("Missing required field: file_id"))
+
+	context = assert_public_website_media_read_access(file_name=file_id)
+	drive_file_id = str(context.get("drive_file_id") or "").strip()
+	if not drive_file_id:
+		frappe.throw(_("Governed public website media file was not found."))
+	if not frappe.db.exists("Drive File", drive_file_id):
+		frappe.throw(_("Drive File does not exist: {0}").format(drive_file_id))
+
+	drive_file_doc = frappe.get_doc("Drive File", drive_file_id)
+	if (
+		str(getattr(drive_file_doc, "owner_doctype", "") or "").strip() != "Organization"
+		or str(getattr(drive_file_doc, "owner_name", "") or "").strip()
+		!= str(context.get("organization") or "").strip()
+		or str(getattr(drive_file_doc, "purpose", "") or "").strip() != "organization_public_media"
+	):
+		frappe.throw(_("Governed public website media ownership is invalid."))
+
+	return context, drive_file_doc
+
+
 def issue_employee_image_download_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
 	_context, drive_file_doc = _get_authorized_employee_image_drive_file(payload)
 	_assert_can_issue_download(drive_file_doc)
@@ -510,11 +538,25 @@ def issue_guardian_image_preview_grant_service(payload: dict[str, Any]) -> dict[
 	return _issue_grant(doc=drive_file_doc, grant_kind="preview", payload=payload)
 
 
+def issue_public_website_media_download_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
+	_context, drive_file_doc = _get_authorized_public_website_media_drive_file(payload)
+	_assert_can_issue_download(drive_file_doc)
+	return _issue_grant(doc=drive_file_doc, grant_kind="download")
+
+
+def issue_public_website_media_preview_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
+	_context, drive_file_doc = _get_authorized_public_website_media_drive_file(payload)
+	_assert_can_issue_preview(drive_file_doc)
+	return _issue_grant(doc=drive_file_doc, grant_kind="preview", payload=payload)
+
+
 MEDIA_API_SERVICE_EXPORTS = {
 	"issue_employee_image_download_grant": issue_employee_image_download_grant_service,
 	"issue_employee_image_preview_grant": issue_employee_image_preview_grant_service,
 	"issue_guardian_image_download_grant": issue_guardian_image_download_grant_service,
 	"issue_guardian_image_preview_grant": issue_guardian_image_preview_grant_service,
+	"issue_public_website_media_download_grant": issue_public_website_media_download_grant_service,
+	"issue_public_website_media_preview_grant": issue_public_website_media_preview_grant_service,
 	"issue_student_image_download_grant": issue_student_image_download_grant_service,
 	"issue_student_image_preview_grant": issue_student_image_preview_grant_service,
 	"upload_employee_image": upload_employee_image_service,

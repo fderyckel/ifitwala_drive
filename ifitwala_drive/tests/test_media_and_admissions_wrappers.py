@@ -211,6 +211,8 @@ def test_media_api_exports_expected_wrappers_and_delegates():
 		"issue_employee_image_preview_grant",
 		"issue_guardian_image_download_grant",
 		"issue_guardian_image_preview_grant",
+		"issue_public_website_media_download_grant",
+		"issue_public_website_media_preview_grant",
 		"issue_student_image_download_grant",
 		"issue_student_image_preview_grant",
 		"upload_employee_image",
@@ -254,6 +256,19 @@ def test_media_api_exports_expected_wrappers_and_delegates():
 			derivative_role="thumb",
 		)["wrapper"]
 		== "issue_guardian_image_preview_grant"
+	)
+	assert (
+		module.issue_public_website_media_download_grant(
+			file_id="FILE-PUBLIC-1",
+		)["wrapper"]
+		== "issue_public_website_media_download_grant"
+	)
+	assert (
+		module.issue_public_website_media_preview_grant(
+			file_id="FILE-PUBLIC-1",
+			derivative_role="viewer_preview",
+		)["wrapper"]
+		== "issue_public_website_media_preview_grant"
 	)
 	assert (
 		module.issue_student_image_download_grant(
@@ -358,6 +373,19 @@ def test_media_api_exports_expected_wrappers_and_delegates():
 			},
 		),
 		(
+			"issue_public_website_media_download_grant",
+			{
+				"file_id": "FILE-PUBLIC-1",
+			},
+		),
+		(
+			"issue_public_website_media_preview_grant",
+			{
+				"file_id": "FILE-PUBLIC-1",
+				"derivative_role": "viewer_preview",
+			},
+		),
+		(
 			"issue_student_image_download_grant",
 			{
 				"student": "STU-0001",
@@ -427,6 +455,97 @@ def test_media_api_exports_expected_wrappers_and_delegates():
 				"media_key": "homepage_hero",
 			},
 		),
+	]
+
+
+def test_public_website_media_grant_services_use_delegate_scoped_access():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.integration.ifitwala_ed_media",
+		"ifitwala_ed.integrations.drive.media",
+	)
+	drive_file = FakeDoc(
+		{
+			"name": "DF-PUBLIC-1",
+			"owner_doctype": "Organization",
+			"owner_name": "ORG-0001",
+			"purpose": "organization_public_media",
+			"status": "active",
+			"preview_status": "ready",
+		}
+	)
+	_install_fake_frappe(
+		exists_map={
+			("Drive File", "DF-PUBLIC-1"): True,
+		},
+		docs_map={("Drive File", "DF-PUBLIC-1"): drive_file},
+	)
+	_ensure_ed_repo_on_path()
+	importlib.import_module("ifitwala_ed")
+	importlib.import_module("ifitwala_ed.integrations")
+	importlib.import_module("ifitwala_ed.integrations.drive")
+	delegate_calls = []
+	delegate = types.ModuleType("ifitwala_ed.integrations.drive.media")
+	delegate.assert_public_website_media_read_access = lambda *, file_name: (
+		delegate_calls.append(file_name)
+		or {
+			"file_id": "FILE-PUBLIC-1",
+			"drive_file_id": "DF-PUBLIC-1",
+			"organization": "ORG-0001",
+		}
+	)
+	sys.modules["ifitwala_ed.integrations.drive.media"] = delegate
+
+	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_media")
+	preview_docs = []
+	download_docs = []
+	grant_calls = []
+	module._assert_can_issue_preview = lambda doc: preview_docs.append(doc.name)
+	module._assert_can_issue_download = lambda doc: download_docs.append(doc.name)
+
+	def _fake_issue_grant(*, doc, grant_kind, payload=None):
+		grant_calls.append(
+			{
+				"doc": doc.name,
+				"grant_kind": grant_kind,
+				"payload": payload,
+			}
+		)
+		return {"url": f"https://{grant_kind}.example.com/{doc.name}"}
+
+	module._issue_grant = _fake_issue_grant
+
+	preview_response = module.issue_public_website_media_preview_grant_service(
+		{
+			"file_id": "FILE-PUBLIC-1",
+			"derivative_role": "viewer_preview",
+		}
+	)
+	download_response = module.issue_public_website_media_download_grant_service(
+		{
+			"file_id": "FILE-PUBLIC-1",
+		}
+	)
+
+	assert delegate_calls == ["FILE-PUBLIC-1", "FILE-PUBLIC-1"]
+	assert preview_docs == ["DF-PUBLIC-1"]
+	assert download_docs == ["DF-PUBLIC-1"]
+	assert preview_response == {"url": "https://preview.example.com/DF-PUBLIC-1"}
+	assert download_response == {"url": "https://download.example.com/DF-PUBLIC-1"}
+	assert grant_calls == [
+		{
+			"doc": "DF-PUBLIC-1",
+			"grant_kind": "preview",
+			"payload": {
+				"file_id": "FILE-PUBLIC-1",
+				"derivative_role": "viewer_preview",
+			},
+		},
+		{
+			"doc": "DF-PUBLIC-1",
+			"grant_kind": "download",
+			"payload": None,
+		},
 	]
 
 

@@ -3,9 +3,13 @@
 Status: LOCKED boundary contract
 Date: 2026-04-20
 Code refs:
+- `ifitwala_ed/api/file_access.py`
 - `ifitwala_ed/integrations/drive/bridge.py`
+- `ifitwala_ed/integrations/drive/media.py`
 - `ifitwala_ed/integrations/drive/workflow_specs.py`
 - `ifitwala_ed/utilities/governed_uploads.py`
+- `ifitwala_drive/api/media.py`
+- `ifitwala_drive/services/integration/ifitwala_ed_media.py`
 - `ifitwala_drive/services/uploads/finalize.py`
 - `ifitwala_drive/services/uploads/sessions.py`
 - `ifitwala_drive/services/files/access.py`
@@ -99,7 +103,7 @@ Current runtime note:
 
 - the registry now exists in `ifitwala_ed/integrations/drive/workflow_specs.py`
 - Drive wrapper services now create sessions using `workflow_id` plus workflow-specific identifiers internally
-- Drive also exposes surface-scoped grant wrappers where generic owner-doc checks are not the same as Ed surface authorization, including org-communication attachments, employee images, and supporting-material previews opened from placement-aware academic surfaces
+- Drive also exposes surface-scoped grant wrappers where generic owner-doc checks are not the same as Ed surface authorization, including org-communication attachments, employee images, public website media, and supporting-material previews opened from placement-aware academic surfaces
 - wrapper-specific public endpoints still exist only as ergonomics shims during migration
 - Ed and Drive runtime entrypoints now import only explicit public bridge/API modules; reload fallback wrappers and `sys.path` rescue are retired
 
