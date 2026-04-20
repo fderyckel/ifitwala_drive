@@ -204,6 +204,8 @@ def test_media_api_exports_expected_wrappers_and_delegates():
 
 	integration_module = types.ModuleType("ifitwala_drive.services.integration.ifitwala_ed_media")
 	for method_name in (
+		"issue_employee_image_download_grant",
+		"issue_employee_image_preview_grant",
 		"upload_employee_image",
 		"upload_guardian_image",
 		"upload_student_image",
@@ -216,6 +218,21 @@ def test_media_api_exports_expected_wrappers_and_delegates():
 	sys.modules["ifitwala_drive.services.integration.ifitwala_ed_media"] = integration_module
 
 	module = _load_module("ifitwala_drive.api.media")
+	assert (
+		module.issue_employee_image_download_grant(
+			employee="EMP-0001",
+			file_id="FILE-EMP-1",
+		)["wrapper"]
+		== "issue_employee_image_download_grant"
+	)
+	assert (
+		module.issue_employee_image_preview_grant(
+			employee="EMP-0001",
+			file_id="FILE-EMP-1",
+			derivative_role="thumb",
+		)["wrapper"]
+		== "issue_employee_image_preview_grant"
+	)
 	assert (
 		module.upload_employee_image(
 			employee="EMP-0001",
@@ -273,6 +290,21 @@ def test_media_api_exports_expected_wrappers_and_delegates():
 	)
 
 	assert recorder == [
+		(
+			"issue_employee_image_download_grant",
+			{
+				"employee": "EMP-0001",
+				"file_id": "FILE-EMP-1",
+			},
+		),
+		(
+			"issue_employee_image_preview_grant",
+			{
+				"employee": "EMP-0001",
+				"file_id": "FILE-EMP-1",
+				"derivative_role": "thumb",
+			},
+		),
 		(
 			"upload_employee_image",
 			{

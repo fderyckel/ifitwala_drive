@@ -9,6 +9,17 @@ from urllib.request import Request, urlopen
 import frappe
 from frappe import _
 
+try:
+	from frappe.rate_limiter import rate_limit
+except Exception:  # pragma: no cover - import-safe fallback for non-Frappe unit tests
+
+	def rate_limit(*_args, **_kwargs):
+		def decorator(func):
+			return func
+
+		return decorator
+
+
 from ifitwala_drive.api._payloads import compact_payload
 from ifitwala_drive.services.logging import log_drive_event
 from ifitwala_drive.services.storage.base import get_storage_backend
@@ -186,6 +197,7 @@ def ingest_upload_session_content(
 
 
 @frappe.whitelist()
+@rate_limit(limit=30, seconds=60)
 def create_upload_session(
 	workflow_id: str | None = None,
 	workflow_payload: dict[str, Any] | None = None,
@@ -219,6 +231,7 @@ def create_upload_session(
 
 
 @frappe.whitelist()
+@rate_limit(limit=60, seconds=60)
 def finalize_upload_session(
 	upload_session_id: str,
 	received_size_bytes: int | str | None = None,
@@ -235,12 +248,14 @@ def finalize_upload_session(
 
 
 @frappe.whitelist()
+@rate_limit(limit=30, seconds=60)
 def abort_upload_session(upload_session_id: str) -> dict[str, Any]:
 	"""Abort an upload session and invalidate its temporary upload target."""
 	return abort_upload_session_service(compact_payload(upload_session_id=upload_session_id))
 
 
 @frappe.whitelist()
+@rate_limit(limit=120, seconds=60)
 def upload_session_blob(
 	upload_session_id: str | None = None,
 	session_key: str | None = None,

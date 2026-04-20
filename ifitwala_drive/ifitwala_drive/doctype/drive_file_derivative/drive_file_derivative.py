@@ -6,7 +6,7 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
-_ALLOWED_DERIVATIVE_ROLES = {"thumb", "viewer_preview", "pdf_page_1"}
+_ALLOWED_DERIVATIVE_ROLES = {"thumb", "card", "viewer_preview", "pdf_page_1"}
 _ALLOWED_STATUSES = {"pending", "processing", "ready", "failed", "unsupported", "stale"}
 
 

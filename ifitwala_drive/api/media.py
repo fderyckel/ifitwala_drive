@@ -4,6 +4,8 @@ import frappe
 
 from ifitwala_drive.api._payloads import compact_payload
 from ifitwala_drive.services.integration.ifitwala_ed_media import (
+	issue_employee_image_download_grant_service,
+	issue_employee_image_preview_grant_service,
 	upload_employee_image_service,
 	upload_guardian_image_service,
 	upload_organization_logo_service,
@@ -31,6 +33,34 @@ def upload_employee_image(
 			expected_size_bytes=expected_size_bytes,
 			idempotency_key=idempotency_key,
 			upload_source=upload_source,
+		)
+	)
+
+
+@frappe.whitelist()
+def issue_employee_image_download_grant(
+	employee: str,
+	file_id: str,
+) -> dict[str, object]:
+	return issue_employee_image_download_grant_service(
+		compact_payload(
+			employee=employee,
+			file_id=file_id,
+		)
+	)
+
+
+@frappe.whitelist()
+def issue_employee_image_preview_grant(
+	employee: str,
+	file_id: str,
+	derivative_role: str | None = None,
+) -> dict[str, object]:
+	return issue_employee_image_preview_grant_service(
+		compact_payload(
+			employee=employee,
+			file_id=file_id,
+			derivative_role=derivative_role,
 		)
 	)
 
@@ -172,6 +202,8 @@ def upload_organization_media_asset(
 
 
 __all__ = (
+	"issue_employee_image_download_grant",
+	"issue_employee_image_preview_grant",
 	"upload_employee_image",
 	"upload_guardian_image",
 	"upload_organization_logo",

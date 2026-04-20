@@ -219,3 +219,58 @@ def abort_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 		"upload_session_id": doc.name,
 		"status": doc.status,
 	}
+
+
+def expire_abandoned_upload_sessions_service(*, limit: int = 200) -> dict[str, int]:
+	rows = (
+		frappe.get_all(
+			"Drive Upload Session",
+			filters={
+				"status": ["in", ["created", "uploading", "uploaded"]],
+				"expires_on": ["<", now_datetime()],
+			},
+			fields=[
+				"name",
+				"storage_backend",
+				"tmp_object_key",
+				"owner_doctype",
+				"owner_name",
+				"intended_slot",
+			],
+			order_by="expires_on asc",
+			limit=limit,
+		)
+		or []
+	)
+	summary = {"expired": 0, "cleanup_errors": 0}
+	for row in rows:
+		doc = frappe.get_doc("Drive Upload Session", row.get("name"))
+		if doc.status in {"completed", "aborted", "expired"}:
+			continue
+
+		storage = get_storage_backend(getattr(doc, "storage_backend", None))
+		try:
+			if doc.tmp_object_key:
+				storage.abort_temporary_object(object_key=doc.tmp_object_key)
+		except Exception:
+			summary["cleanup_errors"] += 1
+			log_drive_event(
+				"upload_session_expire_cleanup_failed",
+				upload_session_id=doc.name,
+				owner_doctype=doc.owner_doctype,
+				owner_name=doc.owner_name,
+				slot=doc.intended_slot,
+			)
+
+		doc.status = "expired"
+		doc.save(ignore_permissions=True)
+		summary["expired"] += 1
+		log_drive_event(
+			"upload_session_expired",
+			upload_session_id=doc.name,
+			owner_doctype=doc.owner_doctype,
+			owner_name=doc.owner_name,
+			slot=doc.intended_slot,
+		)
+
+	return summary

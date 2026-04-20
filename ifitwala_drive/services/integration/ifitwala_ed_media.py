@@ -5,6 +5,11 @@ from typing import Any
 import frappe
 from frappe import _
 
+from ifitwala_drive.services.files.access import (
+	_assert_can_issue_download,
+	_assert_can_issue_preview,
+	_issue_grant,
+)
 from ifitwala_drive.services.folders.resolution import (
 	resolve_employee_image_folder,
 	resolve_guardian_image_folder,
@@ -36,6 +41,10 @@ def build_student_image_contract(student_doc) -> dict[str, Any]:
 
 def build_guardian_image_contract(guardian_doc) -> dict[str, Any]:
 	return _call_delegate("build_guardian_image_contract", guardian_doc)
+
+
+def assert_employee_image_read_access(employee: str, *, file_name: str) -> dict[str, Any]:
+	return _call_delegate("assert_employee_image_read_access", employee, file_name=file_name)
 
 
 def _build_organization_media_contract(
@@ -379,7 +388,47 @@ def run_media_post_finalize(upload_session_doc, created_file) -> dict[str, Any]:
 	return _call_delegate("run_media_post_finalize", upload_session_doc, created_file)
 
 
+def _get_authorized_employee_image_drive_file(payload: dict[str, Any]):
+	employee = str(payload.get("employee") or "").strip()
+	file_id = str(payload.get("file_id") or "").strip()
+	if not employee:
+		frappe.throw(_("Missing required field: employee"))
+	if not file_id:
+		frappe.throw(_("Missing required field: file_id"))
+
+	context = assert_employee_image_read_access(employee, file_name=file_id)
+	drive_file_id = str(context.get("drive_file_id") or "").strip()
+	if not drive_file_id:
+		frappe.throw(_("Governed employee image file was not found."))
+	if not frappe.db.exists("Drive File", drive_file_id):
+		frappe.throw(_("Drive File does not exist: {0}").format(drive_file_id))
+
+	drive_file_doc = frappe.get_doc("Drive File", drive_file_id)
+	if (
+		str(getattr(drive_file_doc, "owner_doctype", "") or "").strip() != "Employee"
+		or str(getattr(drive_file_doc, "owner_name", "") or "").strip()
+		!= str(context.get("employee") or "").strip()
+	):
+		frappe.throw(_("Governed employee image ownership is invalid."))
+
+	return context, drive_file_doc
+
+
+def issue_employee_image_download_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
+	_context, drive_file_doc = _get_authorized_employee_image_drive_file(payload)
+	_assert_can_issue_download(drive_file_doc)
+	return _issue_grant(doc=drive_file_doc, grant_kind="download")
+
+
+def issue_employee_image_preview_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
+	_context, drive_file_doc = _get_authorized_employee_image_drive_file(payload)
+	_assert_can_issue_preview(drive_file_doc)
+	return _issue_grant(doc=drive_file_doc, grant_kind="preview", payload=payload)
+
+
 MEDIA_API_SERVICE_EXPORTS = {
+	"issue_employee_image_download_grant": issue_employee_image_download_grant_service,
+	"issue_employee_image_preview_grant": issue_employee_image_preview_grant_service,
 	"upload_employee_image": upload_employee_image_service,
 	"upload_guardian_image": upload_guardian_image_service,
 	"upload_student_image": upload_student_image_service,
