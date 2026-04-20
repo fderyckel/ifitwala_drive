@@ -1,7 +1,7 @@
 # Option C Design Lock
 
 Status: LOCKED architecture decision
-Date: 2026-04-19
+Date: 2026-04-20
 
 ## Bottom line
 
@@ -112,6 +112,19 @@ Goal:
 
 ### Phase 4
 
+Compatibility and schema retirement.
+
+Goal:
+
+- remove `File Classification` rows and DocTypes
+- retire dead Ed-local dispatcher baggage
+
+Status:
+
+- completed in code
+
+### Phase 5
+
 Derivative and read-path cleanup.
 
 Goal:
@@ -124,7 +137,7 @@ Status:
 - completed in code for governed profile-image delivery
 - Ed now resolves profile-image compatibility variants from Drive derivative roles instead of separate governed files
 
-### Phase 5
+### Phase 6
 
 Drive-native reuse and browse UX expansion.
 

@@ -18,6 +18,7 @@ def _purge_modules(*prefixes: str) -> None:
 			or module_name.startswith("ifitwala_drive.services.integration.ifitwala_ed_")
 			or module_name.startswith("ifitwala_ed.integrations.drive")
 			or module_name.startswith("ifitwala_ed.utilities.file_")
+			or module_name.startswith("ifitwala_ed.utilities.governed_")
 		):
 			sys.modules.pop(module_name, None)
 	FakeDoc._insert_counters = {}
@@ -76,7 +77,7 @@ class FakeDoc:
 				"Drive Processing Job": "DPJ",
 				"Drive Folder": "DRF",
 				"File": "FILE",
-				"File Classification": "FC",
+				"Drive Upload Session Subject": "DUSS",
 			}
 			prefix = prefix_map.get(doctype, "DOC")
 			next_value = self._insert_counters.get(prefix, 0) + 1
@@ -249,24 +250,13 @@ def _install_fake_frappe(
 	return file_doc_requests
 
 
-def _install_fake_ifitwala_ed(*, dispatcher_recorder: dict | None = None, install_dispatcher: bool = True):
+def _install_fake_ifitwala_ed():
 	import frappe
 
 	ed_package_root = Path(__file__).resolve().parents[2].parent / "ifitwala_ed" / "ifitwala_ed"
 	utilities_package_root = ed_package_root / "utilities"
 	integrations_package_root = ed_package_root / "integrations"
 	drive_integrations_package_root = integrations_package_root / "drive"
-
-	dispatcher = None
-	if install_dispatcher:
-		dispatcher = types.ModuleType("ifitwala_ed.utilities.file_dispatcher")
-
-		def create_and_classify_file(**kwargs):
-			if dispatcher_recorder is not None:
-				dispatcher_recorder["call"] = kwargs
-			return types.SimpleNamespace(name="FILE-0001")
-
-		dispatcher.create_and_classify_file = create_and_classify_file
 
 	file_management = types.ModuleType("ifitwala_ed.utilities.file_management")
 	file_management.get_settings = lambda: object()
@@ -357,15 +347,13 @@ def _install_fake_ifitwala_ed(*, dispatcher_recorder: dict | None = None, instal
 	def _run_post_finalize(upload_session_doc, created_file):
 		return {}
 
-	file_classification_contract = types.ModuleType("ifitwala_ed.utilities.file_classification_contract")
-	file_classification_contract.LEARNING_RESOURCE_PURPOSE = "learning_resource"
+	governed_file_contract = types.ModuleType("ifitwala_ed.utilities.governed_file_contract")
+	governed_file_contract.LEARNING_RESOURCE_PURPOSE = "learning_resource"
 
 	utilities = types.ModuleType("ifitwala_ed.utilities")
 	utilities.__path__ = [str(utilities_package_root)]
 	utilities.file_management = file_management
-	utilities.file_classification_contract = file_classification_contract
-	if dispatcher is not None:
-		utilities.file_dispatcher = dispatcher
+	utilities.governed_file_contract = governed_file_contract
 
 	integrations = types.ModuleType("ifitwala_ed.integrations")
 	integrations.__path__ = [str(integrations_package_root)]
@@ -386,12 +374,10 @@ def _install_fake_ifitwala_ed(*, dispatcher_recorder: dict | None = None, instal
 	sys.modules["ifitwala_ed"] = ifitwala_ed
 	sys.modules["ifitwala_ed.utilities"] = utilities
 	sys.modules["ifitwala_ed.utilities.file_management"] = file_management
-	sys.modules["ifitwala_ed.utilities.file_classification_contract"] = file_classification_contract
+	sys.modules["ifitwala_ed.utilities.governed_file_contract"] = governed_file_contract
 	sys.modules["ifitwala_ed.integrations"] = integrations
 	sys.modules["ifitwala_ed.integrations.drive"] = drive_integrations
 	sys.modules["ifitwala_ed.integrations.drive.bridge"] = bridge
-	if dispatcher is not None:
-		sys.modules["ifitwala_ed.utilities.file_dispatcher"] = dispatcher
 
 
 def _load_module(module_name: str):
@@ -654,7 +640,7 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 		},
 		now=now,
 	)
-	_install_fake_ifitwala_ed(install_dispatcher=False)
+	_install_fake_ifitwala_ed()
 	module = _load_module("ifitwala_drive.services.uploads.finalize")
 	sys.modules["magic"] = types.SimpleNamespace(
 		from_buffer=lambda content,
@@ -1183,8 +1169,7 @@ def test_finalize_requires_python_magic_runtime_dependency(monkeypatch):
 		now=now,
 		forbid_file_doc=True,
 	)
-	dispatcher_recorder: dict[str, dict] = {}
-	_install_fake_ifitwala_ed(dispatcher_recorder=dispatcher_recorder)
+	_install_fake_ifitwala_ed()
 	module = _load_module("ifitwala_drive.services.uploads.finalize")
 	inspection_module = _load_module("ifitwala_drive.services.uploads.inspection")
 
@@ -1273,7 +1258,7 @@ def test_finalize_rejects_unknown_detected_mime(monkeypatch):
 		},
 		now=now,
 	)
-	_install_fake_ifitwala_ed(dispatcher_recorder={})
+	_install_fake_ifitwala_ed()
 	module = _load_module("ifitwala_drive.services.uploads.finalize")
 	sys.modules["magic"] = types.SimpleNamespace(from_buffer=lambda content, mime=True: "")
 

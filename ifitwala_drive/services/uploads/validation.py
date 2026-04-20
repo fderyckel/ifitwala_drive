@@ -29,7 +29,7 @@ REQUIRED_CREATE_SESSION_FIELDS: tuple[str, ...] = (
 REQUIRED_FINALIZE_FIELDS: tuple[str, ...] = ("upload_session_id",)
 
 
-_OPTIONAL_SCHOOL_SUBJECT_TYPES = {"Employee", "Organization"}
+_OPTIONAL_SCHOOL_SUBJECT_TYPES = {"Employee", "Guardian", "Organization"}
 
 
 def _has_value(value: Any) -> bool:
@@ -50,7 +50,7 @@ def require_fields(payload: dict[str, Any], fields: Iterable[str]) -> None:
 
 def _is_school_required(primary_subject_type: str | None) -> bool:
 	try:
-		from ifitwala_ed.utilities.file_classification_contract import (
+		from ifitwala_ed.utilities.governed_file_contract import (
 			is_school_required_for_subject_type,
 		)
 	except ImportError:

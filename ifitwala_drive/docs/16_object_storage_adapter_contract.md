@@ -360,7 +360,7 @@ Recommended structure:
 - derivatives under `derivatives/...` later
 
 Do not encode business-governance truth in the object key.
-That truth already belongs in `File Classification`.
+That truth already belongs in authoritative Drive metadata.
 
 ---
 

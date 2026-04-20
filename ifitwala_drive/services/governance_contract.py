@@ -30,7 +30,7 @@ _FALLBACK_ALLOWED_FILE_PURPOSES: tuple[str, ...] = (
 )
 
 try:
-	from ifitwala_ed.utilities.file_classification_contract import (
+	from ifitwala_ed.utilities.governed_file_contract import (
 		ALLOWED_FILE_PURPOSES as _ED_ALLOWED_FILE_PURPOSES,
 	)
 except ImportError:

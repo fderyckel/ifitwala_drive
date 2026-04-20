@@ -1,7 +1,7 @@
 # Coupling With Ifitwala_Ed
 
 Status: LOCKED boundary contract
-Date: 2026-04-19
+Date: 2026-04-20
 Code refs:
 - `ifitwala_ed/integrations/drive/bridge.py`
 - `ifitwala_ed/utilities/governed_uploads.py`
@@ -14,6 +14,7 @@ Code refs:
 - Drive remains the governed file execution authority.
 - Neither app may reach through the other app's internals to finish its job.
 - Ingress and finalize now follow the locked boundary.
+- Governed derivative scheduling and profile-image delivery now stay on the Drive side of the boundary.
 - Remaining migration work is about removing compatibility baggage, not reopening the boundary.
 
 ## 1. The boundary
@@ -70,6 +71,7 @@ Ed must not:
 - write temporary objects into Drive storage
 - rename or move finalized Drive objects
 - generate governed derivatives outside Drive
+- probe storage directly to decide governed display URLs for Drive-managed media
 - treat `File Classification` as authority for new work
 
 ### 3.2 Forbidden on the Drive side
@@ -133,6 +135,7 @@ Current code still shows these transitional behaviors:
 
 - Drive still emits native `File` compatibility projections for current Ed surfaces
 - historical `File Classification` rows still require cleanup through the Ed migration patch
-- some older Ed docs and Frappe-only tests still describe the retired `File Classification` and Ed-side derivative model and must be updated before they are trusted as design guidance
+- Ed compatibility read helpers may still expose profile-image slot names, but those names now resolve strictly through Drive derivatives and grant routes
+- some historical audit/discussion notes may still mention the retired `File Classification` and Ed-side derivative model and must not be treated as runtime design guidance
 
 These are migration constraints, not target architecture.
