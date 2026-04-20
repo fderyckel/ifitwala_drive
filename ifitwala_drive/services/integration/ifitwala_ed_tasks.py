@@ -10,6 +10,7 @@ from ifitwala_drive.services.folders.resolution import (
 	resolve_task_submission_folder,
 )
 from ifitwala_drive.services.integration._ed_delegate import load_ed_drive_module
+from ifitwala_drive.services.integration.ifitwala_ed_bridge import resolve_upload_session_context
 
 _ED_MODULE = "ifitwala_ed.integrations.drive.tasks"
 
@@ -79,20 +80,18 @@ def upload_task_submission_artifact_service(payload: dict[str, Any]) -> dict[str
 	if not filename_original:
 		frappe.throw(_("Missing required field: filename_original"))
 
+	workflow_id = "task.submission"
+	workflow_payload = {
+		"task_submission": task_submission,
+		"student": payload.get("student"),
+		"slot": payload.get("slot"),
+	}
+	authoritative = resolve_upload_session_context(workflow_id, workflow_payload)
 	task_submission_doc = assert_task_submission_upload_access(task_submission, permission_type="write")
-	authoritative = build_task_submission_upload_contract(task_submission_doc)
-	provided_slot = str(payload.get("slot") or "").strip()
-	if provided_slot and provided_slot != authoritative["slot"]:
-		frappe.throw(
-			_("Task submission upload currently only supports slot '{0}'.").format(authoritative["slot"])
-		)
-
-	student = payload.get("student")
-	if student not in (None, "", authoritative["primary_subject_id"]):
-		frappe.throw(_("Student does not match the authoritative Task Submission owner context."))
 
 	session_payload = {
 		**authoritative,
+		"workflow_payload": workflow_payload,
 		"folder": resolve_task_submission_folder(
 			student=authoritative["primary_subject_id"],
 			task_name=getattr(task_submission_doc, "task", None) or task_submission_doc.name,
@@ -125,14 +124,18 @@ def upload_task_resource_service(payload: dict[str, Any]) -> dict[str, Any]:
 	if not filename_original:
 		frappe.throw(_("Missing required field: filename_original"))
 
+	workflow_id = "task.resource"
+	workflow_payload = {
+		"task": task,
+		"row_name": provided_row_name,
+		"slot": payload.get("slot"),
+	}
+	authoritative = resolve_upload_session_context(workflow_id, workflow_payload)
 	task_doc = assert_task_resource_upload_access(task, permission_type="write")
-	authoritative = build_task_resource_upload_contract(task_doc, row_name=provided_row_name)
-	provided_slot = str(payload.get("slot") or "").strip()
-	if provided_slot and provided_slot != authoritative["slot"]:
-		frappe.throw(_("Task resource slot does not match the authoritative attachment row context."))
 
 	session_payload = {
 		**{key: value for key, value in authoritative.items() if key not in {"row_name", "course"}},
+		"workflow_payload": workflow_payload,
 		"folder": resolve_task_resource_folder(
 			task=task_doc.name,
 			course=authoritative["course"],

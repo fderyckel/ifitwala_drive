@@ -12,6 +12,7 @@ from ifitwala_drive.services.folders.resolution import (
 	resolve_applicant_profile_image_folder,
 )
 from ifitwala_drive.services.integration._ed_delegate import load_ed_drive_module
+from ifitwala_drive.services.integration.ifitwala_ed_bridge import resolve_upload_session_context
 
 _ED_MODULE = "ifitwala_ed.integrations.drive.admissions"
 
@@ -47,7 +48,17 @@ def upload_applicant_document_service(payload: dict[str, Any]) -> dict[str, Any]
 	if not filename_original:
 		frappe.throw(_("Missing required field: filename_original"))
 
-	context = _get_applicant_document_context(payload)
+	workflow_id = "admissions.applicant_document"
+	workflow_payload = {
+		"student_applicant": payload.get("student_applicant"),
+		"document_type": payload.get("document_type"),
+		"applicant_document": payload.get("applicant_document"),
+		"applicant_document_item": payload.get("applicant_document_item"),
+		"item_key": payload.get("item_key"),
+		"item_label": payload.get("item_label"),
+		"filename_original": filename_original,
+	}
+	context = resolve_upload_session_context(workflow_id, workflow_payload)
 	response = create_upload_session_service(
 		{
 			"owner_doctype": context["owner_doctype"],
@@ -62,6 +73,9 @@ def upload_applicant_document_service(payload: dict[str, Any]) -> dict[str, Any]
 			"purpose": context["purpose"],
 			"retention_policy": context["retention_policy"],
 			"slot": context["slot"],
+			"workflow_id": context["workflow_id"],
+			"contract_version": context["contract_version"],
+			"workflow_payload": workflow_payload,
 			"folder": resolve_applicant_document_folder(
 				student_applicant=context["owner_name"],
 				organization=context["organization"],
@@ -95,10 +109,15 @@ def upload_applicant_profile_image_service(payload: dict[str, Any]) -> dict[str,
 	if not filename_original:
 		frappe.throw(_("Missing required field: filename_original"))
 
-	context = _get_applicant_profile_image_context(payload)
+	workflow_id = "admissions.applicant_profile_image"
+	workflow_payload = {
+		"student_applicant": payload.get("student_applicant"),
+	}
+	context = resolve_upload_session_context(workflow_id, workflow_payload)
 	response = create_upload_session_service(
 		{
 			**context,
+			"workflow_payload": workflow_payload,
 			"folder": resolve_applicant_profile_image_folder(
 				student_applicant=context["owner_name"],
 				organization=context["organization"],
@@ -123,10 +142,16 @@ def upload_applicant_guardian_image_service(payload: dict[str, Any]) -> dict[str
 	if not filename_original:
 		frappe.throw(_("Missing required field: filename_original"))
 
-	context = _get_applicant_guardian_image_context(payload)
+	workflow_id = "admissions.applicant_guardian_image"
+	workflow_payload = {
+		"student_applicant": payload.get("student_applicant"),
+		"guardian_row_name": payload.get("guardian_row_name"),
+	}
+	context = resolve_upload_session_context(workflow_id, workflow_payload)
 	response = create_upload_session_service(
 		{
 			**context,
+			"workflow_payload": workflow_payload,
 			"folder": resolve_applicant_guardian_image_folder(
 				student_applicant=context["owner_name"],
 				organization=context["organization"],
@@ -157,10 +182,19 @@ def upload_applicant_health_vaccination_proof_service(payload: dict[str, Any]) -
 	if not filename_original:
 		frappe.throw(_("Missing required field: filename_original"))
 
-	context = _get_applicant_health_vaccination_context(payload)
+	workflow_id = "admissions.applicant_health_vaccination"
+	workflow_payload = {
+		"student_applicant": payload.get("student_applicant"),
+		"applicant_health_profile": payload.get("applicant_health_profile"),
+		"vaccine_name": payload.get("vaccine_name"),
+		"date": payload.get("date"),
+		"row_index": payload.get("row_index"),
+	}
+	context = resolve_upload_session_context(workflow_id, workflow_payload)
 	response = create_upload_session_service(
 		{
 			**context,
+			"workflow_payload": workflow_payload,
 			"folder": resolve_applicant_health_folder(
 				student_applicant=context["owner_name"],
 				organization=context["organization"],

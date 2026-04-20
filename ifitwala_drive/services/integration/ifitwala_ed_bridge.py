@@ -138,6 +138,10 @@ def reconcile_upload_session_payload(payload: dict[str, Any]) -> dict[str, Any]:
 	return _call_delegate("reconcile_upload_session_payload", payload)
 
 
+def resolve_upload_session_context(workflow_id: str, workflow_payload: dict[str, Any]) -> dict[str, Any]:
+	return _call_delegate("resolve_upload_session_context", workflow_id, workflow_payload)
+
+
 def resolve_finalize_contract(upload_session_doc) -> dict[str, Any]:
 	return _call_delegate("resolve_finalize_contract", upload_session_doc)
 

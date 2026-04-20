@@ -1,7 +1,7 @@
 # Canonical API Contracts
 
 Status: LOCKED target API direction
-Date: 2026-04-19
+Date: 2026-04-20
 Related docs:
 
 - `ifitwala_drive/docs/02_system_architecture.md`
@@ -92,6 +92,7 @@ Create a governed upload session before bytes are finalized.
 
 - resolve or validate the authoritative workflow spec
 - persist the resolved contract on `Drive Upload Session`
+- current runtime stores `workflow_id` and `contract_version` under `upload_contract_json.workflow`
 - negotiate an upload target and strategy
 - return session identifiers and upload target info
 
@@ -105,6 +106,11 @@ At minimum:
 - `expires_on`
 - `upload_strategy`
 - `upload_target`
+
+Transition note:
+
+- current runtime still accepts the older explicit governance fields on `create_upload_session(...)`
+- new work should treat `workflow_id` + `workflow_payload` as the canonical contract
 
 ## 4. Blob ingress contract
 

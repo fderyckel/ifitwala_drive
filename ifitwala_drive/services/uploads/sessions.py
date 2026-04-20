@@ -37,8 +37,22 @@ def _serialize_session_response(doc, target: dict[str, Any]) -> dict[str, Any]:
 	}
 
 
-def _dump_upload_contract(target: dict[str, Any]) -> str:
-	return json.dumps(target, sort_keys=True)
+def _workflow_contract_metadata(payload: dict[str, Any]) -> dict[str, Any] | None:
+	workflow_id = str(payload.get("workflow_id") or "").strip()
+	contract_version = str(payload.get("contract_version") or "").strip()
+	if not workflow_id:
+		return None
+	return {
+		"workflow_id": workflow_id,
+		"contract_version": contract_version or None,
+	}
+
+
+def _dump_upload_contract(target: dict[str, Any], *, workflow: dict[str, Any] | None = None) -> str:
+	serialized = dict(target)
+	if workflow:
+		serialized["workflow"] = workflow
+	return json.dumps(serialized, sort_keys=True)
 
 
 def load_upload_contract(doc, *, storage=None, fallback_to_storage: bool = True) -> dict[str, Any]:
@@ -137,7 +151,10 @@ def create_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 				"expected_size_bytes": payload.get("expected_size_bytes"),
 				"storage_backend": storage.backend_name,
 				"tmp_object_key": target["object_key"],
-				"upload_contract_json": _dump_upload_contract(target),
+				"upload_contract_json": _dump_upload_contract(
+					target,
+					workflow=_workflow_contract_metadata(payload),
+				),
 				"upload_token": upload_token,
 			}
 		)

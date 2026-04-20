@@ -286,9 +286,16 @@ def _install_fake_ifitwala_ed():
 		}
 
 	def _reconcile_upload_session_payload(payload: dict[str, object]) -> dict[str, object]:
-		if payload.get("owner_doctype") != "Task Submission":
+		workflow_id = payload.get("workflow_id")
+		workflow_payload = payload.get("workflow_payload") or {}
+		if workflow_id not in (None, "", "task.submission"):
 			return payload
-		task_submission_doc = frappe.get_doc("Task Submission", payload["owner_name"])
+		task_submission_name = payload.get("owner_name") or workflow_payload.get("task_submission")
+		if not task_submission_name:
+			return payload
+		if payload.get("owner_doctype") not in (None, "", "Task Submission"):
+			return payload
+		task_submission_doc = frappe.get_doc("Task Submission", task_submission_name)
 		authoritative = _build_task_submission_upload_contract(task_submission_doc)
 		for fieldname, authoritative_value in authoritative.items():
 			provided = payload.get(fieldname)
@@ -298,12 +305,31 @@ def _install_fake_ifitwala_ed():
 						field_name=fieldname
 					)
 				)
-		return {**payload, **authoritative}
+		return {
+			**payload,
+			**authoritative,
+			"workflow_id": "task.submission",
+			"contract_version": "1",
+			"workflow_payload": workflow_payload or {"task_submission": task_submission_name},
+		}
+
+	def _resolve_upload_session_context(workflow_id: str, workflow_payload: dict[str, object]):
+		if workflow_id != "task.submission":
+			raise RuntimeError(f"unexpected workflow_id: {workflow_id}")
+		task_submission_name = workflow_payload.get("task_submission")
+		task_submission_doc = frappe.get_doc("Task Submission", task_submission_name)
+		return {
+			**_build_task_submission_upload_contract(task_submission_doc),
+			"workflow_id": "task.submission",
+			"contract_version": "1",
+		}
 
 	def _resolve_finalize_contract(upload_session_doc):
 		if getattr(upload_session_doc, "owner_doctype", None) != "Task Submission":
 			return {
 				"workflow": None,
+				"workflow_id": None,
+				"contract_version": None,
 				"authoritative_context": None,
 				"attached_field_override": None,
 				"context_override": None,
@@ -333,7 +359,9 @@ def _install_fake_ifitwala_ed():
 					)
 				)
 		return {
-			"workflow": "task_submission",
+			"workflow": "task.submission",
+			"workflow_id": "task.submission",
+			"contract_version": "1",
 			"authoritative_context": authoritative,
 			"attached_field_override": None,
 			"context_override": file_management.build_task_submission_context(
@@ -361,6 +389,7 @@ def _install_fake_ifitwala_ed():
 	drive_integrations.__path__ = [str(drive_integrations_package_root)]
 	bridge = types.ModuleType("ifitwala_ed.integrations.drive.bridge")
 	bridge.reconcile_upload_session_payload = _reconcile_upload_session_payload
+	bridge.resolve_upload_session_context = _resolve_upload_session_context
 	bridge.resolve_finalize_contract = _resolve_finalize_contract
 	bridge.run_post_finalize = _run_post_finalize
 
@@ -461,6 +490,13 @@ def test_task_submission_upload_session_creates_correctly(monkeypatch):
 		"is_private": 1,
 		"upload_source": "SPA",
 		"secondary_subjects": [],
+		"workflow_id": "task.submission",
+		"contract_version": "1",
+		"workflow_payload": {
+			"task_submission": "TSUB-0001",
+			"student": "STU-0001",
+			"slot": None,
+		},
 	}
 
 

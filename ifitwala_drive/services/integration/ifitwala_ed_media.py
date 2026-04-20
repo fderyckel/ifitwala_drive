@@ -12,6 +12,7 @@ from ifitwala_drive.services.folders.resolution import (
 	resolve_student_image_folder,
 )
 from ifitwala_drive.services.integration._ed_delegate import load_ed_drive_module
+from ifitwala_drive.services.integration.ifitwala_ed_bridge import resolve_upload_session_context
 from ifitwala_drive.services.uploads.sessions import create_upload_session_service
 
 _ED_MODULE = "ifitwala_ed.integrations.drive.media"
@@ -63,12 +64,18 @@ def upload_employee_image_service(payload: dict[str, Any]) -> dict[str, Any]:
 	if not filename_original:
 		frappe.throw(_("Missing required field: filename_original"))
 
+	workflow_id = "media.employee_profile_image"
+	workflow_payload = {
+		"employee": employee,
+		"slot": payload.get("slot"),
+	}
 	employee_doc = frappe.get_doc("Employee", employee)
 	employee_doc.check_permission("write")
-	authoritative = build_employee_image_contract(employee_doc)
+	authoritative = resolve_upload_session_context(workflow_id, workflow_payload)
 	return create_upload_session_service(
 		{
 			**authoritative,
+			"workflow_payload": workflow_payload,
 			"folder": resolve_employee_image_folder(
 				employee=employee_doc.name,
 				organization=authoritative["organization"],
@@ -94,12 +101,18 @@ def upload_student_image_service(payload: dict[str, Any]) -> dict[str, Any]:
 	if not filename_original:
 		frappe.throw(_("Missing required field: filename_original"))
 
+	workflow_id = "media.student_profile_image"
+	workflow_payload = {
+		"student": student,
+		"slot": payload.get("slot"),
+	}
 	student_doc = frappe.get_doc("Student", student)
 	student_doc.check_permission("write")
-	authoritative = build_student_image_contract(student_doc)
+	authoritative = resolve_upload_session_context(workflow_id, workflow_payload)
 	return create_upload_session_service(
 		{
 			**authoritative,
+			"workflow_payload": workflow_payload,
 			"folder": resolve_student_image_folder(
 				student=student_doc.name,
 				organization=authoritative["organization"],
@@ -125,12 +138,18 @@ def upload_guardian_image_service(payload: dict[str, Any]) -> dict[str, Any]:
 	if not filename_original:
 		frappe.throw(_("Missing required field: filename_original"))
 
+	workflow_id = "media.guardian_profile_image"
+	workflow_payload = {
+		"guardian": guardian,
+		"slot": payload.get("slot"),
+	}
 	guardian_doc = frappe.get_doc("Guardian", guardian)
 	guardian_doc.check_permission("write")
-	authoritative = build_guardian_image_contract(guardian_doc)
+	authoritative = resolve_upload_session_context(workflow_id, workflow_payload)
 	return create_upload_session_service(
 		{
 			**authoritative,
+			"workflow_payload": workflow_payload,
 			"folder": resolve_guardian_image_folder(
 				guardian=guardian_doc.name,
 				organization=authoritative["organization"],
@@ -157,15 +176,16 @@ def upload_organization_logo_service(payload: dict[str, Any]) -> dict[str, Any]:
 
 	org_doc = frappe.get_doc("Organization", organization)
 	org_doc.check_permission("write")
-	authoritative = _build_organization_media_contract(
-		organization=org_doc.name,
-		slot=build_organization_logo_slot(organization=org_doc.name),
-		school=None,
-		upload_source=payload.get("upload_source") or "Desk",
-	)
+	workflow_id = "organization_media.organization_logo"
+	workflow_payload = {
+		"organization": org_doc.name,
+		"upload_source": payload.get("upload_source") or "Desk",
+	}
+	authoritative = resolve_upload_session_context(workflow_id, workflow_payload)
 	return create_upload_session_service(
 		{
 			**authoritative,
+			"workflow_payload": workflow_payload,
 			"folder": resolve_organization_media_folder(
 				organization=org_doc.name,
 				school=None,
@@ -196,15 +216,16 @@ def upload_school_logo_service(payload: dict[str, Any]) -> dict[str, Any]:
 	if not getattr(school_doc, "organization", None):
 		frappe.throw(_("Organization is required before uploading a school logo."))
 
-	authoritative = _build_organization_media_contract(
-		organization=school_doc.organization,
-		slot=build_school_logo_slot(school=school_doc.name),
-		school=school_doc.name,
-		upload_source=payload.get("upload_source") or "Desk",
-	)
+	workflow_id = "organization_media.school_logo"
+	workflow_payload = {
+		"school": school_doc.name,
+		"upload_source": payload.get("upload_source") or "Desk",
+	}
+	authoritative = resolve_upload_session_context(workflow_id, workflow_payload)
 	return create_upload_session_service(
 		{
 			**authoritative,
+			"workflow_payload": workflow_payload,
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
@@ -250,15 +271,17 @@ def upload_school_gallery_image_service(payload: dict[str, Any]) -> dict[str, An
 			target_row.caption = caption
 		school_doc.save(ignore_permissions=True)
 
-	authoritative = _build_organization_media_contract(
-		organization=school_doc.organization,
-		slot=build_school_gallery_slot(row_name=target_row.name),
-		school=school_doc.name,
-		upload_source=payload.get("upload_source") or "Desk",
-	)
+	workflow_id = "organization_media.school_gallery_image"
+	workflow_payload = {
+		"school": school_doc.name,
+		"row_name": target_row.name,
+		"upload_source": payload.get("upload_source") or "Desk",
+	}
+	authoritative = resolve_upload_session_context(workflow_id, workflow_payload)
 	response = create_upload_session_service(
 		{
 			**authoritative,
+			"workflow_payload": workflow_payload,
 			"folder": resolve_organization_media_folder(
 				organization=school_doc.organization,
 				school=school_doc.name,
@@ -310,15 +333,20 @@ def upload_organization_media_asset_service(payload: dict[str, Any]) -> dict[str
 		base_name = (payload.get("filename_original") or "media").rsplit(".", 1)[0]
 		media_key = f"{frappe.scrub(base_name) or 'media'}_{frappe.generate_hash(length=6)}"
 
-	authoritative = _build_organization_media_contract(
-		organization=organization,
-		slot=build_organization_media_slot(media_key=media_key),
-		school=school,
-		upload_source=payload.get("upload_source") or "Desk",
-	)
+	workflow_id = "organization_media.asset"
+	workflow_payload = {
+		"organization": organization,
+		"school": school,
+		"scope": scope,
+		"media_key": media_key,
+		"upload_source": payload.get("upload_source") or "Desk",
+		"filename_original": filename_original,
+	}
+	authoritative = resolve_upload_session_context(workflow_id, workflow_payload)
 	response = create_upload_session_service(
 		{
 			**authoritative,
+			"workflow_payload": workflow_payload,
 			"folder": resolve_organization_media_folder(
 				organization=organization,
 				school=school,

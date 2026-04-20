@@ -187,18 +187,21 @@ def ingest_upload_session_content(
 
 @frappe.whitelist()
 def create_upload_session(
-	owner_doctype: str,
-	owner_name: str,
-	attached_doctype: str,
-	attached_name: str,
-	organization: str,
-	primary_subject_type: str,
-	primary_subject_id: str,
-	data_class: str,
-	purpose: str,
-	retention_policy: str,
-	slot: str,
-	filename_original: str,
+	owner_doctype: str | None = None,
+	owner_name: str | None = None,
+	attached_doctype: str | None = None,
+	attached_name: str | None = None,
+	organization: str | None = None,
+	primary_subject_type: str | None = None,
+	primary_subject_id: str | None = None,
+	data_class: str | None = None,
+	purpose: str | None = None,
+	retention_policy: str | None = None,
+	slot: str | None = None,
+	filename_original: str | None = None,
+	workflow_id: str | None = None,
+	workflow_payload: dict[str, Any] | None = None,
+	contract_version: str | None = None,
 	school: str | None = None,
 	folder: str | None = None,
 	secondary_subjects: list[dict[str, Any]] | None = None,
@@ -211,10 +214,14 @@ def create_upload_session(
 	"""Create a Drive Upload Session and return an upload target.
 
 	This is the canonical entrypoint for new governed uploads.
-	It must fail closed on missing governance context.
+	It accepts either the workflow-spec contract (`workflow_id` + `workflow_payload`)
+	or the older explicit governance fields during transition.
 	"""
 	return create_upload_session_service(
 		compact_payload(
+			workflow_id=workflow_id,
+			workflow_payload=workflow_payload,
+			contract_version=contract_version,
 			owner_doctype=owner_doctype,
 			owner_name=owner_name,
 			attached_doctype=attached_doctype,

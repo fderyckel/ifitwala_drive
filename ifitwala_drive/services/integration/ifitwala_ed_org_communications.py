@@ -12,6 +12,7 @@ from ifitwala_drive.services.files.access import (
 )
 from ifitwala_drive.services.folders.resolution import resolve_org_communication_attachment_folder
 from ifitwala_drive.services.integration._ed_delegate import load_ed_drive_module
+from ifitwala_drive.services.integration.ifitwala_ed_bridge import resolve_upload_session_context
 
 _ED_MODULE = "ifitwala_ed.integrations.drive.org_communications"
 
@@ -110,14 +111,14 @@ def upload_org_communication_attachment_service(payload: dict[str, Any]) -> dict
 	if not filename_original:
 		frappe.throw(_("Missing required field: filename_original"))
 
+	workflow_id = "org_communication.attachment"
+	workflow_payload = {
+		"org_communication": org_communication,
+		"row_name": provided_row_name,
+		"slot": payload.get("slot"),
+	}
+	authoritative = resolve_upload_session_context(workflow_id, workflow_payload)
 	org_communication_doc = assert_org_communication_upload_access(org_communication, permission_type="write")
-	authoritative = build_org_communication_upload_contract(
-		org_communication_doc,
-		row_name=provided_row_name,
-	)
-	provided_slot = str(payload.get("slot") or "").strip()
-	if provided_slot and provided_slot != authoritative["slot"]:
-		frappe.throw(_("Org Communication attachment slot does not match the authoritative row context."))
 
 	response = create_upload_session_service(
 		{
@@ -126,6 +127,7 @@ def upload_org_communication_attachment_service(payload: dict[str, Any]) -> dict
 				for key, value in authoritative.items()
 				if key not in {"row_name", "course", "student_group"}
 			},
+			"workflow_payload": workflow_payload,
 			"folder": resolve_org_communication_attachment_folder(
 				org_communication=org_communication_doc.name,
 				course=authoritative["course"],

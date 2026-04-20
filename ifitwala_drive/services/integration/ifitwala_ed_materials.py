@@ -7,6 +7,7 @@ from frappe import _
 
 from ifitwala_drive.services.folders.resolution import resolve_supporting_material_folder
 from ifitwala_drive.services.integration._ed_delegate import load_ed_drive_module
+from ifitwala_drive.services.integration.ifitwala_ed_bridge import resolve_upload_session_context
 
 _ED_MODULE = "ifitwala_ed.integrations.drive.materials"
 
@@ -41,17 +42,18 @@ def upload_supporting_material_service(payload: dict[str, Any]) -> dict[str, Any
 	if not filename_original:
 		frappe.throw(_("Missing required field: filename_original"))
 
+	workflow_id = "supporting_material.file"
+	workflow_payload = {
+		"material": material,
+		"slot": payload.get("slot"),
+	}
+	authoritative = resolve_upload_session_context(workflow_id, workflow_payload)
 	material_doc = assert_supporting_material_upload_access(material, permission_type="write")
-	authoritative = build_supporting_material_upload_contract(material_doc)
-	provided_slot = str(payload.get("slot") or "").strip()
-	if provided_slot and provided_slot != authoritative["slot"]:
-		frappe.throw(
-			_("Supporting Material upload currently only supports slot '{0}'.").format(authoritative["slot"])
-		)
 
 	return create_upload_session_service(
 		{
 			**{key: value for key, value in authoritative.items() if key != "course"},
+			"workflow_payload": workflow_payload,
 			"folder": resolve_supporting_material_folder(
 				material=material_doc.name,
 				course=authoritative["course"],

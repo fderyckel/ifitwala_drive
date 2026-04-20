@@ -4,8 +4,10 @@ Status: LOCKED boundary contract
 Date: 2026-04-20
 Code refs:
 - `ifitwala_ed/integrations/drive/bridge.py`
+- `ifitwala_ed/integrations/drive/workflow_specs.py`
 - `ifitwala_ed/utilities/governed_uploads.py`
 - `ifitwala_drive/services/uploads/finalize.py`
+- `ifitwala_drive/services/uploads/sessions.py`
 - `ifitwala_drive/services/files/access.py`
 
 ## Bottom line
@@ -89,10 +91,15 @@ Target shape:
 
 - one narrow Ed integration module resolves `GovernedUploadSpec` by `workflow_id`
 - one narrow Ed integration module runs post-finalize business mutation by `workflow_id`
+- Drive persists `workflow_id` and `contract_version` on the upload-session contract so finalize does not rediscover workflow meaning ad hoc
 
 This is preferable to many wrapper-specific imports spread across both repos.
 
-Workflow-specific wrapper exports may exist temporarily during migration, but they are compatibility shims only.
+Current runtime note:
+
+- the registry now exists in `ifitwala_ed/integrations/drive/workflow_specs.py`
+- Drive wrapper services now create sessions using `workflow_id` plus workflow-specific identifiers internally
+- wrapper-specific public endpoints still exist only as ergonomics shims during migration
 
 ## 5. MIME contract
 
@@ -136,6 +143,7 @@ Current code still shows these transitional behaviors:
 - Drive still emits native `File` compatibility projections for current Ed surfaces
 - historical `File Classification` rows still require cleanup through the Ed migration patch
 - Ed compatibility read helpers may still expose profile-image slot names, but those names now resolve strictly through Drive derivatives and grant routes
+- generic `create_upload_session(...)` still accepts older explicit governance fields during transition, even though the workflow-spec path is now the canonical internal runtime path
 - some historical audit/discussion notes may still mention the retired `File Classification` and Ed-side derivative model and must not be treated as runtime design guidance
 
 These are migration constraints, not target architecture.
