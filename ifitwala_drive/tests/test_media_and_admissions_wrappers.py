@@ -209,6 +209,10 @@ def test_media_api_exports_expected_wrappers_and_delegates():
 	for method_name in (
 		"issue_employee_image_download_grant",
 		"issue_employee_image_preview_grant",
+		"issue_guardian_image_download_grant",
+		"issue_guardian_image_preview_grant",
+		"issue_student_image_download_grant",
+		"issue_student_image_preview_grant",
 		"upload_employee_image",
 		"upload_guardian_image",
 		"upload_student_image",
@@ -235,6 +239,36 @@ def test_media_api_exports_expected_wrappers_and_delegates():
 			derivative_role="thumb",
 		)["wrapper"]
 		== "issue_employee_image_preview_grant"
+	)
+	assert (
+		module.issue_guardian_image_download_grant(
+			guardian="GRD-0001",
+			file_id="FILE-GRD-1",
+		)["wrapper"]
+		== "issue_guardian_image_download_grant"
+	)
+	assert (
+		module.issue_guardian_image_preview_grant(
+			guardian="GRD-0001",
+			file_id="FILE-GRD-1",
+			derivative_role="thumb",
+		)["wrapper"]
+		== "issue_guardian_image_preview_grant"
+	)
+	assert (
+		module.issue_student_image_download_grant(
+			student="STU-0001",
+			file_id="FILE-STU-1",
+		)["wrapper"]
+		== "issue_student_image_download_grant"
+	)
+	assert (
+		module.issue_student_image_preview_grant(
+			student="STU-0001",
+			file_id="FILE-STU-1",
+			derivative_role="thumb",
+		)["wrapper"]
+		== "issue_student_image_preview_grant"
 	)
 	assert (
 		module.upload_employee_image(
@@ -305,6 +339,36 @@ def test_media_api_exports_expected_wrappers_and_delegates():
 			{
 				"employee": "EMP-0001",
 				"file_id": "FILE-EMP-1",
+				"derivative_role": "thumb",
+			},
+		),
+		(
+			"issue_guardian_image_download_grant",
+			{
+				"guardian": "GRD-0001",
+				"file_id": "FILE-GRD-1",
+			},
+		),
+		(
+			"issue_guardian_image_preview_grant",
+			{
+				"guardian": "GRD-0001",
+				"file_id": "FILE-GRD-1",
+				"derivative_role": "thumb",
+			},
+		),
+		(
+			"issue_student_image_download_grant",
+			{
+				"student": "STU-0001",
+				"file_id": "FILE-STU-1",
+			},
+		),
+		(
+			"issue_student_image_preview_grant",
+			{
+				"student": "STU-0001",
+				"file_id": "FILE-STU-1",
 				"derivative_role": "thumb",
 			},
 		),
