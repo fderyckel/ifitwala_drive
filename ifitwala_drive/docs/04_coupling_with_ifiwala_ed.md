@@ -100,6 +100,7 @@ Current runtime note:
 - the registry now exists in `ifitwala_ed/integrations/drive/workflow_specs.py`
 - Drive wrapper services now create sessions using `workflow_id` plus workflow-specific identifiers internally
 - wrapper-specific public endpoints still exist only as ergonomics shims during migration
+- Ed and Drive runtime entrypoints now import only explicit public bridge/API modules; reload fallback wrappers and `sys.path` rescue are retired
 
 ## 5. MIME contract
 
