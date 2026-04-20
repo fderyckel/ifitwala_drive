@@ -167,6 +167,9 @@ def _install_fake_frappe(*, exists_map=None, value_map=None, docs_map=None):
 	][: limit or None]
 
 	sys.modules["frappe"] = frappe
+	frappe_utils = types.ModuleType("frappe.utils")
+	frappe_utils.now_datetime = lambda: None
+	sys.modules["frappe.utils"] = frappe_utils
 	return db_set_calls
 
 

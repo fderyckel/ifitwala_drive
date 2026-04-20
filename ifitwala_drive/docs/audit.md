@@ -85,8 +85,8 @@ The current implementation now has three important storage foundations in place:
 The remaining high-priority work is now narrower and more operational:
 
 1. **Public/Private Storage Split**: Separate public organization media from private governed files so public reads can use CDN/public-bucket delivery without signed URL overhead.
-2. **Lifecycle Cleanup**: Re-enable schedulers in `hooks.py` and clean up expired upload sessions / orphaned `tmp/...` objects automatically.
-3. **API Hardening**: Add rate limits on upload/session endpoints and tighten wrapper contracts that still rely on loose `**kwargs`.
+2. **Lifecycle Cleanup**: Keep the active hourly scheduler for expiring abandoned upload sessions and temp objects healthy in production; treat failures here as an ops/runbook issue, not missing architecture.
+3. **API Hardening**: Rate limits now exist on upload/session endpoints; remaining work is tuning limits and tightening any wrappers that still rely on loose `**kwargs`.
 4. **Migration Completion**: Compatibility reads now exist for app-routed missing local `/files/...` and `/private/files/...` attachments. Verified private-file pruning also exists for completed offloads and for eligible new offloads with `delete_local_after_verification`. Public-file pruning now exists too, because public legacy `File.file_url` values can be rewritten onto canonical remote/proxy URLs before local deletion. The remaining compatibility gap is stale copied old `/files/...` links: static misses still need to route through the app if those old URLs must keep working.
-5. **Lifecycle Cleanup**: scheduler-driven cleanup of expired upload sessions and stale temp objects is still open.
-6. **Rate Limiting**: upload/session endpoints still need explicit abuse controls.
+5. **Abuse Monitoring**: rate limits and scheduler cleanup now exist; remaining work is observability, alerting, and tuning under real traffic.
+6. **Wrapper Reduction**: continue removing any broad helper seams that still obscure the explicit workflow-spec boundary.

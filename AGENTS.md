@@ -212,6 +212,11 @@ Those files define the live boundary:
 - Ed owns workflow meaning and surface authorization.
 - Vue/API contracts must expose server-owned `open_url` / `preview_url` / `thumbnail_url` style DTOs or surface-specific equivalents, not raw storage topology.
 
+When the Drive change affects admissions uploads, applicant images, applicant documents, or reviewer-facing applicant evidence, also read:
+
+- `../ifitwala_ed/ifitwala_ed/docs/admission/05_admission_portal.md`
+- `../ifitwala_ed/ifitwala_ed/docs/admission/10_ifitwala_drive_portal_uploads.md`
+
 ### 4.2 Preserve current governance intent
 If refactoring from Ifitwala_Ed into Ifitwala_drive, preserve:
 - workflow-spec boundary discipline

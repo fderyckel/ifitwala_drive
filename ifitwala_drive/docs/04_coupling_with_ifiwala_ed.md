@@ -143,7 +143,7 @@ Current code still shows these transitional behaviors:
 
 - Drive still emits native `File` compatibility projections for current Ed surfaces
 - historical `File Classification` rows still require cleanup through the Ed migration patch
-- Ed compatibility read helpers may still expose profile-image slot names, but those names now resolve strictly through Drive derivatives and grant routes
+- some older Ed storage-compatibility helpers still exist for historical image fields and copied legacy links, but current governed admissions, communication, planning, learning, and evidence DTOs no longer use `File.file_url` as their primary identity
 - some historical audit/discussion notes may still mention the retired `File Classification` and Ed-side derivative model and must not be treated as runtime design guidance
 
 These are migration constraints, not target architecture.

@@ -162,7 +162,7 @@ Recommended fields:
 Recommended derivative roles in the first contract:
 
 - `thumb`
-- `card` for governed profile-image list/card surfaces
+- `card` for governed profile-image list/card surfaces; this role is now part of the live Drive derivative schema
 - `viewer_preview`
 - `pdf_page_1`
 
