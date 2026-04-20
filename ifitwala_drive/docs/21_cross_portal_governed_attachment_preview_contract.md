@@ -259,6 +259,7 @@ Refined delivery split:
 - `issue_preview_grant(...)` should therefore accept `derivative_role`, with current richer-preview behavior preserved as the compatibility default during rollout
 - finalize/replace flows for supported image files should keep `thumb` and `viewer_preview` derivative rows scheduled as the normal path, with `card` added for `profile_image` governed files; PDF flows should schedule both `pdf_card` and `pdf_page_1`, with worker enqueue happening after the governing transaction commits
 - derivative reconciliation should also requeue current-version derivatives when the active render spec changes, so existing ready thumbnails/previews do not stay permanently undersized or stale after a derivative-tuning deploy
+- explicit card-derivative preview grants must treat stale current-version derivatives as unavailable rather than serving legacy undersized artifacts; Ed card surfaces may then fall back to their richer `preview_url` path while reconciliation rebuilds the correct derivative
 
 Ed/Drive boundary rule:
 
