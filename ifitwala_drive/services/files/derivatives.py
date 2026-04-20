@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 from datetime import datetime, timedelta
@@ -26,8 +27,8 @@ _SUPPORTED_IMAGE_PREVIEW_MIME_TYPES = {
 _SUPPORTED_PDF_PREVIEW_MIME_TYPES = {"application/pdf"}
 _IMAGE_DERIVATIVE_SPECS = {
 	"thumb": {
-		"max_width": 160,
-		"quality": 75,
+		"max_width": 400,
+		"quality": 78,
 		"output_format": "WEBP",
 		"mime_type": "image/webp",
 	},
@@ -218,6 +219,24 @@ def resolve_ready_preview_derivative(
 		"storage_object_key": getattr(derivative_doc, "storage_object_key", None),
 		"mime_type": getattr(derivative_doc, "mime_type", None),
 	}
+
+
+def _derivative_spec_signature(derivative_role: str) -> str:
+	spec = _IMAGE_DERIVATIVE_SPECS.get(derivative_role) or _PDF_DERIVATIVE_SPECS.get(derivative_role)
+	if not spec:
+		return derivative_role
+
+	parts = [f"{key}={spec[key]}" for key in sorted(spec)]
+	return f"{derivative_role}|{'|'.join(parts)}"
+
+
+def _build_derivative_source_hash(*, content_hash: str | None, derivative_role: str) -> str | None:
+	resolved_content_hash = str(content_hash or "").strip()
+	if not resolved_content_hash:
+		return None
+
+	raw_value = f"{resolved_content_hash}|{_derivative_spec_signature(derivative_role)}"
+	return f"sha256:{hashlib.sha256(raw_value.encode('utf-8')).hexdigest()}"
 
 
 def preview_plan_for_mime_type(mime_type: str | None) -> dict[str, Any]:
@@ -670,15 +689,19 @@ def run_preview_job(*, drive_processing_job_id: str) -> dict[str, Any]:
 
 		if not plan["supported"]:
 			for derivative_role in derivative_roles:
+				derivative_source_hash = _build_derivative_source_hash(
+					content_hash=source_hash,
+					derivative_role=derivative_role,
+				)
 				derivative_doc = _resolve_derivative_doc(
 					drive_file_id=drive_file_doc.name,
 					drive_file_version_id=current_version_id,
 					derivative_role=derivative_role,
-					source_hash=source_hash,
+					source_hash=derivative_source_hash,
 				)
 				_mark_derivative_unsupported(
 					derivative_doc=derivative_doc,
-					source_hash=source_hash,
+					source_hash=derivative_source_hash,
 					message=f"Preview generation is not supported for MIME type {mime_type or 'unknown'}.",
 				)
 			drive_file_doc.preview_status = "not_applicable"
@@ -709,11 +732,15 @@ def run_preview_job(*, drive_processing_job_id: str) -> dict[str, Any]:
 		failed_roles: list[dict[str, str]] = []
 		artifacts: list[dict[str, Any]] = []
 		for derivative_role in derivative_roles:
+			derivative_source_hash = _build_derivative_source_hash(
+				content_hash=source_hash,
+				derivative_role=derivative_role,
+			)
 			derivative_doc = _resolve_derivative_doc(
 				drive_file_id=drive_file_doc.name,
 				drive_file_version_id=current_version_id,
 				derivative_role=derivative_role,
-				source_hash=source_hash,
+				source_hash=derivative_source_hash,
 			)
 			derivative_doc.status = "processing"
 			derivative_doc.error_code = None
@@ -741,7 +768,7 @@ def run_preview_job(*, drive_processing_job_id: str) -> dict[str, Any]:
 					derivative_doc=derivative_doc,
 					storage_artifact=storage_artifact,
 					rendered=rendered,
-					source_hash=source_hash,
+					source_hash=derivative_source_hash,
 				)
 				ready_roles.append(derivative_role)
 				artifacts.append(
@@ -765,7 +792,7 @@ def run_preview_job(*, drive_processing_job_id: str) -> dict[str, Any]:
 					derivative_doc=derivative_doc,
 					error_code=error_code,
 					exc=exc,
-					source_hash=source_hash,
+					source_hash=derivative_source_hash,
 				)
 				failed_roles.append(
 					{
@@ -840,7 +867,7 @@ def sync_preview_pipeline_for_current_version(
 			drive_file_id=drive_file_id,
 			drive_file_version_id=drive_file_version_id,
 			derivative_role=role,
-			source_hash=source_hash,
+			source_hash=_build_derivative_source_hash(content_hash=source_hash, derivative_role=role),
 		)
 		for role in plan["derivative_roles"]
 	]
@@ -939,7 +966,7 @@ def reconcile_preview_derivatives_service(
 			for candidate in _get_all(
 				"Drive File Derivative",
 				filters={"drive_file": drive_file_id, "drive_file_version": current_version},
-				fields=["name", "derivative_role", "status", "modified", "error_code"],
+				fields=["name", "derivative_role", "status", "modified", "error_code", "source_hash"],
 			)
 		}
 		expected_roles = [str(role or "").strip() for role in plan["derivative_roles"]]
@@ -964,6 +991,15 @@ def reconcile_preview_derivatives_service(
 				break
 			if status in {"unsupported"}:
 				reconcile_reason = ""
+				break
+
+			expected_source_hash = _build_derivative_source_hash(
+				content_hash=str(row.get("content_hash") or "").strip() or None,
+				derivative_role=derivative_role,
+			)
+			resolved_source_hash = str(derivative_row.get("source_hash") or "").strip() or None
+			if status == "ready" and expected_source_hash and resolved_source_hash != expected_source_hash:
+				reconcile_reason = f"outdated:{derivative_role}"
 				break
 
 		if not reconcile_reason and str(row.get("preview_status") or "").strip().lower() == "pending":

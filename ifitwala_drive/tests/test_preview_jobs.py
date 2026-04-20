@@ -729,6 +729,83 @@ def test_reconcile_preview_derivatives_service_requeues_missing_thumb():
 	]
 
 
+def test_reconcile_preview_derivatives_service_requeues_outdated_thumb_spec():
+	now = datetime(2026, 4, 16, 14, 0, 0)
+	drive_file = FakeDoc(
+		{
+			"doctype": "Drive File",
+			"name": "DF-0110",
+			"file": "FILE-0110",
+			"status": "active",
+			"current_version": "DFV-0110",
+			"preview_status": "ready",
+			"content_hash": "sha256:image-source",
+		}
+	)
+	version = FakeDoc(
+		{
+			"doctype": "Drive File Version",
+			"name": "DFV-0110",
+			"drive_file": "DF-0110",
+			"mime_type": "image/png",
+		}
+	)
+	thumb = FakeDoc(
+		{
+			"doctype": "Drive File Derivative",
+			"name": "DFD-0110",
+			"drive_file": "DF-0110",
+			"drive_file_version": "DFV-0110",
+			"derivative_role": "thumb",
+			"status": "ready",
+			"source_hash": "sha256:legacy-thumb-spec",
+			"modified": now,
+		}
+	)
+	viewer = FakeDoc(
+		{
+			"doctype": "Drive File Derivative",
+			"name": "DFD-0111",
+			"drive_file": "DF-0110",
+			"drive_file_version": "DFV-0110",
+			"derivative_role": "viewer_preview",
+			"status": "ready",
+			"source_hash": "sha256:legacy-viewer-spec",
+			"modified": now,
+		}
+	)
+	enqueue_calls = _install_fake_frappe(
+		docs_map={
+			("Drive File", "DF-0110"): drive_file,
+			("Drive File Version", "DFV-0110"): version,
+			("Drive File Derivative", "DFD-0110"): thumb,
+			("Drive File Derivative", "DFD-0111"): viewer,
+		},
+		now=now,
+	)
+	module = _load_module()
+
+	viewer.source_hash = module._build_derivative_source_hash(
+		content_hash="sha256:image-source",
+		derivative_role="viewer_preview",
+	)
+
+	result = module.reconcile_preview_derivatives_service(limit=10, stalled_minutes=20, cooldown_minutes=60)
+
+	assert result["status"] == "completed"
+	assert result["requeued"] == 1
+	assert result["reasons"] == {"outdated:thumb": 1}
+	assert drive_file.preview_status == "pending"
+	assert enqueue_calls == [
+		{
+			"method": "ifitwala_drive.services.files.derivatives.run_preview_job",
+			"queue": "default",
+			"job_id": "drive-preview:DPJ-0001",
+			"drive_processing_job_id": "DPJ-0001",
+		}
+	]
+
+
 def test_reconcile_preview_derivatives_service_skips_runtime_missing_failures():
 	now = datetime(2026, 4, 16, 14, 0, 0)
 	drive_file = FakeDoc(
@@ -770,6 +847,7 @@ def test_reconcile_preview_derivatives_service_skips_runtime_missing_failures():
 			"drive_file_version": "DFV-0200",
 			"derivative_role": "viewer_preview",
 			"status": "ready",
+			"source_hash": "sha256:placeholder",
 			"modified": now,
 		}
 	)
@@ -783,6 +861,10 @@ def test_reconcile_preview_derivatives_service_skips_runtime_missing_failures():
 		now=now,
 	)
 	module = _load_module()
+	viewer.source_hash = module._build_derivative_source_hash(
+		content_hash="sha256:image-source",
+		derivative_role="viewer_preview",
+	)
 
 	result = module.reconcile_preview_derivatives_service(limit=10, stalled_minutes=20, cooldown_minutes=60)
 

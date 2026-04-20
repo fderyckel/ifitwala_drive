@@ -251,11 +251,13 @@ Test refs:
 Refined delivery split:
 
 - list/card attachment surfaces in Ifitwala_Ed should request the `thumb` derivative
+- the attachment `thumb` derivative should be large enough for current inline preview cards, not a micro-thumbnail that is immediately upscaled and blurred by Ed surfaces
 - governed profile-image card surfaces may request the `card` derivative where the original avatar contract needs a larger but still bounded image
 - richer image preview surfaces should request `viewer_preview`
 - PDF preview continues to use `pdf_page_1`
 - `issue_preview_grant(...)` should therefore accept `derivative_role`, with current richer-preview behavior preserved as the compatibility default during rollout
 - finalize/replace flows for supported image files should keep `thumb` and `viewer_preview` derivative rows scheduled as the normal path, with `card` added for `profile_image` governed files and worker enqueue happening after the governing transaction commits
+- derivative reconciliation should also requeue current-version derivatives when the active render spec changes, so existing ready thumbnails/previews do not stay permanently undersized or stale after a derivative-tuning deploy
 
 Ed/Drive boundary rule:
 
@@ -282,9 +284,10 @@ Required behavior:
 4. persist derivative metadata rows
 5. update lightweight preview hints
 6. mark failures and unsupported types explicitly
-7. mark affected derivative rows stale on replacement
-8. delete derivative blobs and metadata during governed erasure
-9. prune stale derivative blobs and metadata on a separate lifecycle path after the configured grace window
+7. requeue current-version derivatives when required derivative rows are missing, stalled, or outdated for the active render spec
+8. mark affected derivative rows stale on replacement
+9. delete derivative blobs and metadata during governed erasure
+10. prune stale derivative blobs and metadata on a separate lifecycle path after the configured grace window
 
 Failure posture:
 
