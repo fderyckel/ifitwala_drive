@@ -7,8 +7,8 @@ from frappe import _
 
 from ifitwala_drive.services.files.access import (
 	_assert_can_issue_download,
-	_assert_can_issue_preview,
 	_issue_grant,
+	_issue_preview_grant_for_doc,
 )
 from ifitwala_drive.services.folders.resolution import (
 	resolve_employee_image_folder,
@@ -510,8 +510,7 @@ def issue_employee_image_download_grant_service(payload: dict[str, Any]) -> dict
 
 def issue_employee_image_preview_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
 	_context, drive_file_doc = _get_authorized_employee_image_drive_file(payload)
-	_assert_can_issue_preview(drive_file_doc)
-	return _issue_grant(doc=drive_file_doc, grant_kind="preview", payload=payload)
+	return _issue_preview_grant_for_doc(doc=drive_file_doc, payload=payload)
 
 
 def issue_student_image_download_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
@@ -522,8 +521,7 @@ def issue_student_image_download_grant_service(payload: dict[str, Any]) -> dict[
 
 def issue_student_image_preview_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
 	_context, drive_file_doc = _get_authorized_student_image_drive_file(payload)
-	_assert_can_issue_preview(drive_file_doc)
-	return _issue_grant(doc=drive_file_doc, grant_kind="preview", payload=payload)
+	return _issue_preview_grant_for_doc(doc=drive_file_doc, payload=payload)
 
 
 def issue_guardian_image_download_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
@@ -534,8 +532,7 @@ def issue_guardian_image_download_grant_service(payload: dict[str, Any]) -> dict
 
 def issue_guardian_image_preview_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
 	_context, drive_file_doc = _get_authorized_guardian_image_drive_file(payload)
-	_assert_can_issue_preview(drive_file_doc)
-	return _issue_grant(doc=drive_file_doc, grant_kind="preview", payload=payload)
+	return _issue_preview_grant_for_doc(doc=drive_file_doc, payload=payload)
 
 
 def issue_public_website_media_download_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
@@ -546,8 +543,7 @@ def issue_public_website_media_download_grant_service(payload: dict[str, Any]) -
 
 def issue_public_website_media_preview_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
 	_context, drive_file_doc = _get_authorized_public_website_media_drive_file(payload)
-	_assert_can_issue_preview(drive_file_doc)
-	return _issue_grant(doc=drive_file_doc, grant_kind="preview", payload=payload)
+	return _issue_preview_grant_for_doc(doc=drive_file_doc, payload=payload)
 
 
 MEDIA_API_SERVICE_EXPORTS = {

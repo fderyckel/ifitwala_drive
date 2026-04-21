@@ -60,6 +60,9 @@ Ed participates only through the approved integration surface for:
 - authoritative workflow-spec resolution and validation
 - post-finalize business mutation
 
+When Ed already holds buffered upload bytes in-process, it may hand those bytes back through the Drive-owned `ingest_upload_session_content(...)` helper.
+That trusted server-side seam must resolve the session from Drive authority and must not require Ed to replay browser upload-token headers.
+
 ### 2.3 Read/open/preview
 
 Ed authorizes the surface-specific action.

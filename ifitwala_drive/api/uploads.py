@@ -36,14 +36,16 @@ def _resolve_upload_session_doc(
 	upload_session_id: str | None = None,
 	session_key: str | None = None,
 	upload_token: str | None = None,
+	require_upload_token: bool = True,
 ):
 	upload_session_id = upload_session_id or frappe.form_dict.get("upload_session_id")
 	session_key = session_key or frappe.form_dict.get("session_key")
-	upload_token = upload_token or frappe.form_dict.get("upload_token")
-	if not upload_token:
-		request_headers = getattr(frappe, "request", None)
-		if request_headers and hasattr(request_headers, "headers"):
-			upload_token = request_headers.headers.get("X-Drive-Upload-Token")
+	if require_upload_token:
+		upload_token = upload_token or frappe.form_dict.get("upload_token")
+		if not upload_token:
+			request_headers = getattr(frappe, "request", None)
+			if request_headers and hasattr(request_headers, "headers"):
+				upload_token = request_headers.headers.get("X-Drive-Upload-Token")
 
 	if not upload_session_id and not session_key:
 		frappe.throw(_("Missing required field: upload_session_id"))
@@ -64,7 +66,7 @@ def _resolve_upload_session_doc(
 		if hasattr(doc, "get_password")
 		else getattr(doc, "upload_token", None)
 	)
-	if stored_upload_token and upload_token != stored_upload_token:
+	if require_upload_token and stored_upload_token and upload_token != stored_upload_token:
 		frappe.throw(_("Upload token mismatch."))
 	if doc.status in {"aborted", "completed", "expired", "failed"}:
 		frappe.throw(_("This upload session does not accept blob uploads in status: {0}").format(doc.status))
@@ -154,11 +156,13 @@ def _ingest_upload_session_content(
 	upload_token: str | None = None,
 	content: bytes,
 	require_proxy_post: bool,
+	require_upload_token: bool,
 ) -> dict[str, Any]:
 	doc = _resolve_upload_session_doc(
 		upload_session_id=upload_session_id,
 		session_key=session_key,
 		upload_token=upload_token,
+		require_upload_token=require_upload_token,
 	)
 	upload_contract = load_upload_contract(doc)
 	upload_strategy = str(upload_contract.get("upload_strategy") or "").strip()
@@ -193,6 +197,7 @@ def ingest_upload_session_content(
 		upload_token=upload_token,
 		content=content,
 		require_proxy_post=False,
+		require_upload_token=False,
 	)
 
 
@@ -268,4 +273,5 @@ def upload_session_blob(
 		upload_token=upload_token,
 		content=_extract_request_blob_content(),
 		require_proxy_post=True,
+		require_upload_token=True,
 	)

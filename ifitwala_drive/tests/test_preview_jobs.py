@@ -223,6 +223,59 @@ def test_sync_preview_pipeline_enqueues_card_derivative_for_profile_images():
 	}
 
 
+def test_sync_preview_pipeline_preserves_ready_status_while_backfilling_profile_image_derivatives():
+	drive_file = FakeDoc(
+		{
+			"doctype": "Drive File",
+			"name": "DF-0004",
+			"file": "FILE-0004",
+			"current_version": "DFV-0004",
+			"content_hash": "sha256:profile-ready",
+			"preview_status": "ready",
+			"slot": "profile_image",
+		}
+	)
+	version = FakeDoc(
+		{
+			"doctype": "Drive File Version",
+			"name": "DFV-0004",
+			"drive_file": "DF-0004",
+			"mime_type": "image/png",
+			"content_hash": "sha256:profile-ready",
+		}
+	)
+	_install_fake_frappe(
+		docs_map={
+			("Drive File", "DF-0004"): drive_file,
+			("Drive File Version", "DFV-0004"): version,
+		}
+	)
+	module = _load_module()
+	viewer = FakeDoc(
+		{
+			"doctype": "Drive File Derivative",
+			"name": "DFD-0999",
+			"drive_file": "DF-0004",
+			"drive_file_version": "DFV-0004",
+			"derivative_role": "viewer_preview",
+			"status": "ready",
+			"source_hash": module._build_derivative_source_hash(
+				content_hash="sha256:profile-ready",
+				derivative_role="viewer_preview",
+			),
+		}
+	)
+	FakeDoc._docs_map[("Drive File Derivative", "DFD-0999")] = viewer
+
+	result = module.sync_preview_pipeline_for_current_version(
+		drive_file_doc=drive_file,
+		mime_type="image/png",
+	)
+
+	assert result["preview_status"] == "ready"
+	assert drive_file.preview_status == "ready"
+
+
 def test_sync_preview_pipeline_enqueues_preview_job_for_supported_pdf():
 	drive_file = FakeDoc(
 		{

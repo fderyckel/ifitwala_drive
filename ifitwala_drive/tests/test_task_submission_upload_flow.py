@@ -1332,6 +1332,7 @@ def test_upload_session_blob_accepts_proxy_post(monkeypatch):
 		{
 			"name": "DUS-0001",
 			"session_key": "sess-0001",
+			"upload_token": "token-1",
 			"status": "created",
 			"tmp_object_key": "tmp/DUS-0001/essay.txt",
 			"storage_backend": "local",
@@ -1344,7 +1345,11 @@ def test_upload_session_blob_accepts_proxy_post(monkeypatch):
 	_install_fake_frappe(docs_map={("Drive Upload Session", "DUS-0001"): session_doc})
 	import frappe
 
-	frappe.request = types.SimpleNamespace(files={}, get_data=lambda: b"hello")
+	frappe.request = types.SimpleNamespace(
+		files={},
+		headers={"X-Drive-Upload-Token": "token-1"},
+		get_data=lambda: b"hello",
+	)
 	module = _load_module("ifitwala_drive.api.uploads")
 	writes: list[tuple[str, bytes]] = []
 
@@ -1365,6 +1370,44 @@ def test_upload_session_blob_accepts_proxy_post(monkeypatch):
 	assert writes == [("tmp/DUS-0001/essay.txt", b"hello")]
 
 
+def test_upload_session_blob_rejects_upload_token_mismatch():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.api.uploads",
+		"ifitwala_drive.services.uploads.sessions",
+	)
+	session_doc = FakeDoc(
+		{
+			"name": "DUS-0001",
+			"session_key": "sess-0001",
+			"upload_token": "token-1",
+			"status": "created",
+			"tmp_object_key": "tmp/DUS-0001/essay.txt",
+			"storage_backend": "local",
+			"owner_doctype": "Task Submission",
+			"owner_name": "TSUB-0001",
+			"intended_slot": "submission",
+			"upload_contract_json": '{"upload_strategy":"proxy_post","upload_target":{"method":"POST","url":"/proxy","headers":{}}}',
+		}
+	)
+	_install_fake_frappe(docs_map={("Drive Upload Session", "DUS-0001"): session_doc})
+	import frappe
+
+	frappe.request = types.SimpleNamespace(
+		files={},
+		headers={"X-Drive-Upload-Token": "wrong-token"},
+		get_data=lambda: b"hello",
+	)
+	module = _load_module("ifitwala_drive.api.uploads")
+
+	try:
+		module.upload_session_blob(upload_session_id="DUS-0001")
+	except RuntimeError as exc:
+		assert "Upload token mismatch" in str(exc)
+	else:
+		raise AssertionError("Expected upload_session_blob to reject mismatched upload tokens.")
+
+
 def test_upload_session_blob_rejects_non_proxy_strategy():
 	_purge_modules(
 		"frappe",
@@ -1375,6 +1418,7 @@ def test_upload_session_blob_rejects_non_proxy_strategy():
 		{
 			"name": "DUS-0001",
 			"session_key": "sess-0001",
+			"upload_token": "token-1",
 			"status": "created",
 			"tmp_object_key": "tmp/DUS-0001/essay.txt",
 			"storage_backend": "gcs",
@@ -1385,6 +1429,13 @@ def test_upload_session_blob_rejects_non_proxy_strategy():
 		}
 	)
 	_install_fake_frappe(docs_map={("Drive Upload Session", "DUS-0001"): session_doc})
+	import frappe
+
+	frappe.request = types.SimpleNamespace(
+		files={},
+		headers={"X-Drive-Upload-Token": "token-1"},
+		get_data=lambda: b"hello",
+	)
 	module = _load_module("ifitwala_drive.api.uploads")
 
 	try:
@@ -1405,6 +1456,7 @@ def test_ingest_upload_session_content_uses_upload_target_for_non_proxy(monkeypa
 		{
 			"name": "DUS-0001",
 			"session_key": "sess-0001",
+			"upload_token": "token-1",
 			"status": "created",
 			"tmp_object_key": "tmp/DUS-0001/essay.txt",
 			"storage_backend": "gcs",

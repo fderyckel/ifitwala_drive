@@ -4,6 +4,7 @@ import importlib
 import sys
 import types
 from datetime import datetime
+from typing import ClassVar
 
 
 def _purge_modules(*prefixes: str) -> None:
@@ -13,12 +14,39 @@ def _purge_modules(*prefixes: str) -> None:
 
 
 class FakeDoc:
+	_insert_counters: ClassVar[dict[str, int]] = {}
+
 	def __init__(self, data=None):
 		for key, value in (data or {}).items():
 			setattr(self, key, value)
+		self.saved = 0
+		self.inserted = 0
 
 	def check_permission(self, permission_type=None):
 		return None
+
+	def save(self, ignore_permissions=False):
+		self.saved += 1
+		doctype = getattr(self, "doctype", None)
+		name = getattr(self, "name", None)
+		if doctype and name:
+			_install_fake_frappe._docs_map[(doctype, name)] = self
+		return self
+
+	def insert(self, ignore_permissions=False):
+		doctype = getattr(self, "doctype", "")
+		if not getattr(self, "name", None):
+			prefix_map = {
+				"Drive File Derivative": "DFD",
+				"Drive Processing Job": "DPJ",
+			}
+			prefix = prefix_map.get(doctype, "DOC")
+			next_value = self._insert_counters.get(prefix, 0) + 1
+			self._insert_counters[prefix] = next_value
+			self.name = f"{prefix}-{next_value:04d}"
+		self.inserted += 1
+		_install_fake_frappe._docs_map[(doctype, self.name)] = self
+		return self
 
 
 def _install_fake_frappe(*, exists_map=None, value_map=None, docs_map=None, now=None):
@@ -26,6 +54,8 @@ def _install_fake_frappe(*, exists_map=None, value_map=None, docs_map=None, now=
 	value_map = value_map or {}
 	docs_map = docs_map or {}
 	now = now or datetime(2026, 3, 19, 10, 0, 0)
+	_install_fake_frappe._docs_map = docs_map
+	FakeDoc._insert_counters = {}
 
 	class FakeDB:
 		def exists(self, doctype, name=None):
@@ -73,6 +103,8 @@ def _install_fake_frappe(*, exists_map=None, value_map=None, docs_map=None, now=
 		raise RuntimeError(message)
 
 	def _get_doc(doctype, name=None):
+		if isinstance(doctype, dict):
+			return FakeDoc(doctype)
 		return docs_map[(doctype, name)]
 
 	frappe = types.ModuleType("frappe")
@@ -456,6 +488,172 @@ def test_issue_preview_grant_rejects_stale_explicit_thumbnail_derivative(monkeyp
 		assert "ready derivative: thumb" in str(exc)
 	else:
 		raise AssertionError("Expected stale thumbnail derivative preview grant issuance to fail.")
+
+
+def test_issue_preview_grant_requeues_missing_explicit_thumbnail_derivative(monkeypatch):
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.audit.events",
+		"ifitwala_drive.services.files.access",
+	)
+	drive_file = FakeDoc(
+		{
+			"name": "DF-0009",
+			"status": "active",
+			"preview_status": "ready",
+			"owner_doctype": "Task Submission",
+			"owner_name": "TSUB-0009",
+			"file": "FILE-0009",
+			"current_version": "DFV-0009",
+			"display_name": "avatar.png",
+			"storage_backend": "gcs",
+			"storage_object_key": "files/original/avatar.png",
+		}
+	)
+	task_submission = FakeDoc({"name": "TSUB-0009"})
+	version_doc = FakeDoc(
+		{
+			"name": "DFV-0009",
+			"drive_file": "DF-0009",
+			"mime_type": "image/png",
+		}
+	)
+	file_doc = FakeDoc(
+		{"name": "FILE-0009", "file_url": "https://storage.ifitwala.invalid/original/avatar.png"}
+	)
+	_install_fake_frappe(
+		docs_map={
+			("Drive File", "DF-0009"): drive_file,
+			("Task Submission", "TSUB-0009"): task_submission,
+			("Drive File Version", "DFV-0009"): version_doc,
+			("File", "FILE-0009"): file_doc,
+		},
+	)
+	module = _load_module("ifitwala_drive.services.files.access")
+	sync_calls = []
+
+	monkeypatch.setattr(
+		module,
+		"sync_preview_pipeline_for_current_version",
+		lambda *, drive_file_doc, mime_type: sync_calls.append((drive_file_doc.name, mime_type))
+		or {"preview_status": "ready", "derivative_ids": [], "drive_processing_job_id": "DPJ-0099"},
+	)
+
+	try:
+		module.issue_preview_grant_service({"drive_file_id": "DF-0009", "derivative_role": "thumb"})
+	except RuntimeError as exc:
+		assert "ready derivative: thumb" in str(exc)
+	else:
+		raise AssertionError("Expected missing explicit thumbnail derivative preview grant issuance to fail.")
+
+	assert sync_calls == [("DF-0009", "image/png")]
+
+
+def test_issue_preview_grant_allows_ready_explicit_derivative_while_primary_preview_is_pending(monkeypatch):
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.audit.events",
+		"ifitwala_drive.services.files.access",
+	)
+	drive_file = FakeDoc(
+		{
+			"name": "DF-0010",
+			"status": "active",
+			"preview_status": "pending",
+			"owner_doctype": "Task Submission",
+			"owner_name": "TSUB-0010",
+			"file": "FILE-0010",
+			"current_version": "DFV-0010",
+			"display_name": "avatar.png",
+			"storage_backend": "gcs",
+			"storage_object_key": "files/original/avatar.png",
+		}
+	)
+	task_submission = FakeDoc({"name": "TSUB-0010"})
+	version_doc = FakeDoc(
+		{
+			"name": "DFV-0010",
+			"drive_file": "DF-0010",
+			"mime_type": "image/png",
+		}
+	)
+	file_doc = FakeDoc(
+		{"name": "FILE-0010", "file_url": "https://storage.ifitwala.invalid/original/avatar.png"}
+	)
+	card_doc = FakeDoc(
+		{
+			"name": "DFD-0010",
+			"drive_file": "DF-0010",
+			"drive_file_version": "DFV-0010",
+			"derivative_role": "card",
+			"status": "ready",
+			"storage_backend": "gcs",
+			"storage_object_key": "derivatives/avatar/card.webp",
+		}
+	)
+	_install_fake_frappe(
+		docs_map={
+			("Drive File", "DF-0010"): drive_file,
+			("Task Submission", "TSUB-0010"): task_submission,
+			("Drive File Version", "DFV-0010"): version_doc,
+			("File", "FILE-0010"): file_doc,
+			("Drive File Derivative", "DFD-0010"): card_doc,
+		},
+	)
+	module = _load_module("ifitwala_drive.services.files.access")
+	sync_calls = []
+	ready_card = {
+		"name": "DFD-0010",
+		"derivative_role": "card",
+		"status": "ready",
+		"storage_backend": "gcs",
+		"storage_object_key": "derivatives/avatar/card.webp",
+		"mime_type": "image/webp",
+	}
+
+	monkeypatch.setattr(
+		module,
+		"sync_preview_pipeline_for_current_version",
+		lambda *, drive_file_doc, mime_type: sync_calls.append((drive_file_doc.name, mime_type))
+		or {
+			"preview_status": "pending",
+			"derivative_ids": ["DFD-0010"],
+			"drive_processing_job_id": "DPJ-0010",
+		},
+	)
+	monkeypatch.setattr(module, "resolve_ready_preview_derivative", lambda **kwargs: ready_card)
+	monkeypatch.setattr(
+		module,
+		"resolve_ready_preview_derivative_state",
+		lambda **kwargs: {
+			"state": "ready",
+			"derivative": ready_card,
+			"expected_source_hash": None,
+			"resolved_source_hash": None,
+		},
+	)
+
+	class FakeStorage:
+		def issue_download_grant(self, *, object_key, file_url, expires_on, filename=None):
+			raise AssertionError("Download grant should not be issued in this test.")
+
+		def issue_preview_grant(self, *, object_key, file_url, expires_on, filename=None):
+			assert object_key == "derivatives/avatar/card.webp"
+			assert file_url is None
+			assert filename == "avatar.png"
+			return {"grant_type": "signed_url", "url": "https://preview.invalid/avatar-card.webp"}
+
+	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
+
+	response = module.issue_preview_grant_service({"drive_file_id": "DF-0010", "derivative_role": "card"})
+
+	assert sync_calls == [("DF-0010", "image/png")]
+	assert response == {
+		"grant_type": "signed_url",
+		"url": "https://preview.invalid/avatar-card.webp",
+		"expires_on": "2026-03-19 10:10:00",
+		"preview_status": "pending",
+	}
 
 
 def test_issue_preview_grant_uses_ready_pdf_first_page_derivative(monkeypatch):

@@ -114,6 +114,20 @@ Current rule:
 
 ## 4. Blob ingress contract
 
+### `ingest_upload_session_content`
+
+Purpose:
+
+- receive already-buffered file content from trusted server-side app code
+
+Rules:
+
+- this is a Drive-owned in-process helper, not a browser-facing API
+- callers resolve the session by authoritative Drive identity (`upload_session_id` or `session_key`)
+- callers must not be required to replay the browser upload token back into Drive
+- Drive still owns temporary-object writes, remote upload relay, and session-state transitions
+- Ed must not bypass this helper by calling storage backends directly
+
 ### `upload_session_blob`
 
 Purpose:
@@ -122,6 +136,8 @@ Purpose:
 
 Rules:
 
+- this is the public/browser blob route for `proxy_post` sessions
+- session identity and upload token must match the persisted `Drive Upload Session`
 - valid only when the session upload strategy is `proxy_post`
 - Drive writes the temporary object
 - Drive advances session state

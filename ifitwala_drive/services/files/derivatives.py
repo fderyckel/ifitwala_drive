@@ -357,6 +357,18 @@ def preview_plan_for_drive_file(drive_file_doc, mime_type: str | None) -> dict[s
 	return plan
 
 
+def _preview_status_for_scheduled_sync(*, drive_file_doc, primary_derivative_role: str | None) -> str:
+	resolved_role = str(primary_derivative_role or "").strip()
+	if not resolved_role:
+		return "pending"
+
+	primary_state = resolve_ready_preview_derivative_state(
+		drive_file_doc=drive_file_doc,
+		derivative_role=resolved_role,
+	)
+	return "ready" if primary_state.get("state") == "ready" else "pending"
+
+
 def _enqueue_preview_job_execution(job_name: str, queue_name: str) -> None:
 	enqueue = getattr(frappe, "enqueue", None)
 	if not callable(enqueue):
@@ -919,13 +931,18 @@ def sync_preview_pipeline_for_current_version(
 	mime_type: str | None,
 ) -> dict[str, Any]:
 	plan = preview_plan_for_drive_file(drive_file_doc, mime_type)
-	drive_file_doc.preview_status = plan["preview_status"]
 	if not plan["supported"]:
+		drive_file_doc.preview_status = plan["preview_status"]
 		return {
 			"preview_status": drive_file_doc.preview_status,
 			"derivative_ids": [],
 			"drive_processing_job_id": None,
 		}
+
+	drive_file_doc.preview_status = _preview_status_for_scheduled_sync(
+		drive_file_doc=drive_file_doc,
+		primary_derivative_role=plan.get("primary_derivative_role"),
+	)
 
 	drive_file_id = str(getattr(drive_file_doc, "name", "") or "").strip()
 	drive_file_version_id = str(getattr(drive_file_doc, "current_version", "") or "").strip()

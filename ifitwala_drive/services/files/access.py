@@ -12,6 +12,7 @@ from ifitwala_drive.services.files.derivatives import (
 	primary_preview_derivative_role_for_mime_type,
 	resolve_ready_preview_derivative,
 	resolve_ready_preview_derivative_state,
+	sync_preview_pipeline_for_current_version,
 )
 from ifitwala_drive.services.storage.base import get_storage_backend
 
@@ -69,6 +70,41 @@ def _assert_can_issue_preview(doc) -> None:
 
 def _build_expires_on():
 	return now_datetime() + timedelta(minutes=_GRANT_TTL_MINUTES)
+
+
+def _save_doc_if_supported(doc) -> None:
+	save = getattr(doc, "save", None)
+	if callable(save):
+		save(ignore_permissions=True)
+
+
+def _ensure_preview_pipeline_requested(*, doc, payload: dict[str, Any] | None = None) -> None:
+	current_version = str(getattr(doc, "current_version", "") or "").strip()
+	if not current_version:
+		return
+
+	explicit_derivative_role = str((payload or {}).get("derivative_role") or "").strip() or None
+	if not explicit_derivative_role and getattr(doc, "preview_status", None) == "ready":
+		return
+
+	mime_type = frappe.db.get_value("Drive File Version", current_version, "mime_type")
+	if not mime_type:
+		return
+	derivative_role = explicit_derivative_role or primary_preview_derivative_role_for_mime_type(mime_type)
+	derivative_state = resolve_ready_preview_derivative_state(
+		drive_file_doc=doc,
+		derivative_role=derivative_role,
+	)
+	if getattr(doc, "preview_status", None) == "ready" and derivative_state.get("state") == "ready":
+		return
+
+	previous_preview_status = getattr(doc, "preview_status", None)
+	result = sync_preview_pipeline_for_current_version(
+		drive_file_doc=doc,
+		mime_type=mime_type,
+	)
+	if result.get("preview_status") != previous_preview_status:
+		_save_doc_if_supported(doc)
 
 
 def _format_datetime(value) -> str:
@@ -147,6 +183,15 @@ def _issue_grant(*, doc, grant_kind: str, payload: dict[str, Any] | None = None)
 	return response
 
 
+def _issue_preview_grant_for_doc(*, doc, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+	_ensure_preview_pipeline_requested(doc=doc, payload=payload)
+	if str((payload or {}).get("derivative_role") or "").strip():
+		_assert_can_issue_download(doc)
+	else:
+		_assert_can_issue_preview(doc)
+	return _issue_grant(doc=doc, grant_kind="preview", payload=payload)
+
+
 def issue_download_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
 	doc = _get_drive_file_doc(payload)
 	_assert_can_issue_download(doc)
@@ -155,5 +200,4 @@ def issue_download_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
 
 def issue_preview_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
 	doc = _get_drive_file_doc(payload)
-	_assert_can_issue_preview(doc)
-	return _issue_grant(doc=doc, grant_kind="preview", payload=payload)
+	return _issue_preview_grant_for_doc(doc=doc, payload=payload)
