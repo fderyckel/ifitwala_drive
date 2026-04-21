@@ -6,7 +6,10 @@ import frappe
 
 from ifitwala_drive.services.concurrency import drive_lock, is_duplicate_entry_error
 from ifitwala_drive.services.files.derivatives import sync_preview_pipeline_for_current_version
-from ifitwala_drive.services.files.versions import create_initial_drive_file_version
+from ifitwala_drive.services.files.versions import (
+	create_initial_drive_file_version,
+	ensure_current_drive_file_version,
+)
 
 
 def _get_all_rows(doctype: str, *, filters: dict[str, Any], fields: list[str]) -> list[dict[str, Any]]:
@@ -203,14 +206,17 @@ def _existing_drive_file_response(
 	file_id: str,
 	binding_role: str | None = None,
 ) -> dict[str, Any]:
+	drive_file_doc = frappe.get_doc("Drive File", drive_file_id)
 	binding_id = _create_primary_binding(
 		drive_file_id=drive_file_id,
 		file_id=file_id,
 		upload_session_doc=upload_session_doc,
 		binding_role=binding_role,
 	)
-	canonical_ref = frappe.db.get_value("Drive File", drive_file_id, "canonical_ref")
-	drive_file_version_id = frappe.db.get_value("Drive File", drive_file_id, "current_version")
+	canonical_ref = str(getattr(drive_file_doc, "canonical_ref", "") or "").strip() or None
+	if not canonical_ref:
+		canonical_ref = frappe.db.get_value("Drive File", drive_file_id, "canonical_ref")
+	drive_file_version_id = ensure_current_drive_file_version(drive_file_doc=drive_file_doc)
 	return {
 		"drive_file_id": drive_file_id,
 		"drive_file_version_id": drive_file_version_id,

@@ -1,7 +1,7 @@
 # Coupling With Ifitwala_Ed
 
 Status: LOCKED boundary contract
-Date: 2026-04-20
+Date: 2026-04-21
 Code refs:
 - `ifitwala_ed/api/file_access.py`
 - `ifitwala_ed/integrations/drive/bridge.py`
@@ -54,7 +54,6 @@ Ed may ask Drive to create an upload session using a workflow identifier and the
 Current rule:
 
 - new session creation fails closed without `workflow_id`
-- the session response must include an explicit `upload_token` for buffered/server-side ingest
 - wrapper-specific session metadata must be returned only through `workflow_result`
 
 ### 2.2 Finalize
@@ -67,8 +66,7 @@ Ed participates only through the approved integration surface for:
 - post-finalize business mutation
 
 When Ed already holds buffered upload bytes in-process, it may hand those bytes back through the Drive-owned `ingest_upload_session_content(...)` helper.
-That trusted server-side seam must resolve the session from Drive authority and must require the explicit `upload_token` returned by session creation.
-Ed must not scrape `upload_target.headers` to recover that token.
+That trusted server-side seam must resolve the session from Drive authority and must not require Ed to replay browser upload-token headers.
 
 ### 2.3 Read/open/preview
 

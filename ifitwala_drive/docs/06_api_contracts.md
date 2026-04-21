@@ -1,7 +1,7 @@
 # Canonical API Contracts
 
 Status: LOCKED target API direction
-Date: 2026-04-20
+Date: 2026-04-21
 Related docs:
 
 - `ifitwala_drive/docs/02_system_architecture.md`
@@ -106,7 +106,6 @@ At minimum:
 - `expires_on`
 - `upload_strategy`
 - `upload_target`
-- `upload_token`
 - `workflow_id`
 - `contract_version`
 - `workflow_result`
@@ -115,6 +114,7 @@ Current rule:
 
 - the public `create_upload_session(...)` API is workflow-spec only
 - missing `workflow_id` fails closed for new session creation
+- current runtime may also include `upload_token` for browser/proxy upload targets
 - migration/backfill code must use internal service helpers or explicit `Drive Upload Session` materialization, not the public API
 - wrapper-specific create-session extras must live only under `workflow_result`, not as ad hoc top-level keys
 
@@ -130,8 +130,7 @@ Rules:
 
 - this is a Drive-owned in-process helper, not a browser-facing API
 - callers resolve the session by authoritative Drive identity (`upload_session_id` or `session_key`)
-- callers must pass the explicit `upload_token` returned by `create_upload_session(...)`
-- callers must not scrape `upload_target.headers` to recover that token
+- callers must not be required to replay browser upload-token headers
 - Drive still owns temporary-object writes, remote upload relay, and session-state transitions
 - Ed must not bypass this helper by calling storage backends directly
 

@@ -1493,7 +1493,6 @@ def test_ingest_upload_session_content_uses_upload_target_for_non_proxy(monkeypa
 
 	response = module.ingest_upload_session_content(
 		upload_session_id="DUS-0001",
-		upload_token="token-1",
 		content=b"hello",
 	)
 
@@ -1574,6 +1573,77 @@ def test_create_drive_file_artifacts_recovers_from_duplicate_inserts():
 		"drive_file_id": "DF-0099",
 		"drive_file_version_id": "DFV-0099",
 		"canonical_ref": "drv:ORG-0001:DF-0099",
+		"drive_binding_id": None,
+	}
+
+
+def test_create_drive_file_artifacts_repairs_existing_file_without_current_version(monkeypatch):
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.files.creation",
+	)
+	existing_drive_file = FakeDoc(
+		{
+			"doctype": "Drive File",
+			"name": "DF-0100",
+			"source_upload_session": "DUS-0100",
+			"canonical_ref": "drv:ORG-0001:DF-0100",
+			"current_version": None,
+		}
+	)
+	_install_fake_frappe(
+		docs_map={
+			("Drive File", "DF-0100"): existing_drive_file,
+		},
+		value_map={
+			("Drive File", (("source_upload_session", "DUS-0100"),), "name"): "DF-0100",
+		},
+	)
+	module = _load_module("ifitwala_drive.services.files.creation")
+	repair_calls = []
+
+	monkeypatch.setattr(
+		module,
+		"ensure_current_drive_file_version",
+		lambda *, drive_file_doc: repair_calls.append(drive_file_doc.name)
+		or setattr(drive_file_doc, "current_version", "DFV-0100")
+		or "DFV-0100",
+	)
+	upload_session_doc = FakeDoc(
+		{
+			"name": "DUS-0100",
+			"attached_doctype": "Task Submission",
+			"attached_name": "TSUB-0100",
+			"owner_doctype": "Task Submission",
+			"owner_name": "TSUB-0100",
+			"organization": "ORG-0001",
+			"school": "SCH-0001",
+			"upload_source": "SPA",
+			"filename_original": "essay.docx",
+			"is_private": 1,
+			"intended_primary_subject_type": "Student",
+			"intended_primary_subject_id": "STU-0100",
+			"intended_data_class": "assessment",
+			"intended_purpose": "assessment_submission",
+			"intended_retention_policy": "until_school_exit_plus_6m",
+			"intended_slot": "submission",
+		}
+	)
+
+	response = module.create_drive_file_artifacts(
+		upload_session_doc=upload_session_doc,
+		file_id="FILE-0100",
+		storage_artifact={
+			"storage_backend": "gcs",
+			"object_key": "files/ab/cd/object.docx",
+		},
+	)
+
+	assert repair_calls == ["DF-0100"]
+	assert response == {
+		"drive_file_id": "DF-0100",
+		"drive_file_version_id": "DFV-0100",
+		"canonical_ref": "drv:ORG-0001:DF-0100",
 		"drive_binding_id": None,
 	}
 

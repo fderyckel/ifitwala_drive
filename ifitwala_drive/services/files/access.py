@@ -14,6 +14,7 @@ from ifitwala_drive.services.files.derivatives import (
 	resolve_ready_preview_derivative_state,
 	sync_preview_pipeline_for_current_version,
 )
+from ifitwala_drive.services.files.versions import ensure_current_drive_file_version
 from ifitwala_drive.services.storage.base import get_storage_backend
 
 _GRANT_TTL_MINUTES = 10
@@ -99,8 +100,11 @@ def _requested_preview_roles(*, payload: dict[str, Any] | None, mime_type: str |
 	return [default_role] if default_role else []
 
 
-def _ensure_preview_pipeline_requested(*, doc, payload: dict[str, Any] | None = None) -> None:
-	current_version = str(getattr(doc, "current_version", "") or "").strip()
+def _ensure_preview_pipeline_requested(*, doc, payload: dict[str, Any] | None = None) -> bool:
+	current_version = ensure_current_drive_file_version(drive_file_doc=doc)
+	if current_version:
+		doc.current_version = current_version
+	current_version = str(current_version or "").strip()
 	if not current_version:
 		return False
 
@@ -132,12 +136,12 @@ def _ensure_preview_pipeline_requested(*, doc, payload: dict[str, Any] | None = 
 
 def request_preview_derivatives_for_doc(*, doc, payload: dict[str, Any] | None = None) -> dict[str, Any]:
 	_assert_can_issue_download(doc)
+	requested = _ensure_preview_pipeline_requested(doc=doc, payload=payload)
 	current_version = str(getattr(doc, "current_version", "") or "").strip() or None
 	mime_type = (
 		frappe.db.get_value("Drive File Version", current_version, "mime_type") if current_version else None
 	)
 	requested_roles = _requested_preview_roles(payload=payload, mime_type=mime_type)
-	requested = _ensure_preview_pipeline_requested(doc=doc, payload=payload)
 	return {
 		"drive_file_id": getattr(doc, "name", None),
 		"current_version": current_version,

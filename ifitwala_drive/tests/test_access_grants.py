@@ -549,6 +549,79 @@ def test_issue_preview_grant_requeues_missing_explicit_thumbnail_derivative(monk
 	assert sync_calls == [("DF-0009", "image/png")]
 
 
+def test_request_preview_derivatives_repairs_missing_current_version_before_sync(monkeypatch):
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.audit.events",
+		"ifitwala_drive.services.files.access",
+	)
+	drive_file = FakeDoc(
+		{
+			"name": "DF-0011",
+			"status": "active",
+			"preview_status": "pending",
+			"owner_doctype": "Task Submission",
+			"owner_name": "TSUB-0011",
+			"file": "FILE-0011",
+			"current_version": None,
+			"display_name": "avatar.png",
+			"storage_backend": "gcs",
+			"storage_object_key": "files/original/avatar.png",
+		}
+	)
+	task_submission = FakeDoc({"name": "TSUB-0011"})
+	file_doc = FakeDoc(
+		{"name": "FILE-0011", "file_url": "https://storage.ifitwala.invalid/original/avatar.png"}
+	)
+	version_doc = FakeDoc(
+		{
+			"name": "DFV-0011",
+			"drive_file": "DF-0011",
+			"mime_type": "image/png",
+		}
+	)
+	_install_fake_frappe(
+		docs_map={
+			("Drive File", "DF-0011"): drive_file,
+			("Task Submission", "TSUB-0011"): task_submission,
+			("Drive File Version", "DFV-0011"): version_doc,
+			("File", "FILE-0011"): file_doc,
+		},
+	)
+	module = _load_module("ifitwala_drive.services.files.access")
+	sync_calls = []
+	repair_calls = []
+
+	monkeypatch.setattr(
+		module,
+		"ensure_current_drive_file_version",
+		lambda *, drive_file_doc: repair_calls.append(drive_file_doc.name)
+		or setattr(drive_file_doc, "current_version", "DFV-0011")
+		or "DFV-0011",
+	)
+	monkeypatch.setattr(
+		module,
+		"sync_preview_pipeline_for_current_version",
+		lambda *, drive_file_doc, mime_type: sync_calls.append((drive_file_doc.name, mime_type))
+		or {"preview_status": "pending", "derivative_ids": [], "drive_processing_job_id": "DPJ-0011"},
+	)
+
+	response = module.request_preview_derivatives_for_doc(
+		doc=drive_file,
+		payload={"derivative_roles": ["thumb"]},
+	)
+
+	assert repair_calls == ["DF-0011"]
+	assert sync_calls == [("DF-0011", "image/png")]
+	assert response == {
+		"drive_file_id": "DF-0011",
+		"current_version": "DFV-0011",
+		"preview_status": "pending",
+		"requested": True,
+		"derivative_roles": ["thumb"],
+	}
+
+
 def test_issue_preview_grant_allows_ready_explicit_derivative_while_primary_preview_is_pending(monkeypatch):
 	_purge_modules(
 		"frappe",
