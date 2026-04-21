@@ -128,6 +128,10 @@ def upload_org_communication_attachment_service(payload: dict[str, Any]) -> dict
 				if key not in {"row_name", "course", "student_group"}
 			},
 			"workflow_payload": workflow_payload,
+			"workflow_result": {
+				"row_name": authoritative["row_name"],
+				"slot": authoritative["slot"],
+			},
 			"folder": resolve_org_communication_attachment_folder(
 				org_communication=org_communication_doc.name,
 				course=authoritative["course"],
@@ -143,6 +147,4 @@ def upload_org_communication_attachment_service(payload: dict[str, Any]) -> dict
 			"upload_source": payload.get("upload_source") or "SPA",
 		}
 	)
-	response["row_name"] = authoritative["row_name"]
-	response["slot"] = authoritative["slot"]
 	return response

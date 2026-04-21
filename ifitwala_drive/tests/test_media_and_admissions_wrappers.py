@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import sys
 import types
+from datetime import datetime
 from pathlib import Path
 from typing import ClassVar
 
@@ -178,7 +179,11 @@ def _install_fake_sessions(recorder):
 
 	def create_upload_session_service(payload):
 		recorder["payload"] = payload
-		return {"upload_session_id": "DUS-0001", "status": "created"}
+		return {
+			"upload_session_id": "DUS-0001",
+			"status": "created",
+			"workflow_result": payload.get("workflow_result") or {},
+		}
 
 	module.create_upload_session_service = create_upload_session_service
 	sys.modules["ifitwala_drive.services.uploads.sessions"] = module
@@ -209,12 +214,15 @@ def test_media_api_exports_expected_wrappers_and_delegates():
 	for method_name in (
 		"issue_employee_image_download_grant",
 		"issue_employee_image_preview_grant",
+		"request_employee_image_preview_derivatives",
 		"issue_guardian_image_download_grant",
 		"issue_guardian_image_preview_grant",
+		"request_guardian_image_preview_derivatives",
 		"issue_public_website_media_download_grant",
 		"issue_public_website_media_preview_grant",
 		"issue_student_image_download_grant",
 		"issue_student_image_preview_grant",
+		"request_student_image_preview_derivatives",
 		"upload_employee_image",
 		"upload_guardian_image",
 		"upload_student_image",
@@ -243,6 +251,14 @@ def test_media_api_exports_expected_wrappers_and_delegates():
 		== "issue_employee_image_preview_grant"
 	)
 	assert (
+		module.request_employee_image_preview_derivatives(
+			employee="EMP-0001",
+			file_id="FILE-EMP-1",
+			derivative_roles=["thumb", "card"],
+		)["wrapper"]
+		== "request_employee_image_preview_derivatives"
+	)
+	assert (
 		module.issue_guardian_image_download_grant(
 			guardian="GRD-0001",
 			file_id="FILE-GRD-1",
@@ -256,6 +272,14 @@ def test_media_api_exports_expected_wrappers_and_delegates():
 			derivative_role="thumb",
 		)["wrapper"]
 		== "issue_guardian_image_preview_grant"
+	)
+	assert (
+		module.request_guardian_image_preview_derivatives(
+			guardian="GRD-0001",
+			file_id="FILE-GRD-1",
+			derivative_roles=["thumb", "card"],
+		)["wrapper"]
+		== "request_guardian_image_preview_derivatives"
 	)
 	assert (
 		module.issue_public_website_media_download_grant(
@@ -284,6 +308,14 @@ def test_media_api_exports_expected_wrappers_and_delegates():
 			derivative_role="thumb",
 		)["wrapper"]
 		== "issue_student_image_preview_grant"
+	)
+	assert (
+		module.request_student_image_preview_derivatives(
+			student="STU-0001",
+			file_id="FILE-STU-1",
+			derivative_roles=["thumb", "card", "viewer_preview"],
+		)["wrapper"]
+		== "request_student_image_preview_derivatives"
 	)
 	assert (
 		module.upload_employee_image(
@@ -358,6 +390,14 @@ def test_media_api_exports_expected_wrappers_and_delegates():
 			},
 		),
 		(
+			"request_employee_image_preview_derivatives",
+			{
+				"employee": "EMP-0001",
+				"file_id": "FILE-EMP-1",
+				"derivative_roles": ["thumb", "card"],
+			},
+		),
+		(
 			"issue_guardian_image_download_grant",
 			{
 				"guardian": "GRD-0001",
@@ -370,6 +410,14 @@ def test_media_api_exports_expected_wrappers_and_delegates():
 				"guardian": "GRD-0001",
 				"file_id": "FILE-GRD-1",
 				"derivative_role": "thumb",
+			},
+		),
+		(
+			"request_guardian_image_preview_derivatives",
+			{
+				"guardian": "GRD-0001",
+				"file_id": "FILE-GRD-1",
+				"derivative_roles": ["thumb", "card"],
 			},
 		),
 		(
@@ -398,6 +446,14 @@ def test_media_api_exports_expected_wrappers_and_delegates():
 				"student": "STU-0001",
 				"file_id": "FILE-STU-1",
 				"derivative_role": "thumb",
+			},
+		),
+		(
+			"request_student_image_preview_derivatives",
+			{
+				"student": "STU-0001",
+				"file_id": "FILE-STU-1",
+				"derivative_roles": ["thumb", "card", "viewer_preview"],
 			},
 		),
 		(
@@ -497,13 +553,28 @@ def test_public_website_media_grant_services_use_delegate_scoped_access():
 	sys.modules["ifitwala_ed.integrations.drive.media"] = delegate
 
 	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_media")
+	access_module = importlib.import_module("ifitwala_drive.services.files.access")
 	preview_docs = []
 	download_docs = []
 	grant_calls = []
-	module._assert_can_issue_preview = lambda doc: preview_docs.append(doc.name)
-	module._assert_can_issue_download = lambda doc: download_docs.append(doc.name)
 
-	def _fake_issue_grant(*, doc, grant_kind, payload=None):
+	def _fake_issue_preview_grant_for_doc(*, doc, payload=None):
+		if str((payload or {}).get("derivative_role") or "").strip():
+			download_docs.append(doc.name)
+		else:
+			preview_docs.append(doc.name)
+		grant_calls.append(
+			{
+				"doc": doc.name,
+				"grant_kind": "preview",
+				"payload": payload,
+			}
+		)
+		return {"url": f"https://preview.example.com/{doc.name}"}
+
+	module._assert_can_issue_download = lambda doc: download_docs.append(doc.name)
+	module._issue_preview_grant_for_doc = _fake_issue_preview_grant_for_doc
+	module._issue_grant = lambda *, doc, grant_kind, payload=None: (
 		grant_calls.append(
 			{
 				"doc": doc.name,
@@ -511,9 +582,11 @@ def test_public_website_media_grant_services_use_delegate_scoped_access():
 				"payload": payload,
 			}
 		)
-		return {"url": f"https://{grant_kind}.example.com/{doc.name}"}
-
-	module._issue_grant = _fake_issue_grant
+		or {"url": f"https://{grant_kind}.example.com/{doc.name}"}
+	)
+	access_module._assert_can_issue_preview = lambda doc: None
+	access_module._issue_grant = module._issue_grant
+	access_module.now_datetime = lambda: datetime(2026, 1, 1, 0, 0, 0)
 
 	preview_response = module.issue_public_website_media_preview_grant_service(
 		{
@@ -528,8 +601,8 @@ def test_public_website_media_grant_services_use_delegate_scoped_access():
 	)
 
 	assert delegate_calls == ["FILE-PUBLIC-1", "FILE-PUBLIC-1"]
-	assert preview_docs == ["DF-PUBLIC-1"]
-	assert download_docs == ["DF-PUBLIC-1"]
+	assert preview_docs == []
+	assert download_docs == ["DF-PUBLIC-1", "DF-PUBLIC-1"]
 	assert preview_response == {"url": "https://preview.example.com/DF-PUBLIC-1"}
 	assert download_response == {"url": "https://download.example.com/DF-PUBLIC-1"}
 	assert grant_calls == [
@@ -547,6 +620,77 @@ def test_public_website_media_grant_services_use_delegate_scoped_access():
 			"payload": None,
 		},
 	]
+
+
+def test_student_preview_derivative_request_service_uses_delegate_scoped_access():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.integration.ifitwala_ed_media",
+		"ifitwala_ed.integrations.drive.media",
+	)
+	drive_file = FakeDoc(
+		{
+			"name": "DF-STU-1",
+			"owner_doctype": "Student",
+			"owner_name": "STU-0001",
+			"slot": "profile_image",
+			"status": "active",
+			"preview_status": "pending",
+		}
+	)
+	_install_fake_frappe(
+		exists_map={
+			("Drive File", "DF-STU-1"): True,
+		},
+		docs_map={("Drive File", "DF-STU-1"): drive_file},
+	)
+	_ensure_ed_repo_on_path()
+	importlib.import_module("ifitwala_ed")
+	importlib.import_module("ifitwala_ed.integrations")
+	importlib.import_module("ifitwala_ed.integrations.drive")
+	delegate_calls = []
+	delegate = types.ModuleType("ifitwala_ed.integrations.drive.media")
+	delegate.assert_student_image_read_access = lambda student, *, file_name: (
+		delegate_calls.append((student, file_name))
+		or {
+			"student": "STU-0001",
+			"file_id": "FILE-STU-1",
+			"drive_file_id": "DF-STU-1",
+		}
+	)
+	sys.modules["ifitwala_ed.integrations.drive.media"] = delegate
+
+	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_media")
+	request_calls = []
+	module.request_preview_derivatives_for_doc = lambda *, doc, payload=None: (
+		request_calls.append({"doc": doc.name, "payload": payload})
+		or {"drive_file_id": doc.name, "preview_status": "pending", "requested": True}
+	)
+
+	response = module.request_student_image_preview_derivatives_service(
+		{
+			"student": "STU-0001",
+			"file_id": "FILE-STU-1",
+			"derivative_roles": ["thumb", "card", "viewer_preview"],
+		}
+	)
+
+	assert delegate_calls == [("STU-0001", "FILE-STU-1")]
+	assert request_calls == [
+		{
+			"doc": "DF-STU-1",
+			"payload": {
+				"student": "STU-0001",
+				"file_id": "FILE-STU-1",
+				"derivative_roles": ["thumb", "card", "viewer_preview"],
+			},
+		}
+	]
+	assert response == {
+		"drive_file_id": "DF-STU-1",
+		"preview_status": "pending",
+		"requested": True,
+	}
 
 
 def test_upload_student_image_uses_authoritative_contract():
@@ -759,7 +903,7 @@ def test_upload_applicant_document_builds_item_scoped_session():
 		}
 	)
 
-	assert response["applicant_document_item"] == "ADI-0001"
+	assert response["workflow_result"]["applicant_document_item"] == "ADI-0001"
 	assert recorder["payload"]["attached_doctype"] == "Applicant Document Item"
 	assert recorder["payload"]["attached_name"] == "ADI-0001"
 	assert recorder["payload"]["slot"] == "identity_passport_passport_copy"
@@ -793,7 +937,7 @@ def test_upload_applicant_profile_image_builds_applicant_scoped_session():
 		}
 	)
 
-	assert response["student_applicant"] == "APP-0001"
+	assert response["workflow_result"]["student_applicant"] == "APP-0001"
 	assert recorder["payload"]["owner_doctype"] == "Student Applicant"
 	assert recorder["payload"]["attached_doctype"] == "Student Applicant"
 	assert recorder["payload"]["attached_name"] == "APP-0001"
@@ -840,7 +984,7 @@ def test_upload_applicant_guardian_image_builds_row_scoped_session():
 		}
 	)
 
-	assert response["guardian_row_name"] == "ROW-0001"
+	assert response["workflow_result"]["guardian_row_name"] == "ROW-0001"
 	assert recorder["payload"]["owner_doctype"] == "Student Applicant"
 	assert recorder["payload"]["attached_doctype"] == "Student Applicant Guardian"
 	assert recorder["payload"]["attached_name"] == "ROW-0001"
@@ -890,7 +1034,7 @@ def test_upload_applicant_health_vaccination_proof_builds_profile_scoped_session
 		}
 	)
 
-	assert response["applicant_health_profile"] == "AHP-0001"
+	assert response["workflow_result"]["applicant_health_profile"] == "AHP-0001"
 	assert recorder["payload"]["owner_doctype"] == "Student Applicant"
 	assert recorder["payload"]["owner_name"] == "APP-0001"
 	assert recorder["payload"]["attached_doctype"] == "Applicant Health Profile"

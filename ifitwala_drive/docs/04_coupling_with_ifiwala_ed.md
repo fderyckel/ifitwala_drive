@@ -51,6 +51,12 @@ Code refs:
 
 Ed may ask Drive to create an upload session using a workflow identifier and the workflow-specific business identifiers required to resolve the spec.
 
+Current rule:
+
+- new session creation fails closed without `workflow_id`
+- the session response must include an explicit `upload_token` for buffered/server-side ingest
+- wrapper-specific session metadata must be returned only through `workflow_result`
+
 ### 2.2 Finalize
 
 Drive finalizes the upload and creates authoritative Drive records.
@@ -61,7 +67,8 @@ Ed participates only through the approved integration surface for:
 - post-finalize business mutation
 
 When Ed already holds buffered upload bytes in-process, it may hand those bytes back through the Drive-owned `ingest_upload_session_content(...)` helper.
-That trusted server-side seam must resolve the session from Drive authority and must not require Ed to replay browser upload-token headers.
+That trusted server-side seam must resolve the session from Drive authority and must require the explicit `upload_token` returned by session creation.
+Ed must not scrape `upload_target.headers` to recover that token.
 
 ### 2.3 Read/open/preview
 
@@ -106,6 +113,8 @@ Current runtime note:
 
 - the registry now exists in `ifitwala_ed/integrations/drive/workflow_specs.py`
 - Drive wrapper services now create sessions using `workflow_id` plus workflow-specific identifiers internally
+- the generic session/finalize DTOs now carry `workflow_id`, `contract_version`, and typed `workflow_result`
+- wrapper-specific extras such as `row_name` or admissions item metadata must not leak out as scattered top-level keys
 - Drive also exposes surface-scoped grant wrappers where generic owner-doc checks are not the same as Ed surface authorization, including org-communication attachments, employee images, public website media, and supporting-material previews opened from placement-aware academic surfaces
 - wrapper-specific public endpoints still exist only as ergonomics shims during migration
 - Ed and Drive runtime entrypoints now import only explicit public bridge/API modules; reload fallback wrappers and `sys.path` rescue are retired
@@ -142,6 +151,7 @@ Because the apps are tightly coupled:
 - cross-app contract changes must land together
 - docs must be updated together
 - tests must cover the shared boundary
+- seam tests must pin buffered-upload token handling and the locked session/finalize DTO shapes
 
 But tight coupling is not permission to call each other's internals arbitrarily.
 

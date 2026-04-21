@@ -22,7 +22,11 @@ from ifitwala_drive.services.logging import log_drive_event
 from ifitwala_drive.services.storage.base import get_storage_backend
 from ifitwala_drive.services.uploads.inspection import inspect_uploaded_bytes
 from ifitwala_drive.services.uploads.keys import build_upload_object_key
-from ifitwala_drive.services.uploads.sessions import load_upload_contract
+from ifitwala_drive.services.uploads.sessions import (
+	load_upload_contract,
+	load_workflow_contract_metadata,
+	persist_workflow_result,
+)
 from ifitwala_drive.services.uploads.validation import validate_finalize_session_payload
 
 _FINALIZE_WAIT_SECONDS = 6.0
@@ -66,11 +70,12 @@ def _mark_session_failed(doc, exc: Exception) -> None:
 	)
 
 
-def _completed_response(doc, extra: dict[str, Any] | None = None) -> dict[str, Any]:
+def _completed_response(doc) -> dict[str, Any]:
 	drive_file_id = getattr(doc, "drive_file", None)
 	drive_file_version_id = getattr(doc, "drive_file_version", None)
 	canonical_ref = getattr(doc, "canonical_ref", None)
 	preview_status = None
+	workflow_metadata = load_workflow_contract_metadata(doc)
 
 	if drive_file_id and not drive_file_version_id:
 		drive_file_version_id = frappe.db.get_value("Drive File", drive_file_id, "current_version")
@@ -88,10 +93,10 @@ def _completed_response(doc, extra: dict[str, Any] | None = None) -> dict[str, A
 		"canonical_ref": canonical_ref,
 		"status": doc.status,
 		"preview_status": preview_status,
-		"file_url": frappe.db.get_value("File", doc.file, "file_url") if getattr(doc, "file", None) else None,
+		"workflow_id": workflow_metadata.get("workflow_id"),
+		"contract_version": workflow_metadata.get("contract_version"),
+		"workflow_result": workflow_metadata.get("workflow_result") or {},
 	}
-	if extra:
-		response.update(extra)
 	return response
 
 
@@ -217,7 +222,18 @@ def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 			refreshed.save(ignore_permissions=True)
 			doc = refreshed
 
-	extra_response = run_post_finalize(doc, created)
+	post_finalize_result = run_post_finalize(doc, created)
+	workflow_metadata = load_workflow_contract_metadata(doc)
+	merged_workflow_result = dict(workflow_metadata.get("workflow_result") or {})
+	if post_finalize_result:
+		merged_workflow_result.update(post_finalize_result)
+
+	with drive_lock(f"upload_session_finalize:{doc.name}", timeout=20):
+		refreshed = frappe.get_doc("Drive Upload Session", doc.name)
+		persist_workflow_result(refreshed, merged_workflow_result)
+		refreshed.save(ignore_permissions=True)
+		doc = refreshed
+
 	record_drive_access_event(
 		drive_file_id=doc.drive_file,
 		drive_file_version_id=doc.drive_file_version,
@@ -234,4 +250,4 @@ def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 		slot=doc.intended_slot,
 	)
 
-	return _completed_response(doc, extra=extra_response)
+	return _completed_response(doc)

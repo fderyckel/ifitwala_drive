@@ -26,14 +26,58 @@ def _build_secondary_subject_rows(payload: dict[str, Any]) -> list[dict[str, Any
 	]
 
 
-def _serialize_session_response(doc, target: dict[str, Any]) -> dict[str, Any]:
+def _coerce_workflow_result(value: Any) -> dict[str, Any]:
+	if not isinstance(value, dict):
+		return {}
+	return dict(value)
+
+
+def _load_workflow_metadata_from_contract(contract: dict[str, Any] | None) -> dict[str, Any]:
+	if not isinstance(contract, dict):
+		return {}
+
+	workflow = contract.get("workflow")
+	if not isinstance(workflow, dict):
+		return {}
+
+	workflow_id = str(workflow.get("workflow_id") or "").strip() or None
+	contract_version = str(workflow.get("contract_version") or "").strip() or None
+	workflow_payload = workflow.get("workflow_payload")
+	if not isinstance(workflow_payload, dict):
+		workflow_payload = {}
+
+	return {
+		"workflow_id": workflow_id,
+		"contract_version": contract_version,
+		"workflow_payload": workflow_payload,
+		"workflow_result": _coerce_workflow_result(workflow.get("workflow_result")),
+	}
+
+
+def _serialize_session_response(doc, target: dict[str, Any] | None = None) -> dict[str, Any]:
+	contract = load_upload_contract(doc, fallback_to_storage=False)
+	if not contract and isinstance(target, dict):
+		contract = dict(target)
+
+	upload_target = (contract or {}).get("upload_target")
+	if upload_target is None and isinstance(target, dict):
+		upload_target = target.get("upload_target")
+	upload_strategy = (contract or {}).get("upload_strategy")
+	if not upload_strategy and isinstance(target, dict):
+		upload_strategy = target.get("upload_strategy")
+
+	workflow = _load_workflow_metadata_from_contract(contract)
 	return {
 		"upload_session_id": doc.name,
 		"session_key": doc.session_key,
 		"status": doc.status,
 		"expires_on": getattr(doc, "expires_on", None),
-		"upload_strategy": target["upload_strategy"],
-		"upload_target": target["upload_target"],
+		"upload_strategy": upload_strategy,
+		"upload_target": upload_target,
+		"upload_token": getattr(doc, "upload_token", None),
+		"workflow_id": workflow.get("workflow_id"),
+		"contract_version": workflow.get("contract_version"),
+		"workflow_result": workflow.get("workflow_result") or {},
 	}
 
 
@@ -45,10 +89,12 @@ def _workflow_contract_metadata(payload: dict[str, Any]) -> dict[str, Any] | Non
 	workflow_payload = payload.get("workflow_payload")
 	if not isinstance(workflow_payload, dict):
 		workflow_payload = {}
+	workflow_result = _coerce_workflow_result(payload.get("workflow_result"))
 	return {
 		"workflow_id": workflow_id,
 		"contract_version": contract_version or None,
 		"workflow_payload": workflow_payload,
+		"workflow_result": workflow_result,
 	}
 
 
@@ -80,6 +126,26 @@ def load_upload_contract(doc, *, storage=None, fallback_to_storage: bool = True)
 		expected_size_bytes=getattr(doc, "expected_size_bytes", None),
 		object_key_hint=getattr(doc, "tmp_object_key", None),
 	)
+
+
+def load_workflow_contract_metadata(doc) -> dict[str, Any]:
+	return _load_workflow_metadata_from_contract(load_upload_contract(doc, fallback_to_storage=False))
+
+
+def persist_workflow_result(doc, workflow_result: dict[str, Any] | None) -> dict[str, Any]:
+	contract = load_upload_contract(doc, fallback_to_storage=False)
+	if not contract:
+		return {}
+
+	workflow = contract.get("workflow")
+	if not isinstance(workflow, dict):
+		return {}
+
+	normalized = _coerce_workflow_result(workflow_result)
+	workflow["workflow_result"] = normalized
+	contract["workflow"] = workflow
+	doc.upload_contract_json = json.dumps(contract, sort_keys=True)
+	return normalized
 
 
 def _load_existing_session_response(session_key: str) -> dict[str, Any] | None:

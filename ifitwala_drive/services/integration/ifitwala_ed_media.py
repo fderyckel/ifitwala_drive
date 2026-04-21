@@ -9,6 +9,7 @@ from ifitwala_drive.services.files.access import (
 	_assert_can_issue_download,
 	_issue_grant,
 	_issue_preview_grant_for_doc,
+	request_preview_derivatives_for_doc,
 )
 from ifitwala_drive.services.folders.resolution import (
 	resolve_employee_image_folder,
@@ -303,6 +304,10 @@ def upload_school_gallery_image_service(payload: dict[str, Any]) -> dict[str, An
 		{
 			**authoritative,
 			"workflow_payload": workflow_payload,
+			"workflow_result": {
+				"row_name": target_row.name,
+				"caption": getattr(target_row, "caption", None),
+			},
 			"folder": resolve_organization_media_folder(
 				organization=school_doc.organization,
 				school=school_doc.name,
@@ -316,8 +321,6 @@ def upload_school_gallery_image_service(payload: dict[str, Any]) -> dict[str, An
 			"upload_source": payload.get("upload_source") or "Desk",
 		}
 	)
-	response["row_name"] = target_row.name
-	response["caption"] = getattr(target_row, "caption", None)
 	return response
 
 
@@ -368,6 +371,12 @@ def upload_organization_media_asset_service(payload: dict[str, Any]) -> dict[str
 		{
 			**authoritative,
 			"workflow_payload": workflow_payload,
+			"workflow_result": {
+				"organization": organization,
+				"school": school,
+				"scope": scope,
+				"slot": authoritative["slot"],
+			},
 			"folder": resolve_organization_media_folder(
 				organization=organization,
 				school=school,
@@ -381,10 +390,6 @@ def upload_organization_media_asset_service(payload: dict[str, Any]) -> dict[str
 			"upload_source": payload.get("upload_source") or "Desk",
 		}
 	)
-	response["organization"] = organization
-	response["school"] = school
-	response["scope"] = scope
-	response["slot"] = authoritative["slot"]
 	return response
 
 
@@ -513,6 +518,11 @@ def issue_employee_image_preview_grant_service(payload: dict[str, Any]) -> dict[
 	return _issue_preview_grant_for_doc(doc=drive_file_doc, payload=payload)
 
 
+def request_employee_image_preview_derivatives_service(payload: dict[str, Any]) -> dict[str, Any]:
+	_context, drive_file_doc = _get_authorized_employee_image_drive_file(payload)
+	return request_preview_derivatives_for_doc(doc=drive_file_doc, payload=payload)
+
+
 def issue_student_image_download_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
 	_context, drive_file_doc = _get_authorized_student_image_drive_file(payload)
 	_assert_can_issue_download(drive_file_doc)
@@ -524,6 +534,11 @@ def issue_student_image_preview_grant_service(payload: dict[str, Any]) -> dict[s
 	return _issue_preview_grant_for_doc(doc=drive_file_doc, payload=payload)
 
 
+def request_student_image_preview_derivatives_service(payload: dict[str, Any]) -> dict[str, Any]:
+	_context, drive_file_doc = _get_authorized_student_image_drive_file(payload)
+	return request_preview_derivatives_for_doc(doc=drive_file_doc, payload=payload)
+
+
 def issue_guardian_image_download_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
 	_context, drive_file_doc = _get_authorized_guardian_image_drive_file(payload)
 	_assert_can_issue_download(drive_file_doc)
@@ -533,6 +548,11 @@ def issue_guardian_image_download_grant_service(payload: dict[str, Any]) -> dict
 def issue_guardian_image_preview_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
 	_context, drive_file_doc = _get_authorized_guardian_image_drive_file(payload)
 	return _issue_preview_grant_for_doc(doc=drive_file_doc, payload=payload)
+
+
+def request_guardian_image_preview_derivatives_service(payload: dict[str, Any]) -> dict[str, Any]:
+	_context, drive_file_doc = _get_authorized_guardian_image_drive_file(payload)
+	return request_preview_derivatives_for_doc(doc=drive_file_doc, payload=payload)
 
 
 def issue_public_website_media_download_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
@@ -549,12 +569,15 @@ def issue_public_website_media_preview_grant_service(payload: dict[str, Any]) ->
 MEDIA_API_SERVICE_EXPORTS = {
 	"issue_employee_image_download_grant": issue_employee_image_download_grant_service,
 	"issue_employee_image_preview_grant": issue_employee_image_preview_grant_service,
+	"request_employee_image_preview_derivatives": request_employee_image_preview_derivatives_service,
 	"issue_guardian_image_download_grant": issue_guardian_image_download_grant_service,
 	"issue_guardian_image_preview_grant": issue_guardian_image_preview_grant_service,
+	"request_guardian_image_preview_derivatives": request_guardian_image_preview_derivatives_service,
 	"issue_public_website_media_download_grant": issue_public_website_media_download_grant_service,
 	"issue_public_website_media_preview_grant": issue_public_website_media_preview_grant_service,
 	"issue_student_image_download_grant": issue_student_image_download_grant_service,
 	"issue_student_image_preview_grant": issue_student_image_preview_grant_service,
+	"request_student_image_preview_derivatives": request_student_image_preview_derivatives_service,
 	"upload_employee_image": upload_employee_image_service,
 	"upload_guardian_image": upload_guardian_image_service,
 	"upload_student_image": upload_student_image_service,

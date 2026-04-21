@@ -12,6 +12,9 @@ from ifitwala_drive.services.integration.ifitwala_ed_media import (
 	issue_public_website_media_preview_grant_service,
 	issue_student_image_download_grant_service,
 	issue_student_image_preview_grant_service,
+	request_employee_image_preview_derivatives_service,
+	request_guardian_image_preview_derivatives_service,
+	request_student_image_preview_derivatives_service,
 	upload_employee_image_service,
 	upload_guardian_image_service,
 	upload_organization_logo_service,
@@ -72,6 +75,21 @@ def issue_employee_image_preview_grant(
 
 
 @frappe.whitelist()
+def request_employee_image_preview_derivatives(
+	employee: str,
+	file_id: str,
+	derivative_roles: list[str] | None = None,
+) -> dict[str, object]:
+	return request_employee_image_preview_derivatives_service(
+		compact_payload(
+			employee=employee,
+			file_id=file_id,
+			derivative_roles=derivative_roles,
+		)
+	)
+
+
+@frappe.whitelist()
 def issue_guardian_image_download_grant(
 	guardian: str,
 	file_id: str,
@@ -100,6 +118,21 @@ def issue_guardian_image_preview_grant(
 
 
 @frappe.whitelist()
+def request_guardian_image_preview_derivatives(
+	guardian: str,
+	file_id: str,
+	derivative_roles: list[str] | None = None,
+) -> dict[str, object]:
+	return request_guardian_image_preview_derivatives_service(
+		compact_payload(
+			guardian=guardian,
+			file_id=file_id,
+			derivative_roles=derivative_roles,
+		)
+	)
+
+
+@frappe.whitelist()
 def issue_student_image_download_grant(
 	student: str,
 	file_id: str,
@@ -123,6 +156,21 @@ def issue_student_image_preview_grant(
 			student=student,
 			file_id=file_id,
 			derivative_role=derivative_role,
+		)
+	)
+
+
+@frappe.whitelist()
+def request_student_image_preview_derivatives(
+	student: str,
+	file_id: str,
+	derivative_roles: list[str] | None = None,
+) -> dict[str, object]:
+	return request_student_image_preview_derivatives_service(
+		compact_payload(
+			student=student,
+			file_id=file_id,
+			derivative_roles=derivative_roles,
 		)
 	)
 
@@ -296,6 +344,9 @@ __all__ = (
 	"issue_public_website_media_preview_grant",
 	"issue_student_image_download_grant",
 	"issue_student_image_preview_grant",
+	"request_employee_image_preview_derivatives",
+	"request_guardian_image_preview_derivatives",
+	"request_student_image_preview_derivatives",
 	"upload_employee_image",
 	"upload_guardian_image",
 	"upload_organization_logo",

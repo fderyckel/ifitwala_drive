@@ -126,6 +126,7 @@ For Ifitwala_Ed-owned portals:
 
 - the SPA must not call `ifitwala_drive.api.access.issue_preview_grant` or `issue_download_grant` directly
 - Ed should validate the business surface first, then call Drive to issue a short-lived grant, then redirect
+- when a surface-scoped Drive wrapper exists, Ed should call that public `ifitwala_drive.api.*` wrapper only; it should not import Drive integration services directly as a runtime fallback
 - Org Communication staff, student, and guardian reads should use the narrow communications wrappers (`ifitwala_drive.api.communications.issue_org_communication_attachment_preview_grant` / `issue_org_communication_attachment_download_grant`) so Drive can trust Ed's audience contract instead of re-checking raw `Org Communication` role permissions on the portal user
 
 Direct Drive grant APIs remain valid for:
@@ -288,6 +289,7 @@ Required behavior:
 6. mark failures and unsupported types explicitly
 7. requeue current-version derivatives when required derivative rows are missing, stalled, or outdated for the active render spec
 8. mark affected derivative rows stale on replacement
+9. Ifitwala_Ed may request current-version derivative regeneration only through surface-scoped Drive wrapper APIs; it must not import Drive derivative internals directly
 9. delete derivative blobs and metadata during governed erasure
 10. prune stale derivative blobs and metadata on a separate lifecycle path after the configured grace window
 

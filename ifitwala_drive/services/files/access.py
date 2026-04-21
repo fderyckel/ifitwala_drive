@@ -78,25 +78,47 @@ def _save_doc_if_supported(doc) -> None:
 		save(ignore_permissions=True)
 
 
+def _requested_preview_roles(*, payload: dict[str, Any] | None, mime_type: str | None) -> list[str]:
+	normalized: list[str] = []
+	if isinstance(payload, dict):
+		role_values = payload.get("derivative_roles")
+		if isinstance(role_values, (list, tuple, set)):
+			for value in role_values:
+				candidate = str(value or "").strip()
+				if candidate and candidate not in normalized:
+					normalized.append(candidate)
+
+	explicit_derivative_role = str((payload or {}).get("derivative_role") or "").strip()
+	if explicit_derivative_role and explicit_derivative_role not in normalized:
+		normalized.append(explicit_derivative_role)
+
+	if normalized:
+		return normalized
+
+	default_role = primary_preview_derivative_role_for_mime_type(mime_type)
+	return [default_role] if default_role else []
+
+
 def _ensure_preview_pipeline_requested(*, doc, payload: dict[str, Any] | None = None) -> None:
 	current_version = str(getattr(doc, "current_version", "") or "").strip()
 	if not current_version:
-		return
-
-	explicit_derivative_role = str((payload or {}).get("derivative_role") or "").strip() or None
-	if not explicit_derivative_role and getattr(doc, "preview_status", None) == "ready":
-		return
+		return False
 
 	mime_type = frappe.db.get_value("Drive File Version", current_version, "mime_type")
 	if not mime_type:
-		return
-	derivative_role = explicit_derivative_role or primary_preview_derivative_role_for_mime_type(mime_type)
-	derivative_state = resolve_ready_preview_derivative_state(
-		drive_file_doc=doc,
-		derivative_role=derivative_role,
-	)
-	if getattr(doc, "preview_status", None) == "ready" and derivative_state.get("state") == "ready":
-		return
+		return False
+
+	requested_roles = _requested_preview_roles(payload=payload, mime_type=mime_type)
+	if getattr(doc, "preview_status", None) == "ready" and requested_roles:
+		states = [
+			resolve_ready_preview_derivative_state(
+				drive_file_doc=doc,
+				derivative_role=derivative_role,
+			).get("state")
+			for derivative_role in requested_roles
+		]
+		if all(state == "ready" for state in states):
+			return False
 
 	previous_preview_status = getattr(doc, "preview_status", None)
 	result = sync_preview_pipeline_for_current_version(
@@ -105,6 +127,24 @@ def _ensure_preview_pipeline_requested(*, doc, payload: dict[str, Any] | None = 
 	)
 	if result.get("preview_status") != previous_preview_status:
 		_save_doc_if_supported(doc)
+	return True
+
+
+def request_preview_derivatives_for_doc(*, doc, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+	_assert_can_issue_download(doc)
+	current_version = str(getattr(doc, "current_version", "") or "").strip() or None
+	mime_type = (
+		frappe.db.get_value("Drive File Version", current_version, "mime_type") if current_version else None
+	)
+	requested_roles = _requested_preview_roles(payload=payload, mime_type=mime_type)
+	requested = _ensure_preview_pipeline_requested(doc=doc, payload=payload)
+	return {
+		"drive_file_id": getattr(doc, "name", None),
+		"current_version": current_version,
+		"preview_status": getattr(doc, "preview_status", None),
+		"requested": bool(requested),
+		"derivative_roles": requested_roles,
+	}
 
 
 def _format_datetime(value) -> str:

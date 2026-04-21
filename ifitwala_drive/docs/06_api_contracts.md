@@ -94,7 +94,7 @@ Create a governed upload session before bytes are finalized.
 - persist the resolved contract on `Drive Upload Session`
 - current runtime stores `workflow_id` and `contract_version` under `upload_contract_json.workflow`
 - negotiate an upload target and strategy
-- return session identifiers and upload target info
+- return session identifiers, upload target info, explicit buffered-upload credentials, and typed workflow metadata
 
 ### Response contract
 
@@ -106,11 +106,17 @@ At minimum:
 - `expires_on`
 - `upload_strategy`
 - `upload_target`
+- `upload_token`
+- `workflow_id`
+- `contract_version`
+- `workflow_result`
 
 Current rule:
 
 - the public `create_upload_session(...)` API is workflow-spec only
+- missing `workflow_id` fails closed for new session creation
 - migration/backfill code must use internal service helpers or explicit `Drive Upload Session` materialization, not the public API
+- wrapper-specific create-session extras must live only under `workflow_result`, not as ad hoc top-level keys
 
 ## 4. Blob ingress contract
 
@@ -124,7 +130,8 @@ Rules:
 
 - this is a Drive-owned in-process helper, not a browser-facing API
 - callers resolve the session by authoritative Drive identity (`upload_session_id` or `session_key`)
-- callers must not be required to replay the browser upload token back into Drive
+- callers must pass the explicit `upload_token` returned by `create_upload_session(...)`
+- callers must not scrape `upload_target.headers` to recover that token
 - Drive still owns temporary-object writes, remote upload relay, and session-state transitions
 - Ed must not bypass this helper by calling storage backends directly
 
@@ -171,11 +178,20 @@ At minimum:
 
 - `drive_file_id`
 - `drive_file_version_id`
+- `file_id`
 - `canonical_ref`
 - upload session terminal `status`
 - `preview_status`
+- `workflow_id`
+- `contract_version`
+- `workflow_result`
 
 The response must not rely on raw private file URLs as the primary browser contract.
+Current rule:
+
+- `file_id` remains part of the locked Ed/Drive seam until Ed no longer depends on the native `File` compatibility projection for post-upload reads
+- wrapper-specific finalize extras such as admissions item metadata or generated row identifiers must live under `workflow_result`, not as top-level keys
+- generic finalize callers must not depend on raw `file_url`
 
 ## 6. Abort contract
 
@@ -227,6 +243,8 @@ But:
 - they are not the desired long-term contract
 - they must delegate to the canonical session/finalize/grant behavior
 - they must not become a second place where workflow semantics are authored
+- Ed callers must use the public `ifitwala_drive.api.*` wrapper when a surface-scoped wrapper exists; they must not import Drive integration services directly as a runtime fallback
+- if a required public wrapper export is unavailable, the caller must fail closed or use its own already-authorized local delivery path; it must not fall back to generic owner-doc grant APIs for an Ed-owned surface
 
 ## 10. Current-runtime note
 

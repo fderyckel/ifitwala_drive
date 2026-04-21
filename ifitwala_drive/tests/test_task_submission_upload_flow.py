@@ -288,13 +288,17 @@ def _install_fake_ifitwala_ed():
 	def _reconcile_upload_session_payload(payload: dict[str, object]) -> dict[str, object]:
 		workflow_id = payload.get("workflow_id")
 		workflow_payload = payload.get("workflow_payload") or {}
-		if workflow_id not in (None, "", "task.submission"):
+		if workflow_id in (None, ""):
+			frappe.throw("workflow_id is required.")
+		if workflow_id != "task.submission":
 			return payload
 		task_submission_name = payload.get("owner_name") or workflow_payload.get("task_submission")
 		if not task_submission_name:
-			return payload
+			frappe.throw("Missing required field: task_submission")
 		if payload.get("owner_doctype") not in (None, "", "Task Submission"):
-			return payload
+			frappe.throw(
+				"Task Submission upload field 'owner_doctype' does not match the authoritative owner context."
+			)
 		task_submission_doc = frappe.get_doc("Task Submission", task_submission_name)
 		authoritative = _build_task_submission_upload_contract(task_submission_doc)
 		for fieldname, authoritative_value in authoritative.items():
@@ -451,6 +455,7 @@ def test_task_submission_upload_session_creates_correctly(monkeypatch):
 		return {
 			"upload_session_id": "DUS-0001",
 			"status": "created",
+			"workflow_result": payload.get("workflow_result") or {},
 		}
 
 	monkeypatch.setattr(
@@ -533,25 +538,36 @@ def test_task_submission_create_session_rejects_context_drift():
 	try:
 		module.create_upload_session_service(
 			{
-				"owner_doctype": "Task Submission",
-				"owner_name": "TSUB-0001",
-				"attached_doctype": "Task Submission",
-				"attached_name": "TSUB-0001",
-				"organization": "ORG-0001",
-				"school": "SCH-0001",
-				"primary_subject_type": "Student",
+				"workflow_id": "task.submission",
+				"workflow_payload": {
+					"task_submission": "TSUB-0001",
+					"student": "STU-9999",
+				},
 				"primary_subject_id": "STU-9999",
-				"data_class": "assessment",
-				"purpose": "assessment_submission",
-				"retention_policy": "until_school_exit_plus_6m",
-				"slot": "submission",
 				"filename_original": "essay.docx",
 			}
 		)
 	except RuntimeError as exc:
-		assert "does not match the authoritative owner context" in str(exc)
+		assert "Task Submission owner context" in str(exc)
 	else:
 		raise AssertionError("Expected create_upload_session_service to reject mismatched student context.")
+
+
+def test_create_upload_session_rejects_missing_workflow_id():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.uploads.sessions",
+		"ifitwala_drive.services.uploads.validation",
+	)
+	_install_fake_frappe()
+	module = _load_module("ifitwala_drive.services.uploads.sessions")
+
+	try:
+		module.create_upload_session_service({"filename_original": "essay.docx"})
+	except RuntimeError as exc:
+		assert "workflow_id is required." in str(exc)
+	else:
+		raise AssertionError("Expected create_upload_session_service to reject missing workflow_id.")
 
 
 def test_create_upload_session_reuses_idempotent_request():
@@ -587,18 +603,11 @@ def test_create_upload_session_reuses_idempotent_request():
 	module = _load_module("ifitwala_drive.services.uploads.sessions")
 
 	payload = {
-		"owner_doctype": "Task Submission",
-		"owner_name": "TSUB-0001",
-		"attached_doctype": "Task Submission",
-		"attached_name": "TSUB-0001",
-		"organization": "ORG-0001",
-		"school": "SCH-0001",
-		"primary_subject_type": "Student",
-		"primary_subject_id": "STU-0001",
-		"data_class": "assessment",
-		"purpose": "assessment_submission",
-		"retention_policy": "until_school_exit_plus_6m",
-		"slot": "submission",
+		"workflow_id": "task.submission",
+		"workflow_payload": {
+			"task_submission": "TSUB-0001",
+			"student": "STU-0001",
+		},
 		"filename_original": "essay.docx",
 		"idempotency_key": "retry-001",
 	}
@@ -610,6 +619,10 @@ def test_create_upload_session_reuses_idempotent_request():
 	assert second["upload_session_id"] == "DUS-0001"
 	assert first["session_key"] == second["session_key"]
 	assert first["upload_target"] == second["upload_target"]
+	assert first["upload_token"] == second["upload_token"]
+	assert first["workflow_id"] == "task.submission"
+	assert first["contract_version"] == "1"
+	assert first["workflow_result"] == {}
 	assert FakeDoc._docs_map[("Drive Upload Session", "DUS-0001")].upload_contract_json
 
 
@@ -648,6 +661,7 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 			"intended_purpose": "assessment_submission",
 			"intended_retention_policy": "until_school_exit_plus_6m",
 			"intended_slot": "submission",
+			"upload_contract_json": '{"upload_strategy":"proxy_post","upload_target":{"method":"POST","url":"/proxy","headers":{}},"workflow":{"workflow_id":"task.submission","contract_version":"1","workflow_payload":{"task_submission":"TSUB-0001","student":"STU-0001"},"workflow_result":{}}}',
 			"secondary_subjects": [
 				types.SimpleNamespace(subject_type="Student", subject_id="STU-0002", role="co-owner")
 			],
@@ -727,7 +741,9 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 		"canonical_ref": "drv:ORG-0001:DF-0001",
 		"status": "completed",
 		"preview_status": "not_applicable",
-		"file_url": finalized_artifact["file_url"],
+		"workflow_id": "task.submission",
+		"contract_version": "1",
+		"workflow_result": {},
 	}
 	assert session_doc.status == "completed"
 	assert session_doc.file == "FILE-0001"
@@ -1477,6 +1493,7 @@ def test_ingest_upload_session_content_uses_upload_target_for_non_proxy(monkeypa
 
 	response = module.ingest_upload_session_content(
 		upload_session_id="DUS-0001",
+		upload_token="token-1",
 		content=b"hello",
 	)
 
@@ -1708,7 +1725,7 @@ def test_create_drive_file_artifacts_creates_pending_pdf_derivative_and_preview_
 	assert drive_file.preview_status == "pending"
 
 	pdf_page = FakeDoc._docs_map[("Drive File Derivative", "DFD-0001")]
-	assert pdf_page.derivative_role == "pdf_page_1"
+	assert pdf_page.derivative_role == "pdf_card"
 	assert pdf_page.status == "pending"
 	assert pdf_page.drive_file_version == "DFV-0001"
 

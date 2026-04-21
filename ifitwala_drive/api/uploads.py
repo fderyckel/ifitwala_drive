@@ -197,7 +197,7 @@ def ingest_upload_session_content(
 		upload_token=upload_token,
 		content=content,
 		require_proxy_post=False,
-		require_upload_token=False,
+		require_upload_token=True,
 	)
 
 

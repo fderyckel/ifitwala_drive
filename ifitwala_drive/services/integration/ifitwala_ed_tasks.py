@@ -136,6 +136,10 @@ def upload_task_resource_service(payload: dict[str, Any]) -> dict[str, Any]:
 	session_payload = {
 		**{key: value for key, value in authoritative.items() if key not in {"row_name", "course"}},
 		"workflow_payload": workflow_payload,
+		"workflow_result": {
+			"row_name": authoritative["row_name"],
+			"slot": authoritative["slot"],
+		},
 		"folder": resolve_task_resource_folder(
 			task=task_doc.name,
 			course=authoritative["course"],
@@ -152,7 +156,4 @@ def upload_task_resource_service(payload: dict[str, Any]) -> dict[str, Any]:
 	if idempotency_key:
 		session_payload["idempotency_key"] = idempotency_key
 
-	response = create_upload_session_service(session_payload)
-	response["row_name"] = authoritative["row_name"]
-	response["slot"] = authoritative["slot"]
-	return response
+	return create_upload_session_service(session_payload)

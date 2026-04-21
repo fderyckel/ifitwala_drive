@@ -76,6 +76,12 @@ def upload_applicant_document_service(payload: dict[str, Any]) -> dict[str, Any]
 			"workflow_id": context["workflow_id"],
 			"contract_version": context["contract_version"],
 			"workflow_payload": workflow_payload,
+			"workflow_result": {
+				"applicant_document": context["applicant_document"],
+				"applicant_document_item": context["applicant_document_item"],
+				"item_key": context["item_key"],
+				"item_label": context["item_label"],
+			},
 			"folder": resolve_applicant_document_folder(
 				student_applicant=context["owner_name"],
 				organization=context["organization"],
@@ -89,14 +95,6 @@ def upload_applicant_document_service(payload: dict[str, Any]) -> dict[str, Any]
 			"idempotency_key": payload.get("idempotency_key"),
 			"is_private": 1,
 			"upload_source": payload.get("upload_source") or "SPA",
-		}
-	)
-	response.update(
-		{
-			"applicant_document": context["applicant_document"],
-			"applicant_document_item": context["applicant_document_item"],
-			"item_key": context["item_key"],
-			"item_label": context["item_label"],
 		}
 	)
 	return response
@@ -118,6 +116,10 @@ def upload_applicant_profile_image_service(payload: dict[str, Any]) -> dict[str,
 		{
 			**context,
 			"workflow_payload": workflow_payload,
+			"workflow_result": {
+				"student_applicant": context["owner_name"],
+				"slot": context["slot"],
+			},
 			"folder": resolve_applicant_profile_image_folder(
 				student_applicant=context["owner_name"],
 				organization=context["organization"],
@@ -131,7 +133,6 @@ def upload_applicant_profile_image_service(payload: dict[str, Any]) -> dict[str,
 			"upload_source": payload.get("upload_source") or "SPA",
 		}
 	)
-	response.update({"student_applicant": context["owner_name"], "slot": context["slot"]})
 	return response
 
 
@@ -152,6 +153,11 @@ def upload_applicant_guardian_image_service(payload: dict[str, Any]) -> dict[str
 		{
 			**context,
 			"workflow_payload": workflow_payload,
+			"workflow_result": {
+				"student_applicant": context["owner_name"],
+				"guardian_row_name": context["attached_name"],
+				"slot": context["slot"],
+			},
 			"folder": resolve_applicant_guardian_image_folder(
 				student_applicant=context["owner_name"],
 				organization=context["organization"],
@@ -163,13 +169,6 @@ def upload_applicant_guardian_image_service(payload: dict[str, Any]) -> dict[str
 			"idempotency_key": payload.get("idempotency_key"),
 			"is_private": 1,
 			"upload_source": payload.get("upload_source") or "SPA",
-		}
-	)
-	response.update(
-		{
-			"student_applicant": context["owner_name"],
-			"guardian_row_name": context["attached_name"],
-			"slot": context["slot"],
 		}
 	)
 	return response
@@ -195,6 +194,11 @@ def upload_applicant_health_vaccination_proof_service(payload: dict[str, Any]) -
 		{
 			**context,
 			"workflow_payload": workflow_payload,
+			"workflow_result": {
+				"student_applicant": context["owner_name"],
+				"applicant_health_profile": context["attached_name"],
+				"slot": context["slot"],
+			},
 			"folder": resolve_applicant_health_folder(
 				student_applicant=context["owner_name"],
 				organization=context["organization"],
@@ -206,13 +210,6 @@ def upload_applicant_health_vaccination_proof_service(payload: dict[str, Any]) -
 			"idempotency_key": payload.get("idempotency_key"),
 			"is_private": 1,
 			"upload_source": payload.get("upload_source") or "SPA",
-		}
-	)
-	response.update(
-		{
-			"student_applicant": context["owner_name"],
-			"applicant_health_profile": context["attached_name"],
-			"slot": context["slot"],
 		}
 	)
 	return response
