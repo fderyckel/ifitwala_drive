@@ -114,6 +114,7 @@ Current runtime note:
 - the generic session/finalize DTOs now carry `workflow_id`, `contract_version`, and typed `workflow_result`
 - wrapper-specific extras such as `row_name` or admissions item metadata must not leak out as scattered top-level keys
 - Drive also exposes surface-scoped grant wrappers where generic owner-doc checks are not the same as Ed surface authorization, including org-communication attachments, employee images, public website media, and supporting-material previews opened from placement-aware academic surfaces
+- legacy profile-image cleanup is now patch-driven through those same public Drive media wrappers: Ed migration code reimports missing Employee/Student/Guardian profile images via the upload seam and requeues current governed avatar derivatives via the preview-derivative seam instead of adding new runtime repair paths
 - wrapper-specific public endpoints still exist only as ergonomics shims during migration
 - Ed and Drive runtime entrypoints now import only explicit public bridge/API modules; reload fallback wrappers and `sys.path` rescue are retired
 
