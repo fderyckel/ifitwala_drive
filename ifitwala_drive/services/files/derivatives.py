@@ -1114,6 +1114,8 @@ def reconcile_preview_derivatives_service(
 			drive_file_doc=drive_file_doc,
 			mime_type=mime_type,
 		)
+		if reconcile_reason != "missing_job":
+			drive_file_doc.preview_status = "pending"
 		drive_file_doc.save(ignore_permissions=True)
 		requeued += 1
 		reasons[reconcile_reason] = reasons.get(reconcile_reason, 0) + 1

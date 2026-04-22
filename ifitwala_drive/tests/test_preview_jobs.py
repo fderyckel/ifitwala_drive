@@ -790,6 +790,10 @@ def test_reconcile_preview_derivatives_service_requeues_missing_thumb():
 		now=now,
 	)
 	module = _load_module()
+	viewer.source_hash = module._build_derivative_source_hash(
+		content_hash="sha256:image-source",
+		derivative_role="viewer_preview",
+	)
 
 	result = module.reconcile_preview_derivatives_service(limit=10, stalled_minutes=20, cooldown_minutes=60)
 
