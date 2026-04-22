@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
 import secrets
 
 import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils import add_to_date, now_datetime
+
+from ifitwala_drive.services.governance_contract import validate_file_purpose
 
 _ALLOWED_STATUSES = {
 	"created",
@@ -20,20 +23,16 @@ _ALLOWED_STATUSES = {
 	"failed",
 }
 
-_OPTIONAL_SCHOOL_SUBJECT_TYPES = {"Employee", "Organization"}
+_OPTIONAL_SCHOOL_SUBJECT_TYPES = {"Employee", "Guardian", "Organization"}
 
 
 class DriveUploadSession(Document):
 	"""Authoritative upload-session record for governed Drive uploads.
 
-	This DocType is intentionally lightweight:
-	- it does NOT replace File Classification
-	- it does NOT finalize governed files by itself
-	- it exists to make upload lifecycle explicit, resumable-ready, and auditable
-
-	The final governed file must still be created through the authoritative
-	dispatcher / Drive service boundary that creates File + File Classification
-	atomically. This preserves the locked Ifitwala_Ed governance contract.
+	This DocType is the authoritative persisted contract for governed upload
+	lifecycle. Drive owns session creation, blob ingress, finalize execution,
+	storage placement, and canonical governed-file metadata; Ifitwala_Ed owns
+	workflow context validation and post-finalize business mutation.
 	"""
 
 	def before_insert(self) -> None:
@@ -52,6 +51,7 @@ class DriveUploadSession(Document):
 		self._validate_school_requirement()
 		self._validate_size_fields()
 		self._validate_terminal_state_fields()
+		self._validate_json_fields()
 		self._validate_links()
 
 	def _set_defaults(self) -> None:
@@ -108,6 +108,11 @@ class DriveUploadSession(Document):
 			if not self.get(fieldname):
 				frappe.throw(_("Missing required governance intent field: {0}").format(fieldname))
 
+		self.intended_purpose = validate_file_purpose(
+			self.intended_purpose,
+			field_label="Intended Purpose",
+		)
+
 	def _validate_owner_contract(self) -> None:
 		"""Ownership must mean business-document owner, never human uploader.
 
@@ -152,6 +157,16 @@ class DriveUploadSession(Document):
 		if self.status == "aborted" and not self.aborted_on:
 			self.aborted_on = now_datetime()
 
+	def _validate_json_fields(self) -> None:
+		for fieldname in ("upload_contract_json",):
+			value = self.get(fieldname)
+			if not value:
+				continue
+			try:
+				json.loads(value)
+			except Exception:
+				frappe.throw(_("{0} must contain valid JSON.").format(fieldname.replace("_", " ").title()))
+
 	def _validate_links(self) -> None:
 		"""These links are optional in early flow, but if present they must exist."""
 		link_checks = (
@@ -171,7 +186,7 @@ class DriveUploadSession(Document):
 
 	def _is_school_required(self) -> bool:
 		try:
-			from ifitwala_ed.utilities.file_classification_contract import (
+			from ifitwala_ed.utilities.governed_file_contract import (
 				is_school_required_for_subject_type,
 			)
 		except ImportError:

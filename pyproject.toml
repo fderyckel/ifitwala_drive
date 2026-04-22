@@ -9,6 +9,14 @@ readme = "README.md"
 dynamic = ["version"]
 dependencies = [
     # "frappe~=16.0.0" # Installed and managed by bench.
+    "google-cloud-storage>=2.19,<4",
+    "PyMuPDF>=1.24,<2",
+    "python-magic>=0.4.27,<1",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8,<9",
 ]
 
 [build-system]

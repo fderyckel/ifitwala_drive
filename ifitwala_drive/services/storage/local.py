@@ -64,8 +64,50 @@ class LocalStorageBackend:
 			"size_bytes": len(content),
 		}
 
+	def write_final_object(
+		self,
+		*,
+		object_key: str,
+		content: bytes,
+		mime_type: str | None = None,
+	) -> dict[str, Any]:
+		path = self._absolute_path(object_key)
+		self._ensure_parent(path)
+		with open(path, "wb") as handle:
+			handle.write(content)
+		return self._artifact_for_key(object_key)
+
+	def build_public_object_url(self, *, object_key: str) -> str | None:
+		return None
+
+	def read_object_metadata(self, *, object_key: str) -> dict[str, Any]:
+		path = self._absolute_path(object_key)
+		if not os.path.exists(path):
+			return {
+				"exists": False,
+				"size_bytes": None,
+				"checksum": None,
+				"verifiable": True,
+			}
+		return {
+			"exists": True,
+			"size_bytes": os.path.getsize(path),
+			"checksum": None,
+			"verifiable": True,
+		}
+
+	def read_final_object(self, *, object_key: str) -> bytes:
+		path = self._absolute_path(object_key)
+		with open(path, "rb") as handle:
+			return handle.read()
+
 	def temporary_object_exists(self, *, object_key: str) -> bool:
 		return os.path.exists(self._absolute_path(object_key))
+
+	def read_temporary_object_head(self, *, object_key: str, max_bytes: int) -> bytes:
+		path = self._absolute_path(object_key)
+		with open(path, "rb") as handle:
+			return handle.read(max(0, int(max_bytes)))
 
 	def finalize_temporary_object(self, *, object_key: str, final_key: str) -> dict[str, Any]:
 		source = self._absolute_path(object_key)

@@ -2,6 +2,23 @@
 
 Governed file management for `ifitwala_ed`.
 
+### Current Backend Status
+
+Implemented core governed-file behavior now includes:
+
+- upload session creation and authoritative finalize through the Drive boundary
+- canonical `Drive File` creation with initial `Drive File Version` lineage
+- version-safe replacement through `replace_drive_file_version`
+- short-lived download and preview grants
+- minimal `Drive Access Event` audit rows for upload, replace, download, preview, and erase actions
+- `Drive Erasure Request` creation/execution for deterministic file-domain erasure
+
+Current downstream contract note for `ifitwala_ed`:
+
+- callers should persist `drive_file_id`, `drive_file_version_id`, and `canonical_ref` where useful
+- delivery logic must continue to use Drive grants / canonical references, not guessed file paths
+- replacement and erasure flows now have first-class Drive APIs and should not be re-invented in Ed business logic
+
 ### Current Workspace Behavior
 
 The default Drive landing at `/drive_workspace` is now a governed home, not a
@@ -33,6 +50,13 @@ bench get-app $URL_OF_THIS_REPO --branch version-16
 bench install-app ifitwala_drive
 ```
 
+For governed upload hardening and GCS direct uploads, the runtime also needs:
+
+- `libmagic` available on the host/container for `python-magic`
+- Application Default Credentials / Workload Identity for GCS when `backend_name = "gcs"`
+
+On macOS, `libmagic` is typically provided by `brew install libmagic`.
+
 ### Contributing
 
 This app uses `pre-commit` for code formatting and linting. Please [install pre-commit](https://pre-commit.com/#installation) and enable it for this repository:
@@ -61,9 +85,14 @@ This runs:
 
 - `ruff check`
 - `ruff format --check`
-- the local pytest suite for the current Phase 1 upload/session tests
+- the full Python test suite currently checked into `ifitwala_drive/tests`
 
-GitHub Actions runs the same script for pull requests targeting `main` and for pushes to `main`.
+The Python suite is `pytest`-based. In a Bench environment, install the test
+extra (or at minimum `pytest`) into the bench Python environment and run
+`python -m pytest`, not `bench --site <site> run-tests`, for these repo-level
+unit tests.
+
+GitHub Actions runs separate CI jobs for Ruff, the full Python suite, and the frontend type-check/build path for pull requests targeting `main` and for pushes to `main`.
 
 ### Frontend Build
 
@@ -97,6 +126,16 @@ Runtime baseline:
 
 This machine currently has neither `node` nor `yarn`, so frontend build
 verification must happen on a workstation or CI runner with that toolchain.
+
+### Documentation Rule
+
+Whenever code changes in this repo, update the relevant docs with:
+
+- the technical changes
+- the design or architecture choice behind them
+- any downstream impact on `ifitwala_ed`
+
+If the change affects how `ifitwala_ed` delivers files, that downstream app must be informed and the contract change must be documented explicitly.
 
 ### License
 

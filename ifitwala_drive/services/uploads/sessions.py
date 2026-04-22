@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import frappe
@@ -7,9 +8,7 @@ from frappe import _
 from frappe.utils import now_datetime
 
 from ifitwala_drive.services.concurrency import drive_lock, is_duplicate_entry_error
-from ifitwala_drive.services.integration.ifitwala_ed_tasks import (
-	reconcile_task_submission_session_payload,
-)
+from ifitwala_drive.services.integration.ifitwala_ed_bridge import reconcile_upload_session_payload
 from ifitwala_drive.services.logging import log_drive_event
 from ifitwala_drive.services.storage.base import get_storage_backend
 from ifitwala_drive.services.uploads.keys import build_upload_object_key, build_upload_session_key
@@ -27,15 +26,126 @@ def _build_secondary_subject_rows(payload: dict[str, Any]) -> list[dict[str, Any
 	]
 
 
-def _serialize_session_response(doc, target: dict[str, Any]) -> dict[str, Any]:
+def _coerce_workflow_result(value: Any) -> dict[str, Any]:
+	if not isinstance(value, dict):
+		return {}
+	return dict(value)
+
+
+def _load_workflow_metadata_from_contract(contract: dict[str, Any] | None) -> dict[str, Any]:
+	if not isinstance(contract, dict):
+		return {}
+
+	workflow = contract.get("workflow")
+	if not isinstance(workflow, dict):
+		return {}
+
+	workflow_id = str(workflow.get("workflow_id") or "").strip() or None
+	contract_version = str(workflow.get("contract_version") or "").strip() or None
+	workflow_payload = workflow.get("workflow_payload")
+	if not isinstance(workflow_payload, dict):
+		workflow_payload = {}
+
+	return {
+		"workflow_id": workflow_id,
+		"contract_version": contract_version,
+		"workflow_payload": workflow_payload,
+		"workflow_result": _coerce_workflow_result(workflow.get("workflow_result")),
+	}
+
+
+def _serialize_session_response(doc, target: dict[str, Any] | None = None) -> dict[str, Any]:
+	contract = load_upload_contract(doc, fallback_to_storage=False)
+	if not contract and isinstance(target, dict):
+		contract = dict(target)
+
+	upload_target = (contract or {}).get("upload_target")
+	if upload_target is None and isinstance(target, dict):
+		upload_target = target.get("upload_target")
+	upload_strategy = (contract or {}).get("upload_strategy")
+	if not upload_strategy and isinstance(target, dict):
+		upload_strategy = target.get("upload_strategy")
+
+	workflow = _load_workflow_metadata_from_contract(contract)
 	return {
 		"upload_session_id": doc.name,
 		"session_key": doc.session_key,
 		"status": doc.status,
 		"expires_on": getattr(doc, "expires_on", None),
-		"upload_strategy": target["upload_strategy"],
-		"upload_target": target["upload_target"],
+		"upload_strategy": upload_strategy,
+		"upload_target": upload_target,
+		"upload_token": getattr(doc, "upload_token", None),
+		"workflow_id": workflow.get("workflow_id"),
+		"contract_version": workflow.get("contract_version"),
+		"workflow_result": workflow.get("workflow_result") or {},
 	}
+
+
+def _workflow_contract_metadata(payload: dict[str, Any]) -> dict[str, Any] | None:
+	workflow_id = str(payload.get("workflow_id") or "").strip()
+	contract_version = str(payload.get("contract_version") or "").strip()
+	if not workflow_id:
+		return None
+	workflow_payload = payload.get("workflow_payload")
+	if not isinstance(workflow_payload, dict):
+		workflow_payload = {}
+	workflow_result = _coerce_workflow_result(payload.get("workflow_result"))
+	return {
+		"workflow_id": workflow_id,
+		"contract_version": contract_version or None,
+		"workflow_payload": workflow_payload,
+		"workflow_result": workflow_result,
+	}
+
+
+def _dump_upload_contract(target: dict[str, Any], *, workflow: dict[str, Any] | None = None) -> str:
+	serialized = dict(target)
+	if workflow:
+		serialized["workflow"] = workflow
+	return json.dumps(serialized, sort_keys=True)
+
+
+def load_upload_contract(doc, *, storage=None, fallback_to_storage: bool = True) -> dict[str, Any]:
+	raw = getattr(doc, "upload_contract_json", None)
+	if raw:
+		parsed = json.loads(raw)
+		if isinstance(parsed, dict):
+			return parsed
+
+	if not fallback_to_storage:
+		return {}
+
+	if storage is None:
+		storage = get_storage_backend(getattr(doc, "storage_backend", None))
+
+	return storage.create_temporary_upload_target(
+		session_key=doc.session_key,
+		filename=doc.filename_original,
+		mime_type=getattr(doc, "mime_type_hint", None),
+		upload_token=getattr(doc, "upload_token", None),
+		expected_size_bytes=getattr(doc, "expected_size_bytes", None),
+		object_key_hint=getattr(doc, "tmp_object_key", None),
+	)
+
+
+def load_workflow_contract_metadata(doc) -> dict[str, Any]:
+	return _load_workflow_metadata_from_contract(load_upload_contract(doc, fallback_to_storage=False))
+
+
+def persist_workflow_result(doc, workflow_result: dict[str, Any] | None) -> dict[str, Any]:
+	contract = load_upload_contract(doc, fallback_to_storage=False)
+	if not contract:
+		return {}
+
+	workflow = contract.get("workflow")
+	if not isinstance(workflow, dict):
+		return {}
+
+	normalized = _coerce_workflow_result(workflow_result)
+	workflow["workflow_result"] = normalized
+	contract["workflow"] = workflow
+	doc.upload_contract_json = json.dumps(contract, sort_keys=True)
+	return normalized
 
 
 def _load_existing_session_response(session_key: str) -> dict[str, Any] | None:
@@ -44,21 +154,14 @@ def _load_existing_session_response(session_key: str) -> dict[str, Any] | None:
 		return None
 
 	doc = frappe.get_doc("Drive Upload Session", doc_name)
-	storage = get_storage_backend(getattr(doc, "storage_backend", None))
-	target = storage.create_temporary_upload_target(
-		session_key=doc.session_key,
-		filename=doc.filename_original,
-		mime_type=getattr(doc, "mime_type_hint", None),
-		upload_token=getattr(doc, "upload_token", None),
-		expected_size_bytes=getattr(doc, "expected_size_bytes", None),
-		object_key_hint=getattr(doc, "tmp_object_key", None),
-	)
+	target = load_upload_contract(doc)
 	return _serialize_session_response(doc, target)
 
 
 def create_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
-	payload = reconcile_task_submission_session_payload(payload)
+	payload = reconcile_upload_session_payload(payload)
 	validate_create_session_payload(payload)
+	resolved_is_private = int(bool(payload.get("is_private", 1)))
 
 	session_key = build_upload_session_key(payload, user=getattr(frappe.session, "user", None))
 	existing_response = _load_existing_session_response(session_key)
@@ -115,10 +218,14 @@ def create_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 				"secondary_subjects": _build_secondary_subject_rows(payload),
 				"filename_original": payload["filename_original"],
 				"mime_type_hint": payload.get("mime_type_hint"),
-				"is_private": payload.get("is_private", 1),
+				"is_private": resolved_is_private,
 				"expected_size_bytes": payload.get("expected_size_bytes"),
 				"storage_backend": storage.backend_name,
 				"tmp_object_key": target["object_key"],
+				"upload_contract_json": _dump_upload_contract(
+					target,
+					workflow=_workflow_contract_metadata(payload),
+				),
 				"upload_token": upload_token,
 			}
 		)
@@ -179,3 +286,58 @@ def abort_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 		"upload_session_id": doc.name,
 		"status": doc.status,
 	}
+
+
+def expire_abandoned_upload_sessions_service(*, limit: int = 200) -> dict[str, int]:
+	rows = (
+		frappe.get_all(
+			"Drive Upload Session",
+			filters={
+				"status": ["in", ["created", "uploading", "uploaded"]],
+				"expires_on": ["<", now_datetime()],
+			},
+			fields=[
+				"name",
+				"storage_backend",
+				"tmp_object_key",
+				"owner_doctype",
+				"owner_name",
+				"intended_slot",
+			],
+			order_by="expires_on asc",
+			limit=limit,
+		)
+		or []
+	)
+	summary = {"expired": 0, "cleanup_errors": 0}
+	for row in rows:
+		doc = frappe.get_doc("Drive Upload Session", row.get("name"))
+		if doc.status in {"completed", "aborted", "expired"}:
+			continue
+
+		storage = get_storage_backend(getattr(doc, "storage_backend", None))
+		try:
+			if doc.tmp_object_key:
+				storage.abort_temporary_object(object_key=doc.tmp_object_key)
+		except Exception:
+			summary["cleanup_errors"] += 1
+			log_drive_event(
+				"upload_session_expire_cleanup_failed",
+				upload_session_id=doc.name,
+				owner_doctype=doc.owner_doctype,
+				owner_name=doc.owner_name,
+				slot=doc.intended_slot,
+			)
+
+		doc.status = "expired"
+		doc.save(ignore_permissions=True)
+		summary["expired"] += 1
+		log_drive_event(
+			"upload_session_expired",
+			upload_session_id=doc.name,
+			owner_doctype=doc.owner_doctype,
+			owner_name=doc.owner_name,
+			slot=doc.intended_slot,
+		)
+
+	return summary

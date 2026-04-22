@@ -44,7 +44,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Job Type",
-   "options": "preview\nderivative\nscan\nindex\nreconcile\nerasure",
+   "options": "preview\nderivative\nscan\nindex\nreconcile\noffload\nprune_local\nsync_index\nerasure",
    "reqd": 1
   },
   {

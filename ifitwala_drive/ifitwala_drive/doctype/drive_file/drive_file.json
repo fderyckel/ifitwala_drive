@@ -36,6 +36,8 @@
   "purpose",
   "retention_policy",
   "slot",
+  "legal_hold",
+  "erasure_state",
   "section_versioning",
   "current_version_no",
   "current_version",
@@ -193,6 +195,22 @@
    "fieldname": "slot",
    "fieldtype": "Data",
    "label": "Slot",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "legal_hold",
+   "fieldtype": "Check",
+   "label": "Legal Hold",
+   "read_only": 1
+  },
+  {
+   "default": "active",
+   "fieldname": "erasure_state",
+   "fieldtype": "Select",
+   "label": "Erasure State",
+   "options": "active\npending\nblocked_legal\nerased",
    "read_only": 1,
    "reqd": 1
   },

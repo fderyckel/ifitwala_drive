@@ -147,7 +147,7 @@
    "fieldname": "folder_kind",
    "fieldtype": "Select",
    "label": "Folder Kind",
-   "options": "teacher_private\ncourse_shared\norganization_media\nsystem_bound\nstudent_workspace\napplicant_documents\nstaff_documents\ngeneral_resource",
+   "options": "teacher_private\ncourse_shared\norganization_media\nsystem_bound\nstudent_workspace\nguardian_workspace\napplicant_documents\nstaff_documents\ngeneral_resource",
    "reqd": 1
   },
   {

@@ -44,6 +44,8 @@ class DriveFileVersion(Document):
 		link_checks = (
 			("drive_file", "Drive File"),
 			("file", "File"),
+			("source_version", "Drive File Version"),
+			("source_file", "File"),
 		)
 
 		for fieldname, doctype in link_checks:

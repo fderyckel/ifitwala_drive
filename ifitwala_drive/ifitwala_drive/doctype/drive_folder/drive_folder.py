@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import hashlib
-import re
 
 import frappe
 from frappe import _
 from frappe.model.document import Document
+
+from ifitwala_drive.services.folders.key_builder import build_folder_system_key, slugify_folder_title
 
 _ALLOWED_STATUSES = {"active", "archived", "disabled"}
 _ALLOWED_FOLDER_KINDS = {
@@ -16,6 +17,7 @@ _ALLOWED_FOLDER_KINDS = {
 	"organization_media",
 	"system_bound",
 	"student_workspace",
+	"guardian_workspace",
 	"applicant_documents",
 	"staff_documents",
 	"general_resource",
@@ -73,9 +75,9 @@ class DriveFolder(Document):
 			self.sort_order = 0
 
 		if self.slug:
-			self.slug = self._slugify(self.slug)
+			self.slug = slugify_folder_title(self.slug)
 		else:
-			self.slug = self._slugify(self.title)
+			self.slug = slugify_folder_title(self.title)
 
 		self.system_key = self._build_system_key()
 
@@ -146,31 +148,24 @@ class DriveFolder(Document):
 	def _sync_path_fields(self) -> None:
 		if not self.parent_drive_folder:
 			self.depth = 0
-			self.path_cache = self.slug or self._slugify(self.title)
+			self.path_cache = self.slug or slugify_folder_title(self.title)
 			return
 
 		parent = frappe.get_cached_doc("Drive Folder", self.parent_drive_folder)
-		parent_path = parent.path_cache or self._slugify(parent.title)
+		parent_path = parent.path_cache or slugify_folder_title(parent.title)
 		self.depth = (parent.depth or 0) + 1
 		self.path_cache = f"{parent_path}/{self.slug}"
 
-	def _slugify(self, value: str | None) -> str:
-		value = (value or "").strip().lower()
-		value = re.sub(r"[^a-z0-9]+", "-", value)
-		value = re.sub(r"-{2,}", "-", value).strip("-")
-		return value or "folder"
-
 	def _build_system_key(self) -> str:
-		parts = (
-			self.organization,
-			self.school or "no-school",
-			self.owner_doctype,
-			self.owner_name,
-			self.parent_drive_folder or "root",
-			self.folder_kind,
-			self._slugify(self.title),
+		return build_folder_system_key(
+			title=self.title,
+			parent_drive_folder=self.parent_drive_folder,
+			owner_doctype=self.owner_doctype,
+			owner_name=self.owner_name,
+			organization=self.organization,
+			school=self.school,
+			folder_kind=self.folder_kind,
 		)
-		return "|".join(str(part or "").strip() for part in parts)
 
 	def _build_name(self) -> str:
 		digest = hashlib.sha1(self.system_key.encode("utf-8")).hexdigest()[:16].upper()

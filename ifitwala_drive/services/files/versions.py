@@ -1,0 +1,363 @@
+from __future__ import annotations
+
+import mimetypes
+import os
+from typing import Any
+
+import frappe
+from frappe import _
+
+from ifitwala_drive.services.audit.events import record_drive_access_event
+from ifitwala_drive.services.concurrency import drive_lock, is_duplicate_entry_error
+from ifitwala_drive.services.files.derivatives import (
+	mark_version_derivatives_stale,
+	sync_preview_pipeline_for_current_version,
+)
+
+_ALLOWED_REPLACE_REASONS = {"replace", "system_regeneration"}
+
+
+def _version_filters(*, drive_file_id: str, version_no: int) -> dict[str, Any]:
+	return {"drive_file": drive_file_id, "version_no": version_no}
+
+
+def _get_all_rows(doctype: str, *, filters: dict[str, Any], fields: list[str]) -> list[dict[str, Any]]:
+	get_all = getattr(frappe, "get_all", None)
+	if not callable(get_all):
+		return []
+
+	try:
+		rows = get_all(doctype, filters=filters, fields=fields, limit=0)
+	except TypeError:
+		rows = get_all(doctype, filters=filters, fields=fields)
+	return rows or []
+
+
+def _build_version_doc(
+	*,
+	drive_file_id: str,
+	version_no: int,
+	file_id: str,
+	storage_object_key: str,
+	version_reason: str,
+	source_version: str | None = None,
+	source_file: str | None = None,
+	size_bytes: int | None = None,
+	mime_type: str | None = None,
+	content_hash: str | None = None,
+):
+	return frappe.get_doc(
+		{
+			"doctype": "Drive File Version",
+			"drive_file": drive_file_id,
+			"version_no": version_no,
+			"file": file_id,
+			"source_version": source_version,
+			"source_file": source_file,
+			"is_current": 1,
+			"version_reason": version_reason,
+			"storage_object_key": storage_object_key,
+			"size_bytes": size_bytes,
+			"mime_type": mime_type,
+			"content_hash": content_hash,
+		}
+	)
+
+
+def _create_version_row(
+	*,
+	drive_file_id: str,
+	version_no: int,
+	file_id: str,
+	storage_object_key: str,
+	version_reason: str,
+	source_version: str | None = None,
+	source_file: str | None = None,
+	size_bytes: int | None = None,
+	mime_type: str | None = None,
+	content_hash: str | None = None,
+) -> str:
+	version = _build_version_doc(
+		drive_file_id=drive_file_id,
+		version_no=version_no,
+		file_id=file_id,
+		storage_object_key=storage_object_key,
+		version_reason=version_reason,
+		source_version=source_version,
+		source_file=source_file,
+		size_bytes=size_bytes,
+		mime_type=mime_type,
+		content_hash=content_hash,
+	)
+	try:
+		version.insert(ignore_permissions=True)
+	except Exception as exc:
+		if not is_duplicate_entry_error(exc):
+			raise
+		existing = frappe.db.get_value(
+			"Drive File Version",
+			_version_filters(drive_file_id=drive_file_id, version_no=version_no),
+			"name",
+		)
+		if existing:
+			return existing
+		raise
+	return version.name
+
+
+def _load_version_rows(*, drive_file_id: str) -> list[dict[str, Any]]:
+	return _get_all_rows(
+		"Drive File Version",
+		filters={"drive_file": drive_file_id},
+		fields=[
+			"name",
+			"version_no",
+			"is_current",
+			"file",
+			"storage_object_key",
+			"size_bytes",
+			"mime_type",
+			"content_hash",
+		],
+	)
+
+
+def _resolve_recovery_mime_type(*, drive_file_doc, file_doc=None, upload_session_doc=None) -> str | None:
+	upload_session_mime = str(getattr(upload_session_doc, "mime_type_hint", "") or "").strip()
+	if upload_session_mime:
+		return upload_session_mime
+
+	file_name = str(getattr(file_doc, "file_name", "") or "").strip()
+	if not file_name:
+		file_url = str(getattr(file_doc, "file_url", "") or "").strip()
+		if file_url:
+			file_name = os.path.basename(file_url)
+	if not file_name:
+		file_name = str(getattr(drive_file_doc, "display_name", "") or "").strip()
+
+	return mimetypes.guess_type(file_name)[0] or None
+
+
+def ensure_current_drive_file_version(*, drive_file_doc) -> str | None:
+	current_version_id = str(getattr(drive_file_doc, "current_version", "") or "").strip()
+	if current_version_id and frappe.db.exists("Drive File Version", current_version_id):
+		return current_version_id
+
+	with drive_lock(f"drive_file_version_repair:{drive_file_doc.name}", timeout=20):
+		current_version_id = str(getattr(drive_file_doc, "current_version", "") or "").strip()
+		if current_version_id and frappe.db.exists("Drive File Version", current_version_id):
+			return current_version_id
+
+		version_rows = _load_version_rows(drive_file_id=drive_file_doc.name)
+		if version_rows:
+			chosen = next((row for row in version_rows if int(row.get("is_current") or 0) == 1), None)
+			if not chosen:
+				chosen = max(version_rows, key=lambda row: int(row.get("version_no") or 0))
+				chosen_doc = frappe.get_doc("Drive File Version", chosen["name"])
+				chosen_doc.is_current = 1
+				chosen_doc.save(ignore_permissions=True)
+
+			chosen_file = str(chosen.get("file") or "").strip() or getattr(drive_file_doc, "file", None)
+			drive_file_doc.current_version = chosen["name"]
+			drive_file_doc.current_version_no = int(chosen.get("version_no") or 1)
+			if chosen_file:
+				drive_file_doc.file = chosen_file
+			if chosen.get("storage_object_key"):
+				drive_file_doc.storage_object_key = chosen["storage_object_key"]
+			if chosen.get("content_hash") and not getattr(drive_file_doc, "content_hash", None):
+				drive_file_doc.content_hash = chosen["content_hash"]
+			drive_file_doc.save(ignore_permissions=True)
+			return str(chosen["name"] or "").strip() or None
+
+		file_id = str(getattr(drive_file_doc, "file", "") or "").strip()
+		storage_object_key = str(getattr(drive_file_doc, "storage_object_key", "") or "").strip()
+		if not file_id or not storage_object_key or not frappe.db.exists("File", file_id):
+			return None
+
+		file_doc = frappe.get_doc("File", file_id)
+		upload_session_doc = None
+		source_upload_session = str(getattr(drive_file_doc, "source_upload_session", "") or "").strip()
+		if source_upload_session and frappe.db.exists("Drive Upload Session", source_upload_session):
+			upload_session_doc = frappe.get_doc("Drive Upload Session", source_upload_session)
+
+		version_no = int(getattr(drive_file_doc, "current_version_no", 0) or 0) or 1
+		version_id = _create_version_row(
+			drive_file_id=drive_file_doc.name,
+			version_no=version_no,
+			file_id=file_id,
+			storage_object_key=storage_object_key,
+			version_reason="system_regeneration",
+			size_bytes=getattr(file_doc, "file_size", None)
+			or getattr(upload_session_doc, "received_size_bytes", None),
+			mime_type=_resolve_recovery_mime_type(
+				drive_file_doc=drive_file_doc,
+				file_doc=file_doc,
+				upload_session_doc=upload_session_doc,
+			),
+			content_hash=str(getattr(drive_file_doc, "content_hash", "") or "").strip()
+			or getattr(upload_session_doc, "content_hash", None),
+		)
+
+		drive_file_doc.current_version = version_id
+		drive_file_doc.current_version_no = version_no
+		drive_file_doc.save(ignore_permissions=True)
+		return version_id
+
+
+def create_initial_drive_file_version(
+	*,
+	drive_file_id: str,
+	file_id: str,
+	storage_artifact: dict[str, Any],
+	upload_session_doc,
+) -> str:
+	lock_key = f"drive_file_version_create:{drive_file_id}:1"
+	with drive_lock(lock_key, timeout=20):
+		existing = frappe.db.get_value(
+			"Drive File Version",
+			_version_filters(drive_file_id=drive_file_id, version_no=1),
+			"name",
+		)
+		if existing:
+			return existing
+
+		return _create_version_row(
+			drive_file_id=drive_file_id,
+			version_no=1,
+			file_id=file_id,
+			storage_object_key=storage_artifact["object_key"],
+			version_reason="initial_upload",
+			size_bytes=getattr(upload_session_doc, "received_size_bytes", None)
+			or storage_artifact.get("size_bytes"),
+			mime_type=storage_artifact.get("mime_type")
+			or getattr(upload_session_doc, "mime_type_hint", None),
+			content_hash=getattr(upload_session_doc, "content_hash", None)
+			or storage_artifact.get("content_hash"),
+		)
+
+
+def _deactivate_current_version(current_version_id: str | None) -> None:
+	current_version_id = str(current_version_id or "").strip()
+	if not current_version_id or not frappe.db.exists("Drive File Version", current_version_id):
+		return
+
+	current_version_doc = frappe.get_doc("Drive File Version", current_version_id)
+	current_version_doc.is_current = 0
+	current_version_doc.save(ignore_permissions=True)
+
+
+def _sync_active_bindings_to_file(drive_file_id: str, *, file_id: str) -> None:
+	get_all = getattr(frappe, "get_all", None)
+	if not callable(get_all):
+		return
+
+	for row in get_all(
+		"Drive Binding",
+		filters={"drive_file": drive_file_id, "status": "active"},
+		fields=["name"],
+	):
+		binding_id = str(row.get("name") or "").strip()
+		if not binding_id:
+			continue
+		binding_doc = frappe.get_doc("Drive Binding", binding_id)
+		binding_doc.file = file_id
+		binding_doc.save(ignore_permissions=True)
+
+
+def _validate_replace_payload(payload: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+	drive_file_id = str(payload.get("drive_file_id") or "").strip()
+	if not drive_file_id:
+		frappe.throw(_("Missing required field: drive_file_id"))
+	if not frappe.db.exists("Drive File", drive_file_id):
+		frappe.throw(_("Drive File does not exist: {0}").format(drive_file_id))
+
+	new_file_artifact = payload.get("new_file_artifact")
+	if not isinstance(new_file_artifact, dict):
+		frappe.throw(_("Missing required field: new_file_artifact"))
+
+	for fieldname in ("file_id", "storage_object_key"):
+		if not new_file_artifact.get(fieldname):
+			frappe.throw(_("Missing required new_file_artifact field: {0}").format(fieldname))
+
+	reason = str(payload.get("reason") or "replace").strip()
+	if reason not in _ALLOWED_REPLACE_REASONS:
+		frappe.throw(_("Invalid replace reason: {0}").format(reason))
+
+	return drive_file_id, new_file_artifact
+
+
+def replace_drive_file_version_service(payload: dict[str, Any]) -> dict[str, Any]:
+	drive_file_id, new_file_artifact = _validate_replace_payload(payload)
+
+	with drive_lock(f"drive_file_replace:{drive_file_id}", timeout=30):
+		drive_file = frappe.get_doc("Drive File", drive_file_id)
+		owner_doc = frappe.get_doc(drive_file.owner_doctype, drive_file.owner_name)
+		if hasattr(owner_doc, "check_permission"):
+			owner_doc.check_permission("write")
+
+		if drive_file.status != "active":
+			frappe.throw(_("Drive File is not replaceable in status: {0}").format(drive_file.status))
+		if int(getattr(drive_file, "legal_hold", 0) or 0):
+			frappe.throw(_("Drive File cannot be replaced while legal hold is active."))
+		if getattr(drive_file, "erasure_state", "active") != "active":
+			frappe.throw(
+				_("Drive File cannot be replaced while erasure state is {0}.").format(
+					drive_file.erasure_state
+				)
+			)
+
+		next_version_no = int(getattr(drive_file, "current_version_no", 0) or 0) + 1
+		current_version_id = getattr(drive_file, "current_version", None)
+		current_file_id = getattr(drive_file, "file", None)
+
+		version_id = _create_version_row(
+			drive_file_id=drive_file.name,
+			version_no=next_version_no,
+			file_id=new_file_artifact["file_id"],
+			storage_object_key=new_file_artifact["storage_object_key"],
+			version_reason=str(payload.get("reason") or "replace").strip(),
+			source_version=current_version_id,
+			source_file=current_file_id,
+			size_bytes=new_file_artifact.get("size_bytes"),
+			mime_type=new_file_artifact.get("mime_type"),
+			content_hash=new_file_artifact.get("content_hash"),
+		)
+
+		_deactivate_current_version(current_version_id)
+		mark_version_derivatives_stale(
+			drive_file_id=drive_file.name,
+			drive_file_version_id=current_version_id,
+		)
+
+		drive_file.file = new_file_artifact["file_id"]
+		drive_file.display_name = new_file_artifact.get("filename_original") or drive_file.display_name
+		drive_file.storage_object_key = new_file_artifact["storage_object_key"]
+		if new_file_artifact.get("content_hash"):
+			drive_file.content_hash = new_file_artifact["content_hash"]
+		drive_file.current_version = version_id
+		drive_file.current_version_no = next_version_no
+		sync_preview_pipeline_for_current_version(
+			drive_file_doc=drive_file,
+			mime_type=new_file_artifact.get("mime_type"),
+		)
+		drive_file.save(ignore_permissions=True)
+
+		_sync_active_bindings_to_file(drive_file.name, file_id=new_file_artifact["file_id"])
+
+	record_drive_access_event(
+		drive_file_id=drive_file.name,
+		drive_file_version_id=version_id,
+		event_type="replace",
+		metadata={
+			"reason": payload.get("reason") or "replace",
+			"current_version_no": next_version_no,
+			"source_version": current_version_id,
+		},
+	)
+
+	return {
+		"drive_file_id": drive_file.name,
+		"drive_file_version_id": version_id,
+		"current_version_no": next_version_no,
+		"status": drive_file.status,
+	}

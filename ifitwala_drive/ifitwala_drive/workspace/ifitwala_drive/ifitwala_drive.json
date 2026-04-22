@@ -1,7 +1,7 @@
 {
  "app": "ifitwala_drive",
  "charts": [],
- "content": "[{\"id\":\"drive-header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Ifitwala Drive</span>\",\"col\":12}},{\"id\":\"drive-shortcut-workspace\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Drive Workspace\",\"col\":3}},{\"id\":\"drive-shortcut-files\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Drive Files\",\"col\":3}},{\"id\":\"drive-shortcut-folders\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Drive Folders\",\"col\":3}},{\"id\":\"drive-shortcut-sessions\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Upload Sessions\",\"col\":3}},{\"id\":\"drive-shortcut-jobs\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Processing Jobs\",\"col\":3}}]",
+ "content": "[{\"id\":\"drive-header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Ifitwala Drive</span>\",\"col\":12}},{\"id\":\"drive-setup-header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h5\\\">Setup</span>\",\"col\":12}},{\"id\":\"drive-shortcut-storage-settings\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Storage Settings\",\"col\":4}},{\"id\":\"drive-shortcut-workspace\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Drive Workspace\",\"col\":4}},{\"id\":\"drive-shortcut-jobs\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Processing Jobs\",\"col\":4}},{\"id\":\"drive-content-header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h5\\\">Content</span>\",\"col\":12}},{\"id\":\"drive-shortcut-files\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Drive Files\",\"col\":4}},{\"id\":\"drive-shortcut-folders\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Drive Folders\",\"col\":4}},{\"id\":\"drive-shortcut-sessions\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Upload Sessions\",\"col\":4}}]",
  "custom_blocks": [],
  "docstatus": 0,
  "doctype": "Workspace",
@@ -20,6 +20,13 @@
  "public": 1,
  "quick_lists": [],
  "shortcuts": [
+  {
+   "color": "Cyan",
+   "doc_view": "Form",
+   "label": "Storage Settings",
+   "link_to": "Drive Storage Settings",
+   "type": "DocType"
+  },
   {
    "color": "Green",
    "doc_view": "List",

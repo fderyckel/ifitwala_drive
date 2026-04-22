@@ -27,6 +27,7 @@ def test_workspace_sidebar_exposes_drive_navigation():
 	assert sidebar["title"] == "Ifitwala Drive"
 	assert [item["label"] for item in sidebar["items"]] == [
 		"Home",
+		"Storage Settings",
 		"Folders",
 		"Files",
 		"Upload Sessions",

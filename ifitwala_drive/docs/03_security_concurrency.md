@@ -1,113 +1,159 @@
-# Security, concurrency, and GCP
+# Security And Concurrency
 
-## Threat model
+Status: LOCKED target runtime posture
+Date: 2026-04-19
+Code refs:
+- `ifitwala_drive/api/uploads.py`
+- `ifitwala_drive/services/files/access.py`
+- `ifitwala_drive/services/files/derivatives.py`
+- `ifitwala_drive/services/queueing.py`
 
-You explicitly want safety/security high because schools are increasingly targeted and students will try anything.
+## Bottom line
 
-Correct assumptions:
+- Keep the synchronous path short and authoritative.
+- Keep storage and grant decisions inside Drive.
+- Keep Ed out of blob ingress, object movement, and derivative generation.
+- Treat queue validity as part of the runtime contract, not an operator afterthought.
 
-* students will probe URL patterns,
-* students will test permissions,
-* staff will accidentally overshare,
-* families will upload wrong files,
-* shared devices and weak school IT are common.
+## 1. Threat model
 
-## Security principles
+Assume:
 
-### 1. No raw path trust
+- students probe URLs and permissions
+- staff accidentally overshare
+- families upload the wrong files
+- networks are unstable
+- storage backends may change without warning at the product layer
 
-The UI never guesses storage paths.
-This is already locked in your governance notes.
+## 2. Security rules
 
-### 2. No direct business-logic `File.insert()`
+### 2.1 No raw path trust
 
-All governed uploads must pass through the Drive boundary.
+The browser must not receive guessed storage paths as product truth.
 
-### 3. Short-lived access grants
+### 2.2 Short-lived grants for private media
 
-Downloads/previews should use short-lived signed or opaque grants, not permanent direct links.
+Downloads and previews use server-owned routes or short-lived grants, not durable direct links.
 
-### 4. Private-by-default storage
+### 2.3 Private by default
 
-Use private object storage for governed files.
-Public media is the exception and still must use canonical managed references.
+Governed files are private unless a workflow explicitly defines a public media contract.
 
-### 5. Strong server-side permission enforcement
+### 2.4 Byte validation before finalize
 
-UI hiding is not security.
+`mime_type_hint` is advisory only.
 
-### 6. Minimal retained audit for erasure
+Before finalize succeeds, Drive must:
 
-Your GDPR model is already clear:
+- validate the uploaded bytes
+- reject dangerous or disallowed MIME types
+- fail closed on hint mismatches where policy requires it
 
-* deletion is a workflow,
-* minimal audit remains,
-* content and recoverable versions must not remain.
+### 2.5 Narrow trust boundary
 
-## Concurrency architecture
+Ed may authorize and describe workflow context.
 
-For high concurrency, keep synchronous paths cheap.
+Ed may not:
 
-### Synchronous hot path
+- write temporary objects
+- mutate Drive upload session state directly
+- move finalized Drive objects
 
-* authorize user
-* validate owning context
-* create upload session
-* finalize session
-* create governed record
-* return canonical reference
+### 2.6 Minimal retained audit for erasure
 
-### Async cold path
+Erasure removes content and recoverable versions while leaving only the minimal audit required by the governance contract.
 
-* preview generation
-* derivative generation
-* malware scan if enabled
-* indexing
-* quota/accounting reconciliation
-* heavy media jobs
+## 3. Concurrency model
 
-This is the right way to get scale without over-distributing too early.
+### 3.1 Synchronous hot path
 
-## Queue design
+The request path may do only this:
 
-Use dedicated Drive queues, separate from normal ERP jobs:
+- authorize the caller
+- resolve workflow context
+- create the upload session
+- receive or verify blob upload completion
+- validate bytes
+- finalize the object
+- create canonical Drive records
+- return canonical identifiers
 
-* `drive_short`
-* `drive_default`
-* `drive_heavy`
+### 3.2 Async cold path
 
-That prevents file processing from starving academic workflows.
+The request path must not block on:
 
-## Cost-conscious GCP shape
+- derivative generation
+- preview generation
+- scans
+- indexing
+- reconciliation
+- heavy media transforms
 
-### Early phase
+### 3.3 Hot-path safeguard
 
-* Cloud Run or GKE depending your stack preference
-* Cloud Storage bucket for blobs
-* Redis already present for Frappe jobs/caching
-* tenant prefixes or bucket-per-environment, not necessarily bucket-per-demo-customer at first
-* minimal preview pipeline initially
+No user-visible success response may depend on deferred work unless the response clearly says the file is still processing and the workflow contract allows that state.
 
-### Storage strategy
+## 4. Upload strategy rules
 
-* originals in Cloud Storage
-* derivatives only when needed
-* lazy generation
-* lifecycle rules later for stale derivatives/previews/public media cache
+### 4.1 Direct upload preferred for remote storage
 
-### Identity
+For remote/object storage, the browser should upload directly to the Drive-issued target whenever possible.
 
-Use workload identity / service account binding, not embedded long-lived keys.
+### 4.2 Proxy upload is local-only fallback
 
-### Network/security edge
+`upload_session_blob` exists for:
 
-Use basic rate limiting / WAF posture at the edge as soon as public upload/download surfaces exist.
+- local development
+- same-host proxy strategies
 
-## Cost optimization principles
+It is not the preferred remote-storage path.
 
-* don’t duplicate blobs unless needed
-* don’t generate previews for every file type up front
-* don’t transcode unless user-facing value is proven
-* store metadata in DB, blobs in object storage
-* keep uploads resumable to reduce failed restarts and support unstable networks
-* use template/workspace model instead of naive mass duplication
+### 4.3 Session state is owned by Drive
+
+Only Drive APIs and services advance session state.
+
+## 5. Queue runtime contract
+
+Drive may keep semantic queue classes internally:
+
+- `drive_short`
+- `drive_default`
+- `drive_heavy`
+
+At the enqueue boundary:
+
+- if matching custom worker queues exist, use them
+- otherwise normalize to Frappe runtime-valid queues such as `short`, `default`, and `long`
+
+Follow-up work must not fail the user-visible mutation merely because a semantic queue label had no live worker.
+
+## 6. Read-path rules
+
+Read/open/preview flows must resolve from:
+
+- Drive metadata
+- Drive derivatives
+- Drive grants
+- Ed-owned authorization decisions
+
+Read/open/preview flows must not depend on:
+
+- repeated disk existence checks
+- ad hoc path probing from Ed list surfaces
+- Ed-side discovery of which derivative should exist
+
+## 7. Cost and storage posture
+
+Principles:
+
+- store metadata in MariaDB/Frappe records
+- store blobs in the Drive storage backend
+- do not duplicate blobs unless workflow value justifies it
+- generate derivatives lazily and reuse them
+- prefer resumable/direct uploads for unreliable networks
+
+## 8. Current-runtime note
+
+Current code still has some non-conforming boundary behavior.
+
+That does not change the runtime contract defined here.

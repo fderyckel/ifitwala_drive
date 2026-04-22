@@ -78,8 +78,30 @@ def _install_fake_frappe(*, exists_map: dict[tuple[str, object], object] | None 
 
 
 def _load_validation_module():
-	_purge_modules("ifitwala_drive.services.uploads.validation")
+	_purge_modules(
+		"ifitwala_drive.services.governance_contract",
+		"ifitwala_drive.services.uploads.validation",
+		"ifitwala_drive.services.uploads.slots",
+	)
 	return importlib.import_module("ifitwala_drive.services.uploads.validation")
+
+
+def _load_upload_session_doctype_module():
+	_purge_modules(
+		"ifitwala_drive.services.governance_contract",
+		"ifitwala_drive.ifitwala_drive.doctype.drive_upload_session.drive_upload_session",
+	)
+	return importlib.import_module(
+		"ifitwala_drive.ifitwala_drive.doctype.drive_upload_session.drive_upload_session"
+	)
+
+
+def _load_drive_file_doctype_module():
+	_purge_modules(
+		"ifitwala_drive.services.governance_contract",
+		"ifitwala_drive.ifitwala_drive.doctype.drive_file.drive_file",
+	)
+	return importlib.import_module("ifitwala_drive.ifitwala_drive.doctype.drive_file.drive_file")
 
 
 def _valid_payload():
@@ -131,3 +153,168 @@ def test_invalid_owner_fails():
 
 	with pytest.raises(FrappeError, match="Owner Doctype cannot be User"):
 		validation.validate_create_session_payload(payload)
+
+
+def test_unknown_slot_fails():
+	FrappeError = _install_fake_frappe(
+		exists_map={
+			("Organization", "ORG-0001"): True,
+			("School", "SCH-0001"): True,
+			("Task Submission", "TSUB-0001"): True,
+		}
+	)
+	validation = _load_validation_module()
+	payload = _valid_payload()
+	payload["slot"] = "freeform_slot"
+
+	with pytest.raises(FrappeError, match="canonical Drive slot registry"):
+		validation.validate_create_session_payload(payload)
+
+
+@pytest.mark.parametrize(
+	"slot",
+	(
+		"feedback",
+		"rubric_evidence",
+		"identity_passport_passport_copy",
+		"communication_attachment__row-001",
+		"organization_media__homepage_hero",
+		"health_vaccination_proof_mmr_2020-03-04",
+	),
+)
+def test_registry_slots_pass(slot: str):
+	_install_fake_frappe(
+		exists_map={
+			("Organization", "ORG-0001"): True,
+			("School", "SCH-0001"): True,
+			("Task Submission", "TSUB-0001"): True,
+		}
+	)
+	validation = _load_validation_module()
+	payload = _valid_payload()
+	payload["slot"] = slot
+
+	validation.validate_create_session_payload(payload)
+	assert payload["slot"] == slot
+
+
+def test_learning_resource_purpose_passes():
+	_install_fake_frappe(
+		exists_map={
+			("Organization", "ORG-0001"): True,
+			("School", "SCH-0001"): True,
+			("Task", "TASK-0001"): True,
+		}
+	)
+	validation = _load_validation_module()
+	payload = {
+		"owner_doctype": "Task",
+		"owner_name": "TASK-0001",
+		"attached_doctype": "Task",
+		"attached_name": "TASK-0001",
+		"organization": "ORG-0001",
+		"school": "SCH-0001",
+		"primary_subject_type": "Organization",
+		"primary_subject_id": "ORG-0001",
+		"data_class": "academic",
+		"purpose": "learning_resource",
+		"retention_policy": "until_program_end_plus_1y",
+		"slot": "supporting_material__row-001",
+		"filename_original": "worksheet.pdf",
+	}
+
+	validation.validate_create_session_payload(payload)
+	assert payload["purpose"] == "learning_resource"
+
+
+def test_unknown_purpose_fails():
+	FrappeError = _install_fake_frappe(
+		exists_map={
+			("Organization", "ORG-0001"): True,
+			("School", "SCH-0001"): True,
+			("Task Submission", "TSUB-0001"): True,
+		}
+	)
+	validation = _load_validation_module()
+	payload = _valid_payload()
+	payload["purpose"] = "made_up_purpose"
+
+	with pytest.raises(FrappeError, match='Purpose cannot be "made_up_purpose"'):
+		validation.validate_create_session_payload(payload)
+
+
+def test_drive_upload_session_rejects_unknown_intended_purpose():
+	FrappeError = _install_fake_frappe(
+		exists_map={
+			("Organization", "ORG-0001"): True,
+			("User", "student@example.com"): True,
+		}
+	)
+	module = _load_upload_session_doctype_module()
+	doc = module.DriveUploadSession(
+		{
+			"attached_doctype": "Supporting Material",
+			"attached_name": "MAT-0001",
+			"owner_doctype": "Supporting Material",
+			"owner_name": "MAT-0001",
+			"organization": "ORG-0001",
+			"filename_original": "worksheet.pdf",
+			"session_key": None,
+			"upload_token": None,
+			"created_by_user": None,
+			"status": None,
+			"is_private": None,
+			"expires_on": None,
+			"received_size_bytes": None,
+			"intended_primary_subject_type": "Organization",
+			"intended_primary_subject_id": "ORG-0001",
+			"intended_data_class": "academic",
+			"intended_purpose": "made_up_purpose",
+			"intended_retention_policy": "until_program_end_plus_1y",
+			"intended_slot": "material_file",
+		}
+	)
+
+	with pytest.raises(FrappeError, match='Intended Purpose cannot be "made_up_purpose"'):
+		doc.validate()
+
+
+def test_drive_file_accepts_learning_resource():
+	_install_fake_frappe(
+		exists_map={
+			("File", "FILE-0001"): True,
+			("Drive Upload Session", "DUS-0001"): True,
+			("Organization", "ORG-0001"): True,
+		}
+	)
+	module = _load_drive_file_doctype_module()
+	doc = module.DriveFile(
+		{
+			"file": "FILE-0001",
+			"source_upload_session": "DUS-0001",
+			"display_name": None,
+			"attached_doctype": "Supporting Material",
+			"attached_name": "MAT-0001",
+			"owner_doctype": "Supporting Material",
+			"owner_name": "MAT-0001",
+			"organization": "ORG-0001",
+			"status": None,
+			"preview_status": None,
+			"current_version_no": None,
+			"is_private": None,
+			"legal_hold": None,
+			"erasure_state": None,
+			"primary_subject_type": "Organization",
+			"primary_subject_id": "ORG-0001",
+			"data_class": "academic",
+			"purpose": "learning_resource",
+			"retention_policy": "until_program_end_plus_1y",
+			"slot": "material_file",
+			"storage_backend": "local",
+			"storage_object_key": "drive/materials/worksheet.pdf",
+			"upload_source": "SPA",
+		}
+	)
+
+	doc.validate()
+	assert doc.purpose == "learning_resource"

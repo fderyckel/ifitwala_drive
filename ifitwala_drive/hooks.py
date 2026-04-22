@@ -143,23 +143,11 @@ app_license = "mit"
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"ifitwala_drive.tasks.all"
-# 	],
-# 	"daily": [
-# 		"ifitwala_drive.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"ifitwala_drive.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"ifitwala_drive.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"ifitwala_drive.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+	"hourly": [
+		"ifitwala_drive.tasks.hourly",
+	]
+}
 
 # Testing
 # -------
@@ -199,7 +187,7 @@ app_license = "mit"
 
 # Request Events
 # ----------------
-# before_request = ["ifitwala_drive.utils.before_request"]
+before_request = ["ifitwala_drive.request_hooks.redirect_migrated_legacy_file_requests"]
 # after_request = ["ifitwala_drive.utils.after_request"]
 
 # Job Events

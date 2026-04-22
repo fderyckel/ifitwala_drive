@@ -8,71 +8,30 @@ import frappe
 from frappe import _
 from frappe.utils import get_datetime, now_datetime
 
+from ifitwala_drive.services.audit.events import record_drive_access_event
 from ifitwala_drive.services.concurrency import drive_lock
 from ifitwala_drive.services.files.creation import create_drive_file_artifacts
-from ifitwala_drive.services.integration.ifitwala_ed_admissions import (
-	get_admissions_attached_field_override,
-	run_admissions_post_finalize,
-	validate_applicant_document_finalize_context,
-	validate_applicant_guardian_image_finalize_context,
-	validate_applicant_health_finalize_context,
-	validate_applicant_profile_image_finalize_context,
+from ifitwala_drive.services.files.projections import (
+	ensure_native_file_projection,
 )
-from ifitwala_drive.services.integration.ifitwala_ed_media import (
-	get_attached_field_override,
-	run_media_post_finalize,
-	validate_media_finalize_context,
-)
-from ifitwala_drive.services.integration.ifitwala_ed_tasks import (
-	get_task_resource_context_override,
-	get_task_submission_context_override,
-	run_task_post_finalize,
-	validate_task_resource_finalize_context,
-	validate_task_submission_finalize_context,
+from ifitwala_drive.services.integration.ifitwala_ed_bridge import (
+	resolve_finalize_contract,
+	run_post_finalize,
 )
 from ifitwala_drive.services.logging import log_drive_event
 from ifitwala_drive.services.storage.base import get_storage_backend
+from ifitwala_drive.services.uploads.inspection import inspect_uploaded_bytes
 from ifitwala_drive.services.uploads.keys import build_upload_object_key
+from ifitwala_drive.services.uploads.sessions import (
+	load_upload_contract,
+	load_workflow_contract_metadata,
+	persist_workflow_result,
+)
 from ifitwala_drive.services.uploads.validation import validate_finalize_session_payload
 
 _FINALIZE_WAIT_SECONDS = 6.0
 _FINALIZE_POLL_SECONDS = 0.25
 _STALE_FINALIZING_SECONDS = 90
-
-
-def _call_authoritative_create_and_classify_file(
-	*,
-	file_kwargs: dict[str, Any],
-	classification: dict[str, Any],
-	secondary_subjects: list[dict[str, Any]] | None = None,
-	context_override: dict[str, Any] | None = None,
-):
-	try:
-		from ifitwala_ed.utilities.file_dispatcher import create_and_classify_file
-	except ImportError as exc:
-		frappe.throw(
-			_("Authoritative Ifitwala_Ed dispatcher is unavailable for governed finalization: {0}").format(
-				exc
-			)
-		)
-
-	return create_and_classify_file(
-		file_kwargs=file_kwargs,
-		classification=classification,
-		secondary_subjects=secondary_subjects,
-		context_override=context_override,
-	)
-
-
-def _get_secondary_subjects(doc) -> list[dict[str, Any]]:
-	return [
-		{
-			"subject_type": row.subject_type,
-			"subject_id": row.subject_id,
-			"role": getattr(row, "role", None) or "referenced",
-		}
-		for row in (doc.secondary_subjects or [])
-	]
 
 
 def _build_final_object_key(doc) -> str:
@@ -85,46 +44,6 @@ def _build_final_object_key(doc) -> str:
 		slot=getattr(doc, "intended_slot", None) or "",
 		filename=getattr(doc, "filename_original", None) or "upload.bin",
 	)
-
-
-def _build_file_kwargs(doc, storage_artifact: dict[str, Any]) -> dict[str, Any]:
-	file_url = storage_artifact.get("file_url") or storage_artifact.get("object_key")
-	attached_field = get_admissions_attached_field_override(doc) or get_attached_field_override(doc)
-
-	file_kwargs = {
-		"attached_to_doctype": doc.attached_doctype,
-		"attached_to_name": doc.attached_name,
-		"is_private": doc.is_private,
-		"file_name": doc.filename_original,
-		"file_url": file_url,
-	}
-	if attached_field:
-		file_kwargs["attached_to_field"] = attached_field
-
-	return file_kwargs
-
-
-def _build_classification(doc) -> dict[str, Any]:
-	return {
-		"primary_subject_type": doc.intended_primary_subject_type,
-		"primary_subject_id": doc.intended_primary_subject_id,
-		"data_class": doc.intended_data_class,
-		"purpose": doc.intended_purpose,
-		"retention_policy": doc.intended_retention_policy,
-		"slot": doc.intended_slot,
-		"organization": doc.organization,
-		"school": doc.school,
-		"upload_source": doc.upload_source,
-	}
-
-
-def _get_context_override(doc) -> dict[str, Any] | None:
-	if doc.owner_doctype == "Task Submission":
-		return get_task_submission_context_override(doc.owner_name)
-	if doc.owner_doctype == "Task":
-		return get_task_resource_context_override(doc.owner_name, doc.intended_slot)
-
-	return None
 
 
 def _coerce_datetime(value: Any) -> datetime | None:
@@ -151,10 +70,12 @@ def _mark_session_failed(doc, exc: Exception) -> None:
 	)
 
 
-def _completed_response(doc, extra: dict[str, Any] | None = None) -> dict[str, Any]:
+def _completed_response(doc) -> dict[str, Any]:
 	drive_file_id = getattr(doc, "drive_file", None)
 	drive_file_version_id = getattr(doc, "drive_file_version", None)
 	canonical_ref = getattr(doc, "canonical_ref", None)
+	preview_status = None
+	workflow_metadata = load_workflow_contract_metadata(doc)
 
 	if drive_file_id and not drive_file_version_id:
 		drive_file_version_id = frappe.db.get_value("Drive File", drive_file_id, "current_version")
@@ -162,28 +83,21 @@ def _completed_response(doc, extra: dict[str, Any] | None = None) -> dict[str, A
 	if drive_file_id and not canonical_ref:
 		canonical_ref = frappe.db.get_value("Drive File", drive_file_id, "canonical_ref")
 
+	if drive_file_id:
+		preview_status = frappe.db.get_value("Drive File", drive_file_id, "preview_status")
+
 	response = {
 		"drive_file_id": drive_file_id,
 		"drive_file_version_id": drive_file_version_id,
 		"file_id": getattr(doc, "file", None),
 		"canonical_ref": canonical_ref,
 		"status": doc.status,
-		"preview_status": "pending" if doc.status == "completed" else None,
-		"file_url": frappe.db.get_value("File", doc.file, "file_url") if getattr(doc, "file", None) else None,
+		"preview_status": preview_status,
+		"workflow_id": workflow_metadata.get("workflow_id"),
+		"contract_version": workflow_metadata.get("contract_version"),
+		"workflow_result": workflow_metadata.get("workflow_result") or {},
 	}
-	if extra:
-		response.update(extra)
 	return response
-
-
-def _validate_finalize_context(doc) -> None:
-	validate_task_submission_finalize_context(doc)
-	validate_task_resource_finalize_context(doc)
-	validate_media_finalize_context(doc)
-	validate_applicant_document_finalize_context(doc)
-	validate_applicant_profile_image_finalize_context(doc)
-	validate_applicant_guardian_image_finalize_context(doc)
-	validate_applicant_health_finalize_context(doc)
 
 
 def _is_stale_finalizing(doc) -> bool:
@@ -230,15 +144,17 @@ def _claim_upload_session_for_finalize(payload: dict[str, Any]):
 			)
 
 		if doc.status == "completed":
-			return doc, "completed"
+			return doc, "completed", None
 
 		if doc.status == "finalizing" and not _is_stale_finalizing(doc):
-			return doc, "wait"
+			return doc, "wait", None
 
-		_validate_finalize_context(doc)
+		finalize_contract = resolve_finalize_contract(doc)
 		doc.status = "finalizing"
-		doc.received_size_bytes = payload.get("received_size_bytes") or doc.received_size_bytes
-		doc.content_hash = payload.get("content_hash") or doc.content_hash
+		doc.received_size_bytes = payload.get("received_size_bytes") or getattr(
+			doc, "received_size_bytes", None
+		)
+		doc.content_hash = payload.get("content_hash") or getattr(doc, "content_hash", None)
 		doc.error_log = None
 		doc.save(ignore_permissions=True)
 
@@ -249,36 +165,43 @@ def _claim_upload_session_for_finalize(payload: dict[str, Any]):
 			owner_name=doc.owner_name,
 			slot=doc.intended_slot,
 		)
-		return doc, "claimed"
+		return doc, "claimed", finalize_contract
 
 
 def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 	validate_finalize_session_payload(payload)
-	doc, claim_state = _claim_upload_session_for_finalize(payload)
+	doc, claim_state, finalize_contract = _claim_upload_session_for_finalize(payload)
 	if claim_state == "completed":
 		return _completed_response(doc)
 	if claim_state == "wait":
 		return _wait_for_terminal_session(doc.name)
 
 	storage = get_storage_backend(getattr(doc, "storage_backend", None))
+	load_upload_contract(doc, storage=storage, fallback_to_storage=False)
 	if not doc.tmp_object_key or not storage.temporary_object_exists(object_key=doc.tmp_object_key):
 		frappe.throw(_("Temporary uploaded object was not found for this upload session."))
 
 	try:
+		detected_mime_type = inspect_uploaded_bytes(storage=storage, upload_session_doc=doc)
 		storage_artifact = storage.finalize_temporary_object(
 			object_key=doc.tmp_object_key,
 			final_key=_build_final_object_key(doc),
 		)
-		created = _call_authoritative_create_and_classify_file(
-			file_kwargs=_build_file_kwargs(doc, storage_artifact),
-			classification=_build_classification(doc),
-			secondary_subjects=_get_secondary_subjects(doc),
-			context_override=_get_context_override(doc),
+		storage_artifact["mime_type"] = detected_mime_type
+		if getattr(doc, "received_size_bytes", None):
+			storage_artifact["size_bytes"] = doc.received_size_bytes
+		if getattr(doc, "content_hash", None):
+			storage_artifact["content_hash"] = doc.content_hash
+		created = ensure_native_file_projection(
+			upload_session_doc=doc,
+			storage_artifact=storage_artifact,
+			finalize_contract=finalize_contract,
 		)
 		drive_artifacts = create_drive_file_artifacts(
 			upload_session_doc=doc,
 			file_id=created.name,
 			storage_artifact=storage_artifact,
+			binding_role=(finalize_contract or {}).get("binding_role"),
 		)
 	except Exception as exc:
 		_mark_session_failed(doc, exc)
@@ -299,10 +222,24 @@ def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 			refreshed.save(ignore_permissions=True)
 			doc = refreshed
 
-	extra_response = {}
-	extra_response.update(run_task_post_finalize(doc, created))
-	extra_response.update(run_media_post_finalize(doc, created))
-	extra_response.update(run_admissions_post_finalize(doc, created))
+	post_finalize_result = run_post_finalize(doc, created)
+	workflow_metadata = load_workflow_contract_metadata(doc)
+	merged_workflow_result = dict(workflow_metadata.get("workflow_result") or {})
+	if post_finalize_result:
+		merged_workflow_result.update(post_finalize_result)
+
+	with drive_lock(f"upload_session_finalize:{doc.name}", timeout=20):
+		refreshed = frappe.get_doc("Drive Upload Session", doc.name)
+		persist_workflow_result(refreshed, merged_workflow_result)
+		refreshed.save(ignore_permissions=True)
+		doc = refreshed
+
+	record_drive_access_event(
+		drive_file_id=doc.drive_file,
+		drive_file_version_id=doc.drive_file_version,
+		event_type="upload",
+		metadata={"upload_session_id": doc.name, "file_id": doc.file, "slot": doc.intended_slot},
+	)
 
 	log_drive_event(
 		"upload_session_finalized",
@@ -313,4 +250,4 @@ def finalize_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 		slot=doc.intended_slot,
 	)
 
-	return _completed_response(doc, extra=extra_response)
+	return _completed_response(doc)

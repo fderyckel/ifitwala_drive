@@ -5,71 +5,63 @@ from typing import Any
 import frappe
 from frappe import _
 
+from ifitwala_drive.services.files.access import (
+	_assert_can_issue_download,
+	_issue_grant,
+	_issue_preview_grant_for_doc,
+	request_preview_derivatives_for_doc,
+)
 from ifitwala_drive.services.folders.resolution import (
 	resolve_employee_image_folder,
+	resolve_guardian_image_folder,
 	resolve_organization_media_folder,
 	resolve_student_image_folder,
 )
+from ifitwala_drive.services.integration._ed_delegate import load_ed_drive_module
+from ifitwala_drive.services.integration.ifitwala_ed_bridge import resolve_upload_session_context
+from ifitwala_drive.services.uploads.sessions import create_upload_session_service
 
-_PROFILE_IMAGE_SLOT = "profile_image"
-
-
-def _require_doc(doctype: str, name: str, *, permission_type: str | None = "write"):
-	if not name or not frappe.db.exists(doctype, name):
-		frappe.throw(_("{0} does not exist: {1}").format(doctype, name))
-
-	doc = frappe.get_doc(doctype, name)
-	if permission_type:
-		doc.check_permission(permission_type)
-	return doc
+_ED_MODULE = "ifitwala_ed.integrations.drive.media"
 
 
-def _get_org_from_school(school: str) -> str:
-	organization = frappe.db.get_value("School", school, "organization")
-	if not organization:
-		frappe.throw(_("Organization is required for file classification."))
-	return organization
+def _call_delegate(name: str, *args, **kwargs):
+	module = load_ed_drive_module(_ED_MODULE)
+	callable_obj = getattr(module, name, None)
+	if not callable(callable_obj):
+		frappe.throw(_("Ifitwala_Ed Drive bridge is missing media delegate: {0}").format(name))
+	return callable_obj(*args, **kwargs)
 
 
 def build_employee_image_contract(employee_doc) -> dict[str, Any]:
-	if not getattr(employee_doc, "organization", None):
-		frappe.throw(_("Organization is required for file classification."))
-
-	return {
-		"owner_doctype": "Employee",
-		"owner_name": employee_doc.name,
-		"attached_doctype": "Employee",
-		"attached_name": employee_doc.name,
-		"organization": employee_doc.organization,
-		"school": getattr(employee_doc, "school", None),
-		"primary_subject_type": "Employee",
-		"primary_subject_id": employee_doc.name,
-		"data_class": "identity_image",
-		"purpose": "employee_profile_display",
-		"retention_policy": "employment_duration_plus_grace",
-		"slot": _PROFILE_IMAGE_SLOT,
-	}
+	return _call_delegate("build_employee_image_contract", employee_doc)
 
 
 def build_student_image_contract(student_doc) -> dict[str, Any]:
-	school = getattr(student_doc, "anchor_school", None)
-	if not school:
-		frappe.throw(_("Anchor School is required before uploading a student image."))
+	return _call_delegate("build_student_image_contract", student_doc)
 
-	return {
-		"owner_doctype": "Student",
-		"owner_name": student_doc.name,
-		"attached_doctype": "Student",
-		"attached_name": student_doc.name,
-		"organization": _get_org_from_school(school),
-		"school": school,
-		"primary_subject_type": "Student",
-		"primary_subject_id": student_doc.name,
-		"data_class": "identity_image",
-		"purpose": "student_profile_display",
-		"retention_policy": "until_school_exit_plus_6m",
-		"slot": _PROFILE_IMAGE_SLOT,
-	}
+
+def build_guardian_image_contract(guardian_doc) -> dict[str, Any]:
+	return _call_delegate("build_guardian_image_contract", guardian_doc)
+
+
+def assert_employee_image_read_access(employee: str, *, file_name: str) -> dict[str, Any]:
+	return _call_delegate("assert_employee_image_read_access", employee, file_name=file_name)
+
+
+def assert_student_image_read_access(student: str, *, file_name: str) -> dict[str, Any]:
+	return _call_delegate("assert_student_image_read_access", student, file_name=file_name)
+
+
+def assert_guardian_image_read_access(guardian: str, *, file_name: str) -> dict[str, Any]:
+	return _call_delegate("assert_guardian_image_read_access", guardian, file_name=file_name)
+
+
+def assert_public_website_media_read_access(*, file_name: str) -> dict[str, Any]:
+	return _call_delegate("assert_public_website_media_read_access", file_name=file_name)
+
+
+def assert_public_employee_image_read_access(employee: str, *, file_name: str) -> dict[str, Any]:
+	return _call_delegate("assert_public_employee_image_read_access", employee, file_name=file_name)
 
 
 def _build_organization_media_contract(
@@ -79,34 +71,16 @@ def _build_organization_media_contract(
 	school: str | None = None,
 	upload_source: str,
 ) -> dict[str, Any]:
-	from ifitwala_ed.utilities.organization_media import build_organization_media_classification
-
-	classification = build_organization_media_classification(
+	return _call_delegate(
+		"build_organization_media_contract",
 		organization=organization,
-		school=school,
 		slot=slot,
+		school=school,
 		upload_source=upload_source,
 	)
 
-	return {
-		"owner_doctype": "Organization",
-		"owner_name": organization,
-		"attached_doctype": "Organization",
-		"attached_name": organization,
-		"organization": organization,
-		"school": school,
-		"primary_subject_type": classification["primary_subject_type"],
-		"primary_subject_id": classification["primary_subject_id"],
-		"data_class": classification["data_class"],
-		"purpose": classification["purpose"],
-		"retention_policy": classification["retention_policy"],
-		"slot": classification["slot"],
-	}
-
 
 def upload_employee_image_service(payload: dict[str, Any]) -> dict[str, Any]:
-	from ifitwala_drive.services.uploads.sessions import create_upload_session_service
-
 	employee = payload.get("employee")
 	filename_original = payload.get("filename_original")
 	if not employee:
@@ -114,11 +88,18 @@ def upload_employee_image_service(payload: dict[str, Any]) -> dict[str, Any]:
 	if not filename_original:
 		frappe.throw(_("Missing required field: filename_original"))
 
-	employee_doc = _require_doc("Employee", employee)
-	authoritative = build_employee_image_contract(employee_doc)
+	workflow_id = "media.employee_profile_image"
+	workflow_payload = {
+		"employee": employee,
+		"slot": payload.get("slot"),
+	}
+	employee_doc = frappe.get_doc("Employee", employee)
+	employee_doc.check_permission("write")
+	authoritative = resolve_upload_session_context(workflow_id, workflow_payload)
 	return create_upload_session_service(
 		{
 			**authoritative,
+			"workflow_payload": workflow_payload,
 			"folder": resolve_employee_image_folder(
 				employee=employee_doc.name,
 				organization=authoritative["organization"],
@@ -127,15 +108,13 @@ def upload_employee_image_service(payload: dict[str, Any]) -> dict[str, Any]:
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
-			"is_private": 0,
+			"idempotency_key": payload.get("idempotency_key"),
 			"upload_source": payload.get("upload_source") or "Desk",
 		}
 	)
 
 
 def upload_student_image_service(payload: dict[str, Any]) -> dict[str, Any]:
-	from ifitwala_drive.services.uploads.sessions import create_upload_session_service
-
 	student = payload.get("student")
 	filename_original = payload.get("filename_original")
 	if not student:
@@ -143,11 +122,18 @@ def upload_student_image_service(payload: dict[str, Any]) -> dict[str, Any]:
 	if not filename_original:
 		frappe.throw(_("Missing required field: filename_original"))
 
-	student_doc = _require_doc("Student", student)
-	authoritative = build_student_image_contract(student_doc)
+	workflow_id = "media.student_profile_image"
+	workflow_payload = {
+		"student": student,
+		"slot": payload.get("slot"),
+	}
+	student_doc = frappe.get_doc("Student", student)
+	student_doc.check_permission("write")
+	authoritative = resolve_upload_session_context(workflow_id, workflow_payload)
 	return create_upload_session_service(
 		{
 			**authoritative,
+			"workflow_payload": workflow_payload,
 			"folder": resolve_student_image_folder(
 				student=student_doc.name,
 				organization=authoritative["organization"],
@@ -156,7 +142,40 @@ def upload_student_image_service(payload: dict[str, Any]) -> dict[str, Any]:
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
-			"is_private": 0,
+			"idempotency_key": payload.get("idempotency_key"),
+			"upload_source": payload.get("upload_source") or "Desk",
+		}
+	)
+
+
+def upload_guardian_image_service(payload: dict[str, Any]) -> dict[str, Any]:
+	guardian = payload.get("guardian")
+	filename_original = payload.get("filename_original")
+	if not guardian:
+		frappe.throw(_("Missing required field: guardian"))
+	if not filename_original:
+		frappe.throw(_("Missing required field: filename_original"))
+
+	workflow_id = "media.guardian_profile_image"
+	workflow_payload = {
+		"guardian": guardian,
+		"slot": payload.get("slot"),
+	}
+	guardian_doc = frappe.get_doc("Guardian", guardian)
+	guardian_doc.check_permission("write")
+	authoritative = resolve_upload_session_context(workflow_id, workflow_payload)
+	return create_upload_session_service(
+		{
+			**authoritative,
+			"workflow_payload": workflow_payload,
+			"folder": resolve_guardian_image_folder(
+				guardian=guardian_doc.name,
+				organization=authoritative["organization"],
+			),
+			"filename_original": filename_original,
+			"mime_type_hint": payload.get("mime_type_hint"),
+			"expected_size_bytes": payload.get("expected_size_bytes"),
+			"idempotency_key": payload.get("idempotency_key"),
 			"upload_source": payload.get("upload_source") or "Desk",
 		}
 	)
@@ -165,8 +184,6 @@ def upload_student_image_service(payload: dict[str, Any]) -> dict[str, Any]:
 def upload_organization_logo_service(payload: dict[str, Any]) -> dict[str, Any]:
 	from ifitwala_ed.utilities.organization_media import build_organization_logo_slot
 
-	from ifitwala_drive.services.uploads.sessions import create_upload_session_service
-
 	organization = payload.get("organization")
 	filename_original = payload.get("filename_original")
 	if not organization:
@@ -174,16 +191,18 @@ def upload_organization_logo_service(payload: dict[str, Any]) -> dict[str, Any]:
 	if not filename_original:
 		frappe.throw(_("Missing required field: filename_original"))
 
-	org_doc = _require_doc("Organization", organization)
-	authoritative = _build_organization_media_contract(
-		organization=org_doc.name,
-		slot=build_organization_logo_slot(organization=org_doc.name),
-		school=None,
-		upload_source=payload.get("upload_source") or "Desk",
-	)
+	org_doc = frappe.get_doc("Organization", organization)
+	org_doc.check_permission("write")
+	workflow_id = "organization_media.organization_logo"
+	workflow_payload = {
+		"organization": org_doc.name,
+		"upload_source": payload.get("upload_source") or "Desk",
+	}
+	authoritative = resolve_upload_session_context(workflow_id, workflow_payload)
 	return create_upload_session_service(
 		{
 			**authoritative,
+			"workflow_payload": workflow_payload,
 			"folder": resolve_organization_media_folder(
 				organization=org_doc.name,
 				school=None,
@@ -192,6 +211,7 @@ def upload_organization_logo_service(payload: dict[str, Any]) -> dict[str, Any]:
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
+			"idempotency_key": payload.get("idempotency_key"),
 			"is_private": 0,
 			"upload_source": payload.get("upload_source") or "Desk",
 		}
@@ -201,8 +221,6 @@ def upload_organization_logo_service(payload: dict[str, Any]) -> dict[str, Any]:
 def upload_school_logo_service(payload: dict[str, Any]) -> dict[str, Any]:
 	from ifitwala_ed.utilities.organization_media import build_school_logo_slot
 
-	from ifitwala_drive.services.uploads.sessions import create_upload_session_service
-
 	school = payload.get("school")
 	filename_original = payload.get("filename_original")
 	if not school:
@@ -210,22 +228,25 @@ def upload_school_logo_service(payload: dict[str, Any]) -> dict[str, Any]:
 	if not filename_original:
 		frappe.throw(_("Missing required field: filename_original"))
 
-	school_doc = _require_doc("School", school)
+	school_doc = frappe.get_doc("School", school)
+	school_doc.check_permission("write")
 	if not getattr(school_doc, "organization", None):
 		frappe.throw(_("Organization is required before uploading a school logo."))
 
-	authoritative = _build_organization_media_contract(
-		organization=school_doc.organization,
-		slot=build_school_logo_slot(school=school_doc.name),
-		school=school_doc.name,
-		upload_source=payload.get("upload_source") or "Desk",
-	)
+	workflow_id = "organization_media.school_logo"
+	workflow_payload = {
+		"school": school_doc.name,
+		"upload_source": payload.get("upload_source") or "Desk",
+	}
+	authoritative = resolve_upload_session_context(workflow_id, workflow_payload)
 	return create_upload_session_service(
 		{
 			**authoritative,
+			"workflow_payload": workflow_payload,
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
+			"idempotency_key": payload.get("idempotency_key"),
 			"is_private": 0,
 			"upload_source": payload.get("upload_source") or "Desk",
 		}
@@ -234,8 +255,6 @@ def upload_school_logo_service(payload: dict[str, Any]) -> dict[str, Any]:
 
 def upload_school_gallery_image_service(payload: dict[str, Any]) -> dict[str, Any]:
 	from ifitwala_ed.utilities.organization_media import build_school_gallery_slot
-
-	from ifitwala_drive.services.uploads.sessions import create_upload_session_service
 
 	school = payload.get("school")
 	filename_original = payload.get("filename_original")
@@ -246,7 +265,8 @@ def upload_school_gallery_image_service(payload: dict[str, Any]) -> dict[str, An
 	if not filename_original:
 		frappe.throw(_("Missing required field: filename_original"))
 
-	school_doc = _require_doc("School", school)
+	school_doc = frappe.get_doc("School", school)
+	school_doc.check_permission("write")
 	if not getattr(school_doc, "organization", None):
 		frappe.throw(_("Organization is required before uploading a gallery image."))
 
@@ -268,15 +288,21 @@ def upload_school_gallery_image_service(payload: dict[str, Any]) -> dict[str, An
 			target_row.caption = caption
 		school_doc.save(ignore_permissions=True)
 
-	authoritative = _build_organization_media_contract(
-		organization=school_doc.organization,
-		slot=build_school_gallery_slot(row_name=target_row.name),
-		school=school_doc.name,
-		upload_source=payload.get("upload_source") or "Desk",
-	)
+	workflow_id = "organization_media.school_gallery_image"
+	workflow_payload = {
+		"school": school_doc.name,
+		"row_name": target_row.name,
+		"upload_source": payload.get("upload_source") or "Desk",
+	}
+	authoritative = resolve_upload_session_context(workflow_id, workflow_payload)
 	response = create_upload_session_service(
 		{
 			**authoritative,
+			"workflow_payload": workflow_payload,
+			"workflow_result": {
+				"row_name": target_row.name,
+				"caption": getattr(target_row, "caption", None),
+			},
 			"folder": resolve_organization_media_folder(
 				organization=school_doc.organization,
 				school=school_doc.name,
@@ -285,19 +311,16 @@ def upload_school_gallery_image_service(payload: dict[str, Any]) -> dict[str, An
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
+			"idempotency_key": payload.get("idempotency_key"),
 			"is_private": 0,
 			"upload_source": payload.get("upload_source") or "Desk",
 		}
 	)
-	response["row_name"] = target_row.name
-	response["caption"] = getattr(target_row, "caption", None)
 	return response
 
 
 def upload_organization_media_asset_service(payload: dict[str, Any]) -> dict[str, Any]:
 	from ifitwala_ed.utilities.organization_media import build_organization_media_slot
-
-	from ifitwala_drive.services.uploads.sessions import create_upload_session_service
 
 	organization = payload.get("organization")
 	school = payload.get("school")
@@ -307,10 +330,12 @@ def upload_organization_media_asset_service(payload: dict[str, Any]) -> dict[str
 		frappe.throw(_("Missing required field: filename_original"))
 
 	if school and not organization:
-		school_doc = _require_doc("School", school)
+		school_doc = frappe.get_doc("School", school)
+		school_doc.check_permission("write")
 		organization = school_doc.organization
 	elif organization:
-		org_doc = _require_doc("Organization", organization)
+		org_doc = frappe.get_doc("Organization", organization)
+		org_doc.check_permission("write")
 		organization = org_doc.name
 
 	if not organization:
@@ -327,15 +352,26 @@ def upload_organization_media_asset_service(payload: dict[str, Any]) -> dict[str
 		base_name = (payload.get("filename_original") or "media").rsplit(".", 1)[0]
 		media_key = f"{frappe.scrub(base_name) or 'media'}_{frappe.generate_hash(length=6)}"
 
-	authoritative = _build_organization_media_contract(
-		organization=organization,
-		slot=build_organization_media_slot(media_key=media_key),
-		school=school,
-		upload_source=payload.get("upload_source") or "Desk",
-	)
+	workflow_id = "organization_media.asset"
+	workflow_payload = {
+		"organization": organization,
+		"school": school,
+		"scope": scope,
+		"media_key": media_key,
+		"upload_source": payload.get("upload_source") or "Desk",
+		"filename_original": filename_original,
+	}
+	authoritative = resolve_upload_session_context(workflow_id, workflow_payload)
 	response = create_upload_session_service(
 		{
 			**authoritative,
+			"workflow_payload": workflow_payload,
+			"workflow_result": {
+				"organization": organization,
+				"school": school,
+				"scope": scope,
+				"slot": authoritative["slot"],
+			},
 			"folder": resolve_organization_media_folder(
 				organization=organization,
 				school=school,
@@ -344,152 +380,238 @@ def upload_organization_media_asset_service(payload: dict[str, Any]) -> dict[str
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
+			"idempotency_key": payload.get("idempotency_key"),
 			"is_private": 0,
 			"upload_source": payload.get("upload_source") or "Desk",
 		}
 	)
-	response["organization"] = organization
-	response["school"] = school
-	response["scope"] = scope
-	response["slot"] = authoritative["slot"]
 	return response
 
 
 def get_attached_field_override(upload_session_doc) -> str | None:
-	if (
-		upload_session_doc.owner_doctype == "Employee"
-		and upload_session_doc.intended_slot == _PROFILE_IMAGE_SLOT
-	):
-		return "employee_image"
-	if (
-		upload_session_doc.owner_doctype == "Student"
-		and upload_session_doc.intended_slot == _PROFILE_IMAGE_SLOT
-	):
-		return "student_image"
-	return None
+	return _call_delegate("get_attached_field_override", upload_session_doc)
 
 
 def validate_media_finalize_context(upload_session_doc) -> dict[str, Any] | None:
-	owner_doctype = getattr(upload_session_doc, "owner_doctype", None)
-	if owner_doctype == "Employee":
-		doc = _require_doc("Employee", upload_session_doc.owner_name)
-		authoritative = build_employee_image_contract(doc)
-	elif owner_doctype == "Student":
-		doc = _require_doc("Student", upload_session_doc.owner_name)
-		authoritative = build_student_image_contract(doc)
-	elif owner_doctype == "Organization":
-		school = getattr(upload_session_doc, "school", None)
-		slot = getattr(upload_session_doc, "intended_slot", None)
-		if school:
-			_require_doc("School", school)
-		else:
-			_require_doc("Organization", upload_session_doc.owner_name)
-		authoritative = _build_organization_media_contract(
-			organization=upload_session_doc.owner_name,
-			slot=slot,
-			school=school,
-			upload_source=upload_session_doc.upload_source,
-		)
-	else:
-		return None
-
-	field_map = {
-		"owner_doctype": "owner_doctype",
-		"owner_name": "owner_name",
-		"attached_doctype": "attached_doctype",
-		"attached_name": "attached_name",
-		"organization": "organization",
-		"school": "school",
-		"intended_primary_subject_type": "primary_subject_type",
-		"intended_primary_subject_id": "primary_subject_id",
-		"intended_data_class": "data_class",
-		"intended_purpose": "purpose",
-		"intended_retention_policy": "retention_policy",
-		"intended_slot": "slot",
-	}
-	for session_field, authoritative_field in field_map.items():
-		if getattr(upload_session_doc, session_field, None) != authoritative.get(authoritative_field):
-			frappe.throw(
-				_("Upload session no longer matches the authoritative media context for field '{0}'.").format(
-					session_field
-				)
-			)
-
-	return authoritative
+	return _call_delegate("validate_media_finalize_context", upload_session_doc)
 
 
 def run_media_post_finalize(upload_session_doc, created_file) -> dict[str, Any]:
-	file_url = getattr(created_file, "file_url", None) or frappe.db.get_value(
-		"File", created_file.name, "file_url"
-	)
-	slot = upload_session_doc.intended_slot or ""
+	return _call_delegate("run_media_post_finalize", upload_session_doc, created_file)
 
-	if upload_session_doc.owner_doctype == "Employee":
-		frappe.db.set_value(
-			"Employee",
-			upload_session_doc.owner_name,
-			"employee_image",
-			file_url,
-			update_modified=False,
-		)
-		return {"file_url": file_url}
 
-	if upload_session_doc.owner_doctype == "Student":
-		student_doc = frappe.get_doc("Student", upload_session_doc.owner_name)
-		frappe.db.set_value(
-			"Student",
-			student_doc.name,
-			"student_image",
-			file_url,
-			update_modified=False,
-		)
-		student_doc.student_image = file_url
-		if hasattr(student_doc, "sync_student_contact_image"):
-			student_doc.sync_student_contact_image()
-		return {"file_url": file_url}
+def _get_authorized_employee_image_drive_file(payload: dict[str, Any]):
+	employee = str(payload.get("employee") or "").strip()
+	file_id = str(payload.get("file_id") or "").strip()
+	if not employee:
+		frappe.throw(_("Missing required field: employee"))
+	if not file_id:
+		frappe.throw(_("Missing required field: file_id"))
 
-	if upload_session_doc.owner_doctype != "Organization":
-		return {}
+	context = assert_employee_image_read_access(employee, file_name=file_id)
+	drive_file_id = str(context.get("drive_file_id") or "").strip()
+	if not drive_file_id:
+		frappe.throw(_("Governed employee image file was not found."))
+	if not frappe.db.exists("Drive File", drive_file_id):
+		frappe.throw(_("Drive File does not exist: {0}").format(drive_file_id))
 
-	if slot.startswith("organization_logo__"):
-		frappe.db.set_value(
-			"Organization",
-			upload_session_doc.owner_name,
-			{
-				"organization_logo": file_url,
-				"organization_logo_file": created_file.name,
-			},
-			update_modified=False,
-		)
-		return {"file_url": file_url}
+	drive_file_doc = frappe.get_doc("Drive File", drive_file_id)
+	if (
+		str(getattr(drive_file_doc, "owner_doctype", "") or "").strip() != "Employee"
+		or str(getattr(drive_file_doc, "owner_name", "") or "").strip()
+		!= str(context.get("employee") or "").strip()
+	):
+		frappe.throw(_("Governed employee image ownership is invalid."))
 
-	if slot.startswith("school_logo__"):
-		frappe.db.set_value(
-			"School",
-			upload_session_doc.school,
-			{
-				"school_logo": file_url,
-				"school_logo_file": created_file.name,
-			},
-			update_modified=False,
-		)
-		return {"file_url": file_url}
+	return context, drive_file_doc
 
-	if slot.startswith("school_gallery_image__"):
-		row_name = slot.split("school_gallery_image__", 1)[1]
-		school_doc = frappe.get_doc("School", upload_session_doc.school)
-		target_row = None
-		for row in school_doc.gallery_image or []:
-			if row.name == row_name:
-				target_row = row
-				break
-		if not target_row:
-			frappe.throw(
-				_("Gallery row '{0}' was not found on School '{1}'.").format(row_name, school_doc.name)
-			)
-		target_row.governed_file = created_file.name
-		target_row.school_image = file_url
-		school_doc.save(ignore_permissions=True)
-		return {"file_url": file_url, "row_name": row_name}
 
-	return {"file_url": file_url}
+def _get_authorized_student_image_drive_file(payload: dict[str, Any]):
+	student = str(payload.get("student") or "").strip()
+	file_id = str(payload.get("file_id") or "").strip()
+	if not student:
+		frappe.throw(_("Missing required field: student"))
+	if not file_id:
+		frappe.throw(_("Missing required field: file_id"))
+
+	context = assert_student_image_read_access(student, file_name=file_id)
+	drive_file_id = str(context.get("drive_file_id") or "").strip()
+	if not drive_file_id:
+		frappe.throw(_("Governed student image file was not found."))
+	if not frappe.db.exists("Drive File", drive_file_id):
+		frappe.throw(_("Drive File does not exist: {0}").format(drive_file_id))
+
+	drive_file_doc = frappe.get_doc("Drive File", drive_file_id)
+	if (
+		str(getattr(drive_file_doc, "owner_doctype", "") or "").strip() != "Student"
+		or str(getattr(drive_file_doc, "owner_name", "") or "").strip()
+		!= str(context.get("student") or "").strip()
+	):
+		frappe.throw(_("Governed student image ownership is invalid."))
+
+	return context, drive_file_doc
+
+
+def _get_authorized_guardian_image_drive_file(payload: dict[str, Any]):
+	guardian = str(payload.get("guardian") or "").strip()
+	file_id = str(payload.get("file_id") or "").strip()
+	if not guardian:
+		frappe.throw(_("Missing required field: guardian"))
+	if not file_id:
+		frappe.throw(_("Missing required field: file_id"))
+
+	context = assert_guardian_image_read_access(guardian, file_name=file_id)
+	drive_file_id = str(context.get("drive_file_id") or "").strip()
+	if not drive_file_id:
+		frappe.throw(_("Governed guardian image file was not found."))
+	if not frappe.db.exists("Drive File", drive_file_id):
+		frappe.throw(_("Drive File does not exist: {0}").format(drive_file_id))
+
+	drive_file_doc = frappe.get_doc("Drive File", drive_file_id)
+	if (
+		str(getattr(drive_file_doc, "owner_doctype", "") or "").strip() != "Guardian"
+		or str(getattr(drive_file_doc, "owner_name", "") or "").strip()
+		!= str(context.get("guardian") or "").strip()
+	):
+		frappe.throw(_("Governed guardian image ownership is invalid."))
+
+	return context, drive_file_doc
+
+
+def _get_authorized_public_website_media_drive_file(payload: dict[str, Any]):
+	file_id = str(payload.get("file_id") or "").strip()
+	if not file_id:
+		frappe.throw(_("Missing required field: file_id"))
+
+	context = assert_public_website_media_read_access(file_name=file_id)
+	drive_file_id = str(context.get("drive_file_id") or "").strip()
+	if not drive_file_id:
+		frappe.throw(_("Governed public website media file was not found."))
+	if not frappe.db.exists("Drive File", drive_file_id):
+		frappe.throw(_("Drive File does not exist: {0}").format(drive_file_id))
+
+	drive_file_doc = frappe.get_doc("Drive File", drive_file_id)
+	if (
+		str(getattr(drive_file_doc, "owner_doctype", "") or "").strip() != "Organization"
+		or str(getattr(drive_file_doc, "owner_name", "") or "").strip()
+		!= str(context.get("organization") or "").strip()
+		or str(getattr(drive_file_doc, "purpose", "") or "").strip() != "organization_public_media"
+	):
+		frappe.throw(_("Governed public website media ownership is invalid."))
+
+	return context, drive_file_doc
+
+
+def _get_authorized_public_employee_image_drive_file(payload: dict[str, Any]):
+	employee = str(payload.get("employee") or "").strip()
+	file_id = str(payload.get("file_id") or "").strip()
+	if not employee:
+		frappe.throw(_("Missing required field: employee"))
+	if not file_id:
+		frappe.throw(_("Missing required field: file_id"))
+
+	context = assert_public_employee_image_read_access(employee, file_name=file_id)
+	drive_file_id = str(context.get("drive_file_id") or "").strip()
+	if not drive_file_id:
+		frappe.throw(_("Governed public employee photo file was not found."))
+	if not frappe.db.exists("Drive File", drive_file_id):
+		frappe.throw(_("Drive File does not exist: {0}").format(drive_file_id))
+
+	drive_file_doc = frappe.get_doc("Drive File", drive_file_id)
+	if (
+		str(getattr(drive_file_doc, "owner_doctype", "") or "").strip() != "Employee"
+		or str(getattr(drive_file_doc, "owner_name", "") or "").strip()
+		!= str(context.get("employee") or "").strip()
+		or str(getattr(drive_file_doc, "purpose", "") or "").strip() != "employee_profile_display"
+		or str(getattr(drive_file_doc, "slot", "") or "").strip() != "profile_image"
+	):
+		frappe.throw(_("Governed public employee photo ownership is invalid."))
+
+	return context, drive_file_doc
+
+
+def issue_employee_image_download_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
+	_context, drive_file_doc = _get_authorized_employee_image_drive_file(payload)
+	_assert_can_issue_download(drive_file_doc)
+	return _issue_grant(doc=drive_file_doc, grant_kind="download")
+
+
+def issue_employee_image_preview_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
+	_context, drive_file_doc = _get_authorized_employee_image_drive_file(payload)
+	return _issue_preview_grant_for_doc(doc=drive_file_doc, payload=payload)
+
+
+def request_employee_image_preview_derivatives_service(payload: dict[str, Any]) -> dict[str, Any]:
+	_context, drive_file_doc = _get_authorized_employee_image_drive_file(payload)
+	return request_preview_derivatives_for_doc(doc=drive_file_doc, payload=payload)
+
+
+def issue_student_image_download_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
+	_context, drive_file_doc = _get_authorized_student_image_drive_file(payload)
+	_assert_can_issue_download(drive_file_doc)
+	return _issue_grant(doc=drive_file_doc, grant_kind="download")
+
+
+def issue_student_image_preview_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
+	_context, drive_file_doc = _get_authorized_student_image_drive_file(payload)
+	return _issue_preview_grant_for_doc(doc=drive_file_doc, payload=payload)
+
+
+def request_student_image_preview_derivatives_service(payload: dict[str, Any]) -> dict[str, Any]:
+	_context, drive_file_doc = _get_authorized_student_image_drive_file(payload)
+	return request_preview_derivatives_for_doc(doc=drive_file_doc, payload=payload)
+
+
+def issue_guardian_image_download_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
+	_context, drive_file_doc = _get_authorized_guardian_image_drive_file(payload)
+	_assert_can_issue_download(drive_file_doc)
+	return _issue_grant(doc=drive_file_doc, grant_kind="download")
+
+
+def issue_guardian_image_preview_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
+	_context, drive_file_doc = _get_authorized_guardian_image_drive_file(payload)
+	return _issue_preview_grant_for_doc(doc=drive_file_doc, payload=payload)
+
+
+def request_guardian_image_preview_derivatives_service(payload: dict[str, Any]) -> dict[str, Any]:
+	_context, drive_file_doc = _get_authorized_guardian_image_drive_file(payload)
+	return request_preview_derivatives_for_doc(doc=drive_file_doc, payload=payload)
+
+
+def issue_public_website_media_download_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
+	_context, drive_file_doc = _get_authorized_public_website_media_drive_file(payload)
+	_assert_can_issue_download(drive_file_doc)
+	return _issue_grant(doc=drive_file_doc, grant_kind="download")
+
+
+def issue_public_website_media_preview_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
+	_context, drive_file_doc = _get_authorized_public_website_media_drive_file(payload)
+	return _issue_preview_grant_for_doc(doc=drive_file_doc, payload=payload)
+
+
+def issue_public_employee_image_preview_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
+	_context, drive_file_doc = _get_authorized_public_employee_image_drive_file(payload)
+	return _issue_preview_grant_for_doc(doc=drive_file_doc, payload=payload)
+
+
+MEDIA_API_SERVICE_EXPORTS = {
+	"issue_employee_image_download_grant": issue_employee_image_download_grant_service,
+	"issue_employee_image_preview_grant": issue_employee_image_preview_grant_service,
+	"request_employee_image_preview_derivatives": request_employee_image_preview_derivatives_service,
+	"issue_guardian_image_download_grant": issue_guardian_image_download_grant_service,
+	"issue_guardian_image_preview_grant": issue_guardian_image_preview_grant_service,
+	"request_guardian_image_preview_derivatives": request_guardian_image_preview_derivatives_service,
+	"issue_public_employee_image_preview_grant": issue_public_employee_image_preview_grant_service,
+	"issue_public_website_media_download_grant": issue_public_website_media_download_grant_service,
+	"issue_public_website_media_preview_grant": issue_public_website_media_preview_grant_service,
+	"issue_student_image_download_grant": issue_student_image_download_grant_service,
+	"issue_student_image_preview_grant": issue_student_image_preview_grant_service,
+	"request_student_image_preview_derivatives": request_student_image_preview_derivatives_service,
+	"upload_employee_image": upload_employee_image_service,
+	"upload_guardian_image": upload_guardian_image_service,
+	"upload_student_image": upload_student_image_service,
+	"upload_organization_logo": upload_organization_logo_service,
+	"upload_school_logo": upload_school_logo_service,
+	"upload_school_gallery_image": upload_school_gallery_image_service,
+	"upload_organization_media_asset": upload_organization_media_asset_service,
+}

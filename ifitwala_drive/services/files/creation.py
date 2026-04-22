@@ -5,24 +5,28 @@ from typing import Any
 import frappe
 
 from ifitwala_drive.services.concurrency import drive_lock, is_duplicate_entry_error
+from ifitwala_drive.services.files.derivatives import sync_preview_pipeline_for_current_version
+from ifitwala_drive.services.files.versions import (
+	create_initial_drive_file_version,
+	ensure_current_drive_file_version,
+)
+
+
+def _get_all_rows(doctype: str, *, filters: dict[str, Any], fields: list[str]) -> list[dict[str, Any]]:
+	get_all = getattr(frappe, "get_all", None)
+	if not callable(get_all):
+		return []
+
+	try:
+		rows = get_all(doctype, filters=filters, fields=fields, limit=0)
+	except TypeError:
+		rows = get_all(doctype, filters=filters, fields=fields)
+	return rows or []
 
 
 def _build_canonical_ref(*, organization: str | None, drive_file_id: str) -> str:
 	scope = (organization or "unknown").strip() or "unknown"
 	return f"drv:{scope}:{drive_file_id}"
-
-
-def _resolve_binding_role(upload_session_doc) -> str | None:
-	if (
-		upload_session_doc.owner_doctype == "Task"
-		and str(getattr(upload_session_doc, "intended_slot", "") or "").startswith("supporting_material__")
-	):
-		return "task_resource"
-
-	if upload_session_doc.owner_doctype == "Organization":
-		return "organization_media"
-
-	return None
 
 
 def _build_drive_file_doc(upload_session_doc, *, file_id: str, storage_artifact: dict[str, Any]):
@@ -69,8 +73,41 @@ def _build_primary_binding_key(*, drive_file_id: str, upload_session_doc, bindin
 	return "|".join(str(part or "").strip() for part in parts)
 
 
-def _create_primary_binding(*, drive_file_id: str, file_id: str, upload_session_doc) -> str | None:
-	binding_role = _resolve_binding_role(upload_session_doc)
+def _slot_identity_filters(upload_session_doc) -> dict[str, Any]:
+	return {
+		"owner_doctype": upload_session_doc.owner_doctype,
+		"owner_name": upload_session_doc.owner_name,
+		"attached_doctype": upload_session_doc.attached_doctype,
+		"attached_name": upload_session_doc.attached_name,
+		"primary_subject_type": upload_session_doc.intended_primary_subject_type,
+		"primary_subject_id": upload_session_doc.intended_primary_subject_id,
+		"slot": upload_session_doc.intended_slot,
+		"status": "active",
+	}
+
+
+def _supersede_previous_drive_files(*, upload_session_doc, current_drive_file_id: str) -> None:
+	filters = {
+		**_slot_identity_filters(upload_session_doc),
+		"name": ["!=", current_drive_file_id],
+	}
+	for row in _get_all_rows("Drive File", filters=filters, fields=["name"]):
+		frappe.db.set_value(
+			"Drive File",
+			row["name"],
+			"status",
+			"superseded",
+			update_modified=False,
+		)
+
+
+def _create_primary_binding(
+	*,
+	drive_file_id: str,
+	file_id: str,
+	upload_session_doc,
+	binding_role: str | None = None,
+) -> str | None:
 	if not binding_role:
 		return None
 
@@ -83,7 +120,6 @@ def _create_primary_binding(*, drive_file_id: str, file_id: str, upload_session_
 	lock_key = "|".join(
 		[
 			"binding",
-			drive_file_id,
 			upload_session_doc.attached_doctype,
 			upload_session_doc.attached_name,
 			binding_role,
@@ -106,6 +142,28 @@ def _create_primary_binding(*, drive_file_id: str, file_id: str, upload_session_
 		)
 		if existing:
 			return existing
+
+		for row in _get_all_rows(
+			"Drive Binding",
+			filters={
+				"binding_doctype": upload_session_doc.attached_doctype,
+				"binding_name": upload_session_doc.attached_name,
+				"binding_role": binding_role,
+				"slot": upload_session_doc.intended_slot,
+				"is_primary": 1,
+				"status": "active",
+			},
+			fields=["name", "drive_file"],
+		):
+			if row.get("drive_file") == drive_file_id:
+				return row.get("name")
+			frappe.db.set_value(
+				"Drive Binding",
+				row["name"],
+				"status",
+				"superseded",
+				update_modified=False,
+			)
 
 		binding = frappe.get_doc(
 			{
@@ -141,16 +199,27 @@ def _create_primary_binding(*, drive_file_id: str, file_id: str, upload_session_
 		return binding.name
 
 
-def _existing_drive_file_response(*, drive_file_id: str, upload_session_doc, file_id: str) -> dict[str, Any]:
+def _existing_drive_file_response(
+	*,
+	drive_file_id: str,
+	upload_session_doc,
+	file_id: str,
+	binding_role: str | None = None,
+) -> dict[str, Any]:
+	drive_file_doc = frappe.get_doc("Drive File", drive_file_id)
 	binding_id = _create_primary_binding(
 		drive_file_id=drive_file_id,
 		file_id=file_id,
 		upload_session_doc=upload_session_doc,
+		binding_role=binding_role,
 	)
-	canonical_ref = frappe.db.get_value("Drive File", drive_file_id, "canonical_ref")
+	canonical_ref = str(getattr(drive_file_doc, "canonical_ref", "") or "").strip() or None
+	if not canonical_ref:
+		canonical_ref = frappe.db.get_value("Drive File", drive_file_id, "canonical_ref")
+	drive_file_version_id = ensure_current_drive_file_version(drive_file_doc=drive_file_doc)
 	return {
 		"drive_file_id": drive_file_id,
-		"drive_file_version_id": None,
+		"drive_file_version_id": drive_file_version_id,
 		"canonical_ref": canonical_ref,
 		"drive_binding_id": binding_id,
 	}
@@ -161,6 +230,7 @@ def create_drive_file_artifacts(
 	upload_session_doc,
 	file_id: str,
 	storage_artifact: dict[str, Any],
+	binding_role: str | None = None,
 ) -> dict[str, Any]:
 	with drive_lock(f"drive_file_artifacts:{upload_session_doc.name}", timeout=30):
 		existing_drive_file_id = frappe.db.get_value(
@@ -173,6 +243,7 @@ def create_drive_file_artifacts(
 				drive_file_id=existing_drive_file_id,
 				upload_session_doc=upload_session_doc,
 				file_id=file_id,
+				binding_role=binding_role,
 			)
 
 		drive_file = _build_drive_file_doc(
@@ -197,6 +268,7 @@ def create_drive_file_artifacts(
 				drive_file_id=existing_drive_file_id,
 				upload_session_doc=upload_session_doc,
 				file_id=file_id,
+				binding_role=binding_role,
 			)
 
 		drive_file.current_version = None
@@ -205,17 +277,32 @@ def create_drive_file_artifacts(
 			organization=getattr(upload_session_doc, "organization", None),
 			drive_file_id=drive_file.name,
 		)
+		drive_file.current_version = create_initial_drive_file_version(
+			drive_file_id=drive_file.name,
+			file_id=file_id,
+			storage_artifact=storage_artifact,
+			upload_session_doc=upload_session_doc,
+		)
+		sync_preview_pipeline_for_current_version(
+			drive_file_doc=drive_file,
+			mime_type=storage_artifact.get("mime_type"),
+		)
 		drive_file.save(ignore_permissions=True)
+		_supersede_previous_drive_files(
+			upload_session_doc=upload_session_doc,
+			current_drive_file_id=drive_file.name,
+		)
 
 		binding_id = _create_primary_binding(
 			drive_file_id=drive_file.name,
 			file_id=file_id,
 			upload_session_doc=upload_session_doc,
+			binding_role=binding_role,
 		)
 
 		return {
 			"drive_file_id": drive_file.name,
-			"drive_file_version_id": None,
+			"drive_file_version_id": drive_file.current_version,
 			"canonical_ref": drive_file.canonical_ref,
 			"drive_binding_id": binding_id,
 		}

@@ -1,348 +1,173 @@
-Here is **Practical Order #1**: the canonical design-lock note for **Option C**.
-## Status
+# Option C Design Lock
 
-**LOCKED — working architecture decision**
+Status: LOCKED architecture decision
+Date: 2026-04-20
 
-This note defines the chosen transition architecture for **Ifitwala_drive** and its relationship to **Ifitwala_Ed** and **Ifitwala_Press**.
+## Bottom line
 
-This note exists to stop drift between three bad outcomes:
-
-* “Drive is only a storage proxy forever”
-* “Drive fully replaces the old governance model immediately”
-* “Each new file flow invents its own partial file architecture”
-
-This decision is the canonical reference until explicitly reopened.
-
----
+- Option C remains the chosen direction.
+- Ed remains the workflow authority.
+- Drive becomes the sole governed file execution and metadata authority.
+- `File Classification` may exist only as temporary migration baggage and must not survive the refactor.
 
 ## 1. Decision
 
-We are choosing **Option C: hybrid transition**.
+We are keeping the hybrid transition model, but with a sharper end-state than the earlier notes implied.
 
-This means:
+Chosen target:
 
-* **Ifitwala_Ed** remains the workflow authority.
-* **Ifitwala_drive** becomes the mandatory file execution boundary.
-* New governed uploads, delivery, processing, and canonical references go through Drive.
-* Existing governance guarantees from Ifitwala_Ed are preserved during transition.
-* Drive grows over time from storage/delivery authority into a richer product-facing file domain and UX surface.
+- new governed uploads, finalize, derivatives, delivery, and metadata truth go through Drive
+- Ed supplies workflow semantics and permissions
+- no permanent parallel governance layer remains in Ed
 
-This is **not** a storage-only forever model.
-This is **not** a full doctrinal replacement on day 1.
+This is:
 
-It is a staged transition.
+- not a storage-only forever model
+- not a detached microservice split
+- not a permanent compatibility architecture
 
----
+## 2. Why this decision still stands
 
-## 2. Why this decision was chosen
+Option C still best balances:
 
-Option C was chosen because it best balances:
+- migration realism
+- product UX
+- governance safety
+- object-storage readiness
+- same-bench Frappe execution
 
-* UX ambition
-* governance safety
-* migration realism
-* cost-conscious early delivery
-* future readiness
+What changes in this reset is the clarity of the end-state:
 
-Your product goals explicitly require:
+- compatibility projections are temporary
+- the final model does not keep `File Classification` as co-equal truth
 
-* **context first, Drive second**
-* frictionless teacher/student workflows
-* reusable resources
-* folder navigation when needed
-* strong safety/security
-* no governance drift
-* object-storage-ready architecture
-* tight coupling to Ifitwala_Ed at all times.
+## 3. End-state architecture
 
-A full immediate replacement is cleaner in theory but too easy to get wrong.
-A storage-only forever model is safer short-term but under-delivers on the actual product direction.
+### 3.1 Ed owns
 
----
+- workflow semantics
+- business owner resolution
+- permission and scope rules
+- surface-specific visibility rules
+- post-finalize business mutation
 
-## 3. Architectural split
+### 3.2 Drive owns
 
-### 3.1 Ifitwala_Ed owns
+- session lifecycle
+- blob ingress
+- object identity
+- file/version/binding/derivative records
+- grants
+- audit and erasure execution
 
-* academic workflows
-* admissions workflows
-* task/submission/business context
-* portfolio, applicant, employee, referral, school, organization domain logic
-* workflow visibility and base permission authority
+### 3.3 Compatibility during migration
 
-### 3.2 Ifitwala_drive owns
+Compatibility projections may exist temporarily if needed to keep the product running while surfaces migrate.
 
-* upload sessions
-* storage abstraction
-* canonical file references
-* signed delivery / preview grants
-* async file processing
-* Drive folders and browse surface
-* resource bindings
-* file versions
-* file-domain APIs
-* file audit / erasure execution
-* eventual richer Drive-native file UX and tooling
+But:
 
-### 3.3 Ifitwala_Press owns later
+- they are not authority
+- no new design may depend on them
+- they must be removable
 
-* provisioning
-* bucket bindings
-* quotas
-* environment policy
-* worker topology
-* tenant operations and cost monitoring.
+## 4. Non-negotiable invariants
 
----
+- every governed file has one authoritative business owner
+- every governed file has one resolved slot
+- folders are browse aids, not governance truth
+- file content is not the business record
+- no raw path assumptions
+- no parallel ACL system
+- heavy file work stays off the request path
 
-## 4. Non-negotiable invariants that survive the transition
+## 5. Phase model after the docs reset
 
-The following rules remain true throughout Option C.
+### Phase 1
 
-### 4.1 One business-document owner
+Docs reset and boundary lock.
 
-Every governed file has exactly one authoritative **business-document owner**.
+Goal:
 
-Ownership is never:
+- stop design drift
+- make current leaks explicit defects
 
-* the uploader
-* the creator
-* the human employee
-* the student user
-* the guardian user
+### Phase 2
 
-Uploader/creator are audit metadata only.
-Subject is who the file is about.
-Owner is the authoritative business document controlling lifecycle.
+Boundary cleanup.
 
-### 4.2 No orphan files
+Goal:
 
-Every governed file must belong to one owner and one slot.
-Free-floating files are invalid.
+- completed in code
 
-### 4.3 Slot semantics are law
+### Phase 3
 
-Slots remain mandatory and control:
+Authority collapse.
 
-* replacement behavior
-* versioning
-* retention behavior
-* deletion scope
-* downstream workflow meaning
+Goal:
 
-No slot means no valid governed upload.
+- Drive metadata becomes sole governance authority
+- completed in code
+- historical governed files are backfilled into authoritative Drive session/file/version records before cleanup
+- historical `File Classification` rows are removed only through an explicit migration patch once matching `Drive File` authority exists
 
-### 4.4 File content is not the business record
+### Phase 4
 
-Deleting files must not break:
+Compatibility and schema retirement.
 
-* grades
-* analytics
-* applicant decisions
-* structured academic/business records.
+Goal:
 
-### 4.5 No raw path assumptions
+- remove `File Classification` rows and DocTypes
+- retire dead Ed-local dispatcher baggage
 
-No UI, service, or renderer may construct file URLs from guessed storage paths.
-Only canonical Drive refs or canonical returned URLs are allowed.
+Status:
 
-### 4.6 No parallel ACL system in v1
+- completed in code
 
-The root permission rule remains:
+### Phase 5
 
-> if you cannot see the owning document, you cannot see the file.
+Derivative and read-path cleanup.
 
-Drive may enforce action-level policy, but it does not introduce a detached permission universe in v1.
+Goal:
 
-### 4.7 Folders are navigation, not governance truth
+- Drive becomes sole derivative authority
+- Ed hot read paths stop probing storage directly
 
-Folders support:
+Status:
 
-* browse UX
-* reuse
-* organization
-* resource discovery
+- completed in code for governed profile-image delivery
+- Ed now resolves profile-image compatibility variants from Drive derivative roles instead of separate governed files
 
-Folders do not replace:
+### Phase 6
 
-* ownership
-* subject
-* slot
-* retention
-* organization/school governance.
+Drive-native reuse and browse UX expansion.
 
----
+Goal:
 
-## 5. Phase model for Option C
+- richer resource library and reuse flows on top of the clean boundary
 
-## Phase 1 — Drive as mandatory execution boundary
+## 6. What this plan must not do
 
-Drive takes over:
+It must not:
 
-* upload sessions
-* storage abstraction
-* object storage writes
-* canonical refs
-* signed delivery
-* async processing
-* minimal folders
-* bindings
-
-Ifitwala_Ed continues to supply the governance contract and workflow semantics.
-
-This phase is intentionally close to the “storage/delivery extraction” model, but it is **not** the final architecture.
-
-## Phase 2 — Drive-native product surface
-
-Drive adds:
-
-* teacher resource library
-* shared folders
-* Drive browser
-* search/filter
-* reuse-first pickers
-* template/workspace flows
-
-At this stage, users begin to experience Drive as a real product surface, not only hidden infrastructure.
-
-## Phase 3 — Selective domain promotion
-
-Only after Phase 1 and 2 are proven, we may promote more governance and domain semantics into Drive-native objects where it reduces complexity **without weakening invariants**.
-
-This phase may gradually reduce dependence on the older `File Classification` mental model, but only through explicit, documented transition.
-
----
-
-## 6. What Phase 1 must not do
-
-Phase 1 must **not**:
-
-* become “storage-only forever”
-* introduce a generic consumer Drive clone
-* invent an external ACL/ReBAC system
-* let folders become the legal/governance truth
-* replace all governance objects and docs in one pass
-* silently duplicate blobs when references/workspaces would do
-* bypass Ifitwala_Ed workflow context.
-
----
+- preserve the old Ed-local governance model indefinitely
+- introduce new legacy shims as permanent design
+- add more cross-app internal imports
+- keep `File Classification` because migration feels inconvenient
+- turn folders into governance truth
 
 ## 7. Canonical API direction
 
-Ifitwala_Ed must stop thinking in:
+Ed should think in:
 
-* raw `File`
-* raw attachment path
-* generic upload widget
+- workflow IDs
+- upload sessions
+- Drive files and bindings
+- canonical refs
+- grants
 
-and must start thinking in:
+Ed should stop thinking in:
 
-* Drive upload session
-* Drive resource
-* Drive submission artifact
-* Drive binding
-* Drive canonical ref / canonical returned URL.
-
-The v1 API surface remains intentionally small:
-
-* `create_upload_session(...)`
-* `finalize_upload_session(...)`
-* `abort_upload_session(...)`
-* `create_and_classify_file(...)`
-* `replace_drive_file_version(...)`
-* `upload_task_resource(...)`
-* `upload_task_submission_artifact(...)`
-* `upload_applicant_document(...)`
-* `upload_portfolio_evidence(...)`
-* `upload_organization_media(...)`
-* `list_folder_items(...)`
-* `list_context_files(...)`
-* `issue_download_grant(...)`
-* `issue_preview_grant(...)`.
-
----
-
-## 8. First flows to migrate
-
-Only these flows are in scope first:
-
-1. task resources
-2. task submissions
-3. applicant documents
-4. organization media
-
-These are highest-value, already specified, and strong tests of the architecture.
-
-Portfolio/journal remains important, but it can follow immediately after those first four.
-
----
-
-## 9. Storage and deployment intent
-
-Early stage deployment remains:
-
-* cost-conscious
-* same tenant/site as Ifitwala_Ed
-* same DB initially
-* object storage ready from day 1
-* container deployed alongside Ifitwala_Ed by Ifitwala_Press.
-
-The architecture must preserve later separation of:
-
-* runtime
-* DB
-* storage bucket
-* workers
-
-without changing business contracts.
-
----
-
-## 10. Definition of done for Option C work
-
-A change under Option C is only done if:
-
-* it preserves file governance invariants
-* it introduces no unclassified governed file path
-* it uses Drive as the execution boundary
-* it does not rely on storage-path guessing
-* it does not weaken erasure safety
-* it keeps Ifitwala_drive tightly coupled to Ifitwala_Ed context
-* it improves UX or architecture without drifting into generic-drive noise
-* it includes tests for the main invariant it touches.
-
----
-
-## 11. Reopening this decision
-
-This design-lock may only be reopened if one of the following is explicitly proposed in writing:
-
-* full replacement of the remaining legacy governance model
-* externalized permission model
-* significant change in ownership/slot semantics
-* cross-tenant or cross-context sharing requirements
-* a decision to keep Drive as storage-only permanently
-
-Until then, Option C is the active architecture.
-
----
-
-## My blunt implementation note
-
-Under this decision, the **next artifact is not another abstract debate**.
-
-The next artifact is:
-
-1. **canonical API contract**
-2. then the first implementation slice:
-
-   * `Drive Upload Session`
-   * storage abstraction
-   * signed delivery
-   * `Drive Processing Job`
-   * `Drive Folder`
-   * `Drive Binding`
-3. then the first four Ifitwala_Ed flow adapters
-
-That is the practical path.
-
+- raw `File`
+- raw attachment path
+- `File Classification`
+- Ed-owned derivative files

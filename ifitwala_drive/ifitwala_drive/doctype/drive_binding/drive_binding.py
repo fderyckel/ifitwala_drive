@@ -19,6 +19,7 @@ _ALLOWED_BINDING_ROLES = {
 	"lesson_resource",
 	"lesson_activity_resource",
 	"general_reference",
+	"communication_attachment",
 }
 
 

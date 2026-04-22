@@ -1,5 +1,5 @@
 (function () {
-	'use strict';
+	"use strict";
 
 	function $(selector) {
 		return document.querySelector(selector);
@@ -7,24 +7,24 @@
 
 	function getQueryParam(key) {
 		const value = new URLSearchParams(window.location.search).get(key);
-		return (value || '').trim();
+		return (value || "").trim();
 	}
 
 	async function resolveCsrfToken() {
 		if (window.csrf_token) return window.csrf_token;
 		const meta = document.querySelector('meta[name="csrf-token"]');
 		if (meta && meta.content) return meta.content;
-		return '';
+		return "";
 	}
 
 	async function callApi(method, payload) {
 		const csrf = await resolveCsrfToken();
-		const response = await fetch('/api/method/' + method, {
-			method: 'POST',
-			credentials: 'same-origin',
+		const response = await fetch("/api/method/" + method, {
+			method: "POST",
+			credentials: "same-origin",
 			headers: {
-				'Content-Type': 'application/json',
-				...(csrf ? { 'X-Frappe-CSRF-Token': csrf } : {}),
+				"Content-Type": "application/json",
+				...(csrf ? { "X-Frappe-CSRF-Token": csrf } : {}),
 			},
 			body: JSON.stringify(payload || {}),
 		});
@@ -32,61 +32,81 @@
 			return {};
 		});
 		if (!response.ok || data.exception || data.exc) {
-			throw new Error(data.message || response.statusText || 'Request failed');
+			throw new Error(data.message || response.statusText || "Request failed");
 		}
 		return data.message || data;
 	}
 
 	function escapeHtml(value) {
-		return String(value == null ? '' : value)
-			.replace(/&/g, '&amp;')
-			.replace(/</g, '&lt;')
-			.replace(/>/g, '&gt;')
-			.replace(/"/g, '&quot;')
-			.replace(/'/g, '&#039;');
+		return String(value == null ? "" : value)
+			.replace(/&/g, "&amp;")
+			.replace(/</g, "&lt;")
+			.replace(/>/g, "&gt;")
+			.replace(/"/g, "&quot;")
+			.replace(/'/g, "&#039;");
+	}
+
+	function joinMeta(parts) {
+		return (parts || [])
+			.map(function (part) {
+				return String(part == null ? "" : part).trim();
+			})
+			.filter(Boolean)
+			.join(" · ");
 	}
 
 	function setStatus(message, tone) {
-		const node = $('#drive-workspace-status');
+		const node = $("#drive-workspace-status");
 		if (!node) return;
-		node.textContent = message || '';
-		node.dataset.tone = tone || 'neutral';
+		node.textContent = message || "";
+		node.dataset.tone = tone || "neutral";
 		node.hidden = !message;
 	}
 
 	function setHeadings(primary, secondary, modeLabel) {
-		$('#drive-workspace-mode').textContent = modeLabel || 'Drive workspace';
-		$('#drive-workspace-heading').textContent = primary || 'Drive workspace';
-		$('#drive-workspace-subheading').textContent = secondary || '';
+		$("#drive-workspace-mode").textContent = modeLabel || "Drive workspace";
+		$("#drive-workspace-heading").textContent = primary || "Drive workspace";
+		$("#drive-workspace-subheading").textContent = secondary || "";
 	}
 
 	function targetLink(target) {
-		return (target && target.href) || '/drive_workspace';
+		return (target && target.href) || "/drive_workspace";
 	}
 
 	function actionLabelForTarget(target) {
-		return target && target.target_kind === 'folder' ? 'Open folder' : 'Open files';
+		return target && target.target_kind === "folder" ? "Open folder" : "Open files";
 	}
 
 	function targetMetaLabel(target) {
-		return target && target.target_kind === 'folder' ? 'Folder' : 'Context';
+		return target && target.target_kind === "folder" ? "Folder" : "Context";
 	}
 
 	function renderHomeTarget(target) {
+		const caption = joinMeta([target.display_code, target.caption]);
 		return (
 			'<article class="drive-card">' +
 			'<div class="drive-card__head">' +
-			'<div>' +
-			'<p class="drive-card__meta">' + escapeHtml(targetMetaLabel(target)) + '</p>' +
-			'<h3>' + escapeHtml(target.label || target.name || target.id) + '</h3>' +
-			(target.caption ? '<p class="drive-card__path">' + escapeHtml(target.caption) + '</p>' : '') +
-			'</div>' +
-			'<span class="drive-badge">' + escapeHtml(target.badge || 'Drive') + '</span>' +
-			'</div>' +
+			"<div>" +
+			'<p class="drive-card__meta">' +
+			escapeHtml(targetMetaLabel(target)) +
+			"</p>" +
+			"<h3>" +
+			escapeHtml(target.label || target.name || target.id) +
+			"</h3>" +
+			(caption ? '<p class="drive-card__path">' + escapeHtml(caption) + "</p>" : "") +
+			"</div>" +
+			'<span class="drive-badge">' +
+			escapeHtml(target.badge || "Drive") +
+			"</span>" +
+			"</div>" +
 			'<div class="drive-card__actions">' +
-			'<a class="drive-button" href="' + escapeHtml(targetLink(target)) + '">' + actionLabelForTarget(target) + '</a>' +
-			'</div>' +
-			'</article>'
+			'<a class="drive-button" href="' +
+			escapeHtml(targetLink(target)) +
+			'">' +
+			actionLabelForTarget(target) +
+			"</a>" +
+			"</div>" +
+			"</article>"
 		);
 	}
 
@@ -95,19 +115,25 @@
 		return (
 			'<section class="drive-home-section">' +
 			'<div class="drive-home-section__head">' +
-			'<div>' +
-			'<p class="drive-overline">' + escapeHtml(section.label || 'Workspace') + '</p>' +
-			'<h2 class="drive-home-section__title">' + escapeHtml(section.label || 'Workspace') + '</h2>' +
+			"<div>" +
+			'<p class="drive-overline">' +
+			escapeHtml(section.label || "Workspace") +
+			"</p>" +
+			'<h2 class="drive-home-section__title">' +
+			escapeHtml(section.label || "Workspace") +
+			"</h2>" +
 			(section.description
-				? '<p class="drive-home-section__copy">' + escapeHtml(section.description) + '</p>'
-				: '') +
-			'</div>' +
-			'<span class="drive-badge">' + escapeHtml(String(items.length)) + '</span>' +
-			'</div>' +
+				? '<p class="drive-home-section__copy">' + escapeHtml(section.description) + "</p>"
+				: "") +
+			"</div>" +
+			'<span class="drive-badge">' +
+			escapeHtml(String(items.length)) +
+			"</span>" +
+			"</div>" +
 			'<div class="drive-home-grid">' +
-			items.map(renderHomeTarget).join('') +
-			'</div>' +
-			'</section>'
+			items.map(renderHomeTarget).join("") +
+			"</div>" +
+			"</section>"
 		);
 	}
 
@@ -121,106 +147,130 @@
 
 		const suggestedCopy =
 			suggestedTarget && suggestedTarget.label
-				? 'Suggested next view: ' + suggestedTarget.label + '.'
-				: 'Open a governed view you are already allowed to read.';
+				? "Suggested next view: " + suggestedTarget.label + "."
+				: "Open a governed view you are already allowed to read.";
 		setHeadings(
-			'Your Drive workspace',
+			"Your Drive workspace",
 			sections.length
 				? suggestedCopy
-				: 'No governed file views are available to your current permissions yet.',
-			'Workspace home'
+				: "No governed file views are available to your current permissions yet.",
+			"Workspace home"
 		);
-		$('#drive-workspace-breadcrumbs').innerHTML = '';
+		$("#drive-workspace-breadcrumbs").innerHTML = "";
 		if (!sections.length) {
-			$('#drive-workspace-list').innerHTML =
+			$("#drive-workspace-list").innerHTML =
 				'<article class="drive-card drive-card--empty"><h3>No governed views available</h3><p>This account does not yet have any readable Drive context or folder to open.</p></article>';
 			return false;
 		}
-		$('#drive-workspace-list').innerHTML =
-			'<div class="drive-home">' +
-			sections.map(renderHomeSection).join('') +
-			'</div>';
+		$("#drive-workspace-list").innerHTML =
+			'<div class="drive-home">' + sections.map(renderHomeSection).join("") + "</div>";
 		return false;
 	}
 
 	function folderLink(folderId) {
-		return '/drive_workspace?folder=' + encodeURIComponent(folderId);
+		return "/drive_workspace?folder=" + encodeURIComponent(folderId);
 	}
 
 	function renderBreadcrumbs(breadcrumbs) {
-		const node = $('#drive-workspace-breadcrumbs');
+		const node = $("#drive-workspace-breadcrumbs");
 		if (!node) return;
-		node.innerHTML = '';
+		node.innerHTML = "";
 		(breadcrumbs || []).forEach(function (crumb) {
-			const link = document.createElement('a');
-			link.className = 'drive-crumb';
+			const link = document.createElement("a");
+			link.className = "drive-crumb";
 			link.href = folderLink(crumb.id);
-			link.textContent = crumb.title || crumb.id;
+			link.textContent = crumb.display_title || crumb.title || "Folder";
 			node.appendChild(link);
 		});
 	}
 
 	function fileBadgeLabel(file) {
-		return file.preview_status || file.binding_role || 'File';
+		return file.preview_status || file.binding_role || "File";
 	}
 
 	function folderBadgeLabel(folder) {
-		return folder.folder_kind || 'Folder';
+		return folder.folder_kind || "Folder";
 	}
 
 	function renderFolderRow(item) {
+		const path = joinMeta([item.display_code, item.display_path || item.context_path]);
 		return (
 			'<article class="drive-card">' +
 			'<div class="drive-card__head">' +
-			'<div>' +
+			"<div>" +
 			'<p class="drive-card__meta">Folder</p>' +
-			'<h3>' + escapeHtml(item.title) + '</h3>' +
-			(item.context_path ? '<p class="drive-card__path">' + escapeHtml(item.context_path) + '</p>' : '') +
-			'</div>' +
-			'<span class="drive-badge">' + escapeHtml(folderBadgeLabel(item)) + '</span>' +
-			'</div>' +
+			"<h3>" +
+			escapeHtml(item.display_title || item.title || "Folder") +
+			"</h3>" +
+			(path ? '<p class="drive-card__path">' + escapeHtml(path) + "</p>" : "") +
+			"</div>" +
+			'<span class="drive-badge">' +
+			escapeHtml(folderBadgeLabel(item)) +
+			"</span>" +
+			"</div>" +
 			'<div class="drive-card__actions">' +
-			'<a class="drive-button" href="' + folderLink(item.id) + '">Open folder</a>' +
-			'</div>' +
-			'</article>'
+			'<a class="drive-button" href="' +
+			folderLink(item.id) +
+			'">Open folder</a>' +
+			"</div>" +
+			"</article>"
 		);
 	}
 
 	function renderFileRow(item) {
-		const previewDisabled = item.can_preview ? '' : ' disabled';
-		const downloadDisabled = item.can_download ? '' : ' disabled';
+		const previewDisabled = item.can_preview ? "" : " disabled";
+		const downloadDisabled = item.can_download ? "" : " disabled";
+		const path = joinMeta([item.display_code, item.display_path || item.context_path]);
 		return (
 			'<article class="drive-card">' +
 			'<div class="drive-card__head">' +
-			'<div>' +
+			"<div>" +
 			'<p class="drive-card__meta">' +
-			escapeHtml([item.binding_role, item.slot].filter(Boolean).join(' · ') || 'File') +
-			'</p>' +
-			'<h3>' + escapeHtml(item.title || item.id) + '</h3>' +
-			(item.context_path ? '<p class="drive-card__path">' + escapeHtml(item.context_path) + '</p>' : '') +
+			escapeHtml([item.binding_role, item.slot].filter(Boolean).join(" · ") || "File") +
+			"</p>" +
+			"<h3>" +
+			escapeHtml(item.display_title || item.title || "Untitled file") +
+			"</h3>" +
+			(path ? '<p class="drive-card__path">' + escapeHtml(path) + "</p>" : "") +
 			(item.attached_to && item.attached_to.doctype && item.attached_to.name
 				? '<p class="drive-card__path">Attached to ' +
 				  escapeHtml(item.attached_to.doctype) +
-				  ' · ' +
+				  " · " +
 				  escapeHtml(item.attached_to.name) +
-				  '</p>'
-				: '') +
-			'</div>' +
-			'<span class="drive-badge">' + escapeHtml(fileBadgeLabel(item)) + '</span>' +
-			'</div>' +
+				  "</p>"
+				: "") +
+			"</div>" +
+			'<span class="drive-badge">' +
+			escapeHtml(fileBadgeLabel(item)) +
+			"</span>" +
+			"</div>" +
 			'<div class="drive-card__actions">' +
-			'<button class="drive-button js-preview"' + previewDisabled + ' data-drive-file-id="' + escapeHtml(item.id) + '" data-canonical-ref="' + escapeHtml(item.canonical_ref || '') + '">Preview</button>' +
-			'<button class="drive-button js-download"' + downloadDisabled + ' data-drive-file-id="' + escapeHtml(item.id) + '" data-canonical-ref="' + escapeHtml(item.canonical_ref || '') + '">Download</button>' +
+			'<button class="drive-button js-preview"' +
+			previewDisabled +
+			' data-drive-file-id="' +
+			escapeHtml(item.id) +
+			'" data-canonical-ref="' +
+			escapeHtml(item.canonical_ref || "") +
+			'">Preview</button>' +
+			'<button class="drive-button js-download"' +
+			downloadDisabled +
+			' data-drive-file-id="' +
+			escapeHtml(item.id) +
+			'" data-canonical-ref="' +
+			escapeHtml(item.canonical_ref || "") +
+			'">Download</button>' +
 			(item.folder && item.folder.id
-				? '<a class="drive-button drive-button--quiet" href="' + folderLink(item.folder.id) + '">Open folder</a>'
-				: '') +
-			'</div>' +
-			'</article>'
+				? '<a class="drive-button drive-button--quiet" href="' +
+				  folderLink(item.folder.id) +
+				  '">Open folder</a>'
+				: "") +
+			"</div>" +
+			"</article>"
 		);
 	}
 
 	function renderRows(rows) {
-		const node = $('#drive-workspace-list');
+		const node = $("#drive-workspace-list");
 		if (!node) return;
 		if (!rows || !rows.length) {
 			node.innerHTML =
@@ -229,9 +279,9 @@
 		}
 		node.innerHTML = rows
 			.map(function (item) {
-				return item.item_type === 'folder' ? renderFolderRow(item) : renderFileRow(item);
+				return item.item_type === "folder" ? renderFolderRow(item) : renderFileRow(item);
 			})
-			.join('');
+			.join("");
 	}
 
 	async function issueGrant(kind, driveFileId, canonicalRef) {
@@ -239,66 +289,66 @@
 			? { drive_file_id: driveFileId, canonical_ref: canonicalRef }
 			: { drive_file_id: driveFileId };
 		const method =
-			kind === 'preview'
-				? 'ifitwala_drive.api.access.issue_preview_grant'
-				: 'ifitwala_drive.api.access.issue_download_grant';
+			kind === "preview"
+				? "ifitwala_drive.api.access.issue_preview_grant"
+				: "ifitwala_drive.api.access.issue_download_grant";
 		const response = await callApi(method, payload);
-		window.open(response.url, '_blank', 'noopener');
+		window.open(response.url, "_blank", "noopener");
 	}
 
 	function bindActions() {
-		document.querySelectorAll('.js-preview').forEach(function (button) {
-			button.addEventListener('click', async function () {
+		document.querySelectorAll(".js-preview").forEach(function (button) {
+			button.addEventListener("click", async function () {
 				if (button.disabled) return;
 				try {
-					setStatus('');
+					setStatus("");
 					await issueGrant(
-						'preview',
-						button.getAttribute('data-drive-file-id'),
-						button.getAttribute('data-canonical-ref')
+						"preview",
+						button.getAttribute("data-drive-file-id"),
+						button.getAttribute("data-canonical-ref")
 					);
 				} catch (error) {
-					setStatus(error.message || 'Unable to open preview.', 'error');
+					setStatus(error.message || "Unable to open preview.", "error");
 				}
 			});
 		});
 
-		document.querySelectorAll('.js-download').forEach(function (button) {
-			button.addEventListener('click', async function () {
+		document.querySelectorAll(".js-download").forEach(function (button) {
+			button.addEventListener("click", async function () {
 				if (button.disabled) return;
 				try {
-					setStatus('');
+					setStatus("");
 					await issueGrant(
-						'download',
-						button.getAttribute('data-drive-file-id'),
-						button.getAttribute('data-canonical-ref')
+						"download",
+						button.getAttribute("data-drive-file-id"),
+						button.getAttribute("data-canonical-ref")
 					);
 				} catch (error) {
-					setStatus(error.message || 'Unable to prepare download.', 'error');
+					setStatus(error.message || "Unable to prepare download.", "error");
 				}
 			});
 		});
 	}
 
 	async function loadWorkspace() {
-		const folder = getQueryParam('folder');
-		const doctype = getQueryParam('doctype');
-		const name = getQueryParam('name');
-		const bindingRole = getQueryParam('binding_role');
+		const folder = getQueryParam("folder");
+		const doctype = getQueryParam("doctype");
+		const name = getQueryParam("name");
+		const bindingRole = getQueryParam("binding_role");
 
-		setStatus('');
+		setStatus("");
 
 		if (!folder && !(doctype && name)) {
 			try {
-				setHeadings('Loading workspace...', '', 'Workspace home');
-				const response = await callApi('ifitwala_drive.api.folders.list_workspace_home', {
+				setHeadings("Loading workspace...", "", "Workspace home");
+				const response = await callApi("ifitwala_drive.api.folders.list_workspace_home", {
 					limit: 6,
 				});
 				if (renderHome(response)) return;
 				return;
 			} catch (error) {
-				setStatus(error.message || 'Unable to load Drive workspace.', 'error');
-				$('#drive-workspace-list').innerHTML =
+				setStatus(error.message || "Unable to load Drive workspace.", "error");
+				$("#drive-workspace-list").innerHTML =
 					'<article class="drive-card drive-card--empty"><h3>Workspace unavailable</h3><p>The Drive workspace home could not be loaded for this account.</p></article>';
 				return;
 			}
@@ -306,8 +356,8 @@
 
 		try {
 			if (folder) {
-				setHeadings('Loading folder...', '', 'Folder browse');
-				const response = await callApi('ifitwala_drive.api.folders.list_folder_items', {
+				setHeadings("Loading folder...", "", "Folder browse");
+				const response = await callApi("ifitwala_drive.api.folders.list_folder_items", {
 					folder: folder,
 					include_folders: 1,
 					include_files: 1,
@@ -315,9 +365,15 @@
 					offset: 0,
 				});
 				setHeadings(
-					response.folder.title,
-					response.folder.context_path || response.folder.path_cache || 'Folder browse mode',
-					'Folder browse'
+					response.folder.display_title || response.folder.title || "Folder",
+					joinMeta([
+						response.folder.display_code,
+						response.folder.display_path ||
+							response.folder.display_caption ||
+							response.folder.context_path ||
+							response.folder.path_cache,
+					]) || "Folder browse mode",
+					"Folder browse"
 				);
 				renderBreadcrumbs(response.folder.breadcrumbs || []);
 				renderRows(response.items || []);
@@ -325,40 +381,48 @@
 				return;
 			}
 
-			setHeadings(doctype + ' · ' + name, 'Loading context browse...', 'Context browse');
-			const response = await callApi('ifitwala_drive.api.folders.list_context_files', {
+			setHeadings(doctype + " · " + name, "Loading context browse...", "Context browse");
+			const response = await callApi("ifitwala_drive.api.folders.list_context_files", {
 				doctype: doctype,
 				name: name,
 				...(bindingRole ? { binding_role: bindingRole } : {}),
 			});
 			setHeadings(
-				doctype + ' · ' + name,
-				bindingRole ? 'Context browse for binding role ' + bindingRole : 'Context folders and files',
-				'Context browse'
+				response.context.display_title || doctype + " · " + name,
+				joinMeta([
+					response.context.display_code,
+					bindingRole
+						? "Context browse for binding role " + bindingRole
+						: "Context folders and files",
+				]),
+				"Context browse"
 			);
 			const fileRows = (response.files || []).map(function (row) {
-				return Object.assign({ item_type: 'file' }, row);
+				return Object.assign({ item_type: "file" }, row);
 			});
-			const rows = Array.isArray(response.items) && response.items.length ? response.items : fileRows;
+			const rows =
+				Array.isArray(response.items) && response.items.length ? response.items : fileRows;
 			const firstFolder = rows.find(function (row) {
-				return row && row.item_type === 'folder';
+				return row && row.item_type === "folder";
 			});
 			const firstFileWithFolder = rows.find(function (row) {
-				return row && row.item_type === 'file' && row.folder;
+				return row && row.item_type === "file" && row.folder;
 			});
 			const breadcrumbs =
 				(firstFolder && firstFolder.breadcrumbs) ||
-				(firstFileWithFolder && firstFileWithFolder.folder && firstFileWithFolder.folder.breadcrumbs) ||
+				(firstFileWithFolder &&
+					firstFileWithFolder.folder &&
+					firstFileWithFolder.folder.breadcrumbs) ||
 				[];
 			renderBreadcrumbs(breadcrumbs || []);
 			renderRows(rows);
 			bindActions();
 		} catch (error) {
-			setStatus(error.message || 'Unable to load Drive workspace.', 'error');
-			$('#drive-workspace-list').innerHTML =
+			setStatus(error.message || "Unable to load Drive workspace.", "error");
+			$("#drive-workspace-list").innerHTML =
 				'<article class="drive-card drive-card--empty"><h3>Workspace unavailable</h3><p>The Drive surface could not be loaded for this request.</p></article>';
 		}
 	}
 
-	document.addEventListener('DOMContentLoaded', loadWorkspace);
+	document.addEventListener("DOMContentLoaded", loadWorkspace);
 })();

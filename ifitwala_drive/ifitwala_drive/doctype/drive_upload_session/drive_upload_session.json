@@ -46,6 +46,7 @@
   "section_storage",
   "storage_backend",
   "tmp_object_key",
+  "upload_contract_json",
   "upload_token",
   "expires_on",
   "completed_on",
@@ -207,7 +208,7 @@
    "fieldname": "secondary_subjects",
    "fieldtype": "Table",
    "label": "Secondary Subjects",
-   "options": "File Classification Subject",
+   "options": "Drive Upload Session Subject",
    "read_only": 1
   },
   {
@@ -268,6 +269,13 @@
    "fieldname": "tmp_object_key",
    "fieldtype": "Data",
    "label": "Temporary Object Key",
+   "read_only": 1
+  },
+  {
+   "fieldname": "upload_contract_json",
+   "fieldtype": "Code",
+   "label": "Upload Contract JSON",
+   "options": "JSON",
    "read_only": 1
   },
   {
@@ -335,7 +343,7 @@
  "is_submittable": 0,
  "issingle": 0,
  "links": [],
- "modified": "2026-03-16 00:00:00.000000",
+ "modified": "2026-04-20 14:30:00.000000",
  "modified_by": "Administrator",
  "module": "Ifitwala Drive",
  "name": "Drive Upload Session",

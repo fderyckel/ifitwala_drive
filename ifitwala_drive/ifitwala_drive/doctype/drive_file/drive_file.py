@@ -6,22 +6,28 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
+from ifitwala_drive.services.governance_contract import validate_file_purpose
+
 _ALLOWED_STATUSES = {"active", "processing", "blocked", "erased", "superseded"}
 _ALLOWED_PREVIEW_STATUSES = {"pending", "ready", "failed", "not_applicable"}
 _ALLOWED_UPLOAD_SOURCES = {"Desk", "SPA", "API", "Job"}
+_ALLOWED_ERASURE_STATES = {"active", "pending", "blocked_legal", "erased"}
 
 
 class DriveFile(Document):
 	def before_insert(self) -> None:
 		self._set_defaults()
 		self._validate_required_fields()
+		self.purpose = validate_file_purpose(self.purpose)
 
 	def validate(self) -> None:
 		self._set_defaults()
 		self._validate_required_fields()
+		self.purpose = validate_file_purpose(self.purpose)
 		self._validate_status()
 		self._validate_preview_status()
 		self._validate_upload_source()
+		self._validate_erasure_state()
 		self._validate_links()
 
 	def _set_defaults(self) -> None:
@@ -36,6 +42,12 @@ class DriveFile(Document):
 
 		if self.is_private is None:
 			self.is_private = 1
+
+		if self.legal_hold is None:
+			self.legal_hold = 0
+
+		if not self.erasure_state:
+			self.erasure_state = "active"
 
 		if not self.display_name and self.file:
 			self.display_name = self.file
@@ -76,6 +88,10 @@ class DriveFile(Document):
 	def _validate_upload_source(self) -> None:
 		if self.upload_source not in _ALLOWED_UPLOAD_SOURCES:
 			frappe.throw(_("Invalid upload source for Drive File: {0}").format(self.upload_source))
+
+	def _validate_erasure_state(self) -> None:
+		if self.erasure_state not in _ALLOWED_ERASURE_STATES:
+			frappe.throw(_("Invalid erasure state for Drive File: {0}").format(self.erasure_state))
 
 	def _validate_links(self) -> None:
 		link_checks = (

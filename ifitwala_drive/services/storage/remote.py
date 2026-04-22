@@ -68,9 +68,44 @@ class ConfiguredRemoteStorageBackend(LocalStorageBackend):
 		}
 
 	def temporary_object_exists(self, *, object_key: str) -> bool:
+		return super().temporary_object_exists(object_key=object_key)
+
+	def write_final_object(
+		self,
+		*,
+		object_key: str,
+		content: bytes,
+		mime_type: str | None = None,
+	) -> dict[str, Any]:
+		artifact = super().write_final_object(object_key=object_key, content=content, mime_type=mime_type)
+		artifact["storage_backend"] = self.backend_name
+		artifact["file_url"] = self._build_object_url(object_key)
+		return artifact
+
+	def build_public_object_url(self, *, object_key: str) -> str | None:
+		url = str(self._build_object_url(object_key) or "").strip()
+		if not url or url.startswith(("/files/", "/private/files/")):
+			return None
+		return url
+
+	def read_object_metadata(self, *, object_key: str) -> dict[str, Any]:
+		return {
+			"exists": False,
+			"size_bytes": None,
+			"checksum": None,
+			"verifiable": False,
+		}
+
+	def read_final_object(self, *, object_key: str) -> bytes:
 		if super().temporary_object_exists(object_key=object_key):
-			return True
-		return self._remote_upload_enabled()
+			return super().read_final_object(object_key=object_key)
+
+		raise RuntimeError(
+			f"Storage backend '{self.backend_name}' cannot read final objects without a provider-native implementation."
+		)
+
+	def read_temporary_object_head(self, *, object_key: str, max_bytes: int) -> bytes:
+		return super().read_temporary_object_head(object_key=object_key, max_bytes=max_bytes)
 
 	def finalize_temporary_object(self, *, object_key: str, final_key: str) -> dict[str, Any]:
 		if super().temporary_object_exists(object_key=object_key):
@@ -96,7 +131,7 @@ class ConfiguredRemoteStorageBackend(LocalStorageBackend):
 		expires_on: datetime,
 		filename: str | None = None,
 	) -> dict[str, Any]:
-		if not self._remote_upload_enabled():
+		if not self._remote_download_enabled():
 			return super().issue_download_grant(
 				object_key=object_key,
 				file_url=file_url,
@@ -117,7 +152,7 @@ class ConfiguredRemoteStorageBackend(LocalStorageBackend):
 		expires_on: datetime,
 		filename: str | None = None,
 	) -> dict[str, Any]:
-		if not self._remote_upload_enabled():
+		if not self._remote_preview_enabled():
 			return super().issue_preview_grant(
 				object_key=object_key,
 				file_url=file_url,
@@ -131,10 +166,29 @@ class ConfiguredRemoteStorageBackend(LocalStorageBackend):
 		}
 
 	def _remote_upload_enabled(self) -> bool:
-		return bool(getattr(self.profile, "upload_url_base", None) or getattr(self.profile, "object_url_base", None))
+		return bool(
+			getattr(self.profile, "upload_url_base", None) or getattr(self.profile, "object_url_base", None)
+		)
+
+	def _remote_download_enabled(self) -> bool:
+		return bool(
+			getattr(self.profile, "download_url_base", None)
+			or getattr(self.profile, "object_url_base", None)
+			or getattr(self.profile, "endpoint", None)
+		)
+
+	def _remote_preview_enabled(self) -> bool:
+		return bool(
+			getattr(self.profile, "preview_url_base", None)
+			or getattr(self.profile, "download_url_base", None)
+			or getattr(self.profile, "object_url_base", None)
+			or getattr(self.profile, "endpoint", None)
+		)
 
 	def _build_remote_upload_url(self, object_key: str) -> str:
-		base = getattr(self.profile, "upload_url_base", None) or getattr(self.profile, "object_url_base", None)
+		base = getattr(self.profile, "upload_url_base", None) or getattr(
+			self.profile, "object_url_base", None
+		)
 		return self._build_url(base, object_key)
 
 	def _build_download_url(self, object_key: str) -> str:
@@ -155,7 +209,9 @@ class ConfiguredRemoteStorageBackend(LocalStorageBackend):
 		return self._build_url(base, object_key)
 
 	def _build_object_url(self, object_key: str) -> str:
-		base = getattr(self.profile, "object_url_base", None) or getattr(self.profile, "download_url_base", None)
+		base = getattr(self.profile, "object_url_base", None) or getattr(
+			self.profile, "download_url_base", None
+		)
 		if base:
 			return self._build_url(base, object_key)
 		return super()._build_private_file_url(object_key)

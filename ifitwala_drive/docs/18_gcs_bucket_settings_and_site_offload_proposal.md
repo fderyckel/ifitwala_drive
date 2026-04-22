@@ -1,0 +1,367 @@
+# GCS Bucket Settings and Site Attachment Offload Proposal
+
+## Status
+
+Partially implemented.
+
+Implemented now:
+
+- `Drive Storage Settings` Single DocType
+- settings-driven runtime profile resolution
+- canonical slot-registry enforcement during upload-session creation
+- explicit typed API wrappers for upload/session/access endpoints and the current Ed compatibility wrappers
+- `Test Connection`
+- `Dry Run Attachment Offload`
+- `Queue Offload Jobs`
+- `Dry Run Local Prune`
+- `Queue Local Prune Jobs`
+- background `offload` jobs that copy eligible local blobs into the active storage backend
+- governed `Drive File` metadata updates after successful offload
+- compatibility read grants for migrated missing local attachments on app-routed `/files/...` and `/private/files/...` requests
+- a `before_request` redirect hook that only activates when the local blob is gone
+- verified local prune for private attachments after remote-object size verification
+- optional immediate local prune during offload when `delete_local_after_verification` is enabled and safety checks pass
+- verified public local prune after `File.file_url` rewrite onto a canonical remote/proxy URL
+- public redirect endpoint for canonical fallback reads: `/api/method/ifitwala_drive.api.access.redirect_public_file?file_id=<FILE_ID>`
+
+Still not implemented:
+
+- scheduler-driven cleanup of expired temp upload objects
+- deployment-level miss routing for static public `/files/...` paths that bypass Python entirely
+- preservation of stale copied old `/files/...` links without web-tier miss routing
+- rate limiting on upload/session endpoints
+
+## Bottom Line
+
+- Add one operator-only Single DocType to manage the runtime storage profile for this site.
+- Use that settings page to move new `ifitwala_drive` writes to Google Cloud Storage first.
+- Treat existing `sites/<site>/public/files` and `sites/<site>/private/files` content as a separate background migration, not as an immediate side effect of saving settings.
+- Do not treat the whole `sites/<site>` folder as Drive storage. Only attachment roots should be offloaded.
+- Start with one bucket and site-scoped prefixes unless there is a concrete ops reason to split public/private buckets immediately.
+
+## Why This Fits The Current Code
+
+The repo already has the important lower layers:
+
+- `services/storage/base.py` already resolves a runtime storage profile with `backend_name`, `bucket_or_container`, `base_prefix`, `credential_source`, and URL fields.
+- `services/storage/gcs.py` already supports direct GCS resumable uploads plus finalize/existence checks.
+- `services/uploads/sessions.py` and `services/uploads/finalize.py` already make Drive the execution boundary for governed writes.
+- `Drive File` already persists `storage_backend` and `storage_object_key`.
+- `Drive Processing Job` already exists for async reconcile-style work.
+
+So the missing piece is not "add GCS support". The missing piece is:
+
+- a site-level operator control page
+- a staged cutover model
+- a safe legacy attachment offload path
+
+## Recommendation
+
+Build one Single DocType, but frame it as a site storage control plane, not just a credential form.
+
+Recommended name:
+
+- `Drive Storage Settings`
+
+Recommended scope:
+
+- site-level only
+- `System Manager` only
+- controls the active storage runtime for this site
+- validates bucket access
+- starts and monitors migration
+
+Long term, `Ifitwala_Press` should still own environment storage profiles.
+This settings page is the correct early-phase bridge, not the final multi-tenant control plane.
+
+## Proposed Settings Page
+
+The form should map closely to the existing runtime profile contract instead of inventing a second storage model.
+
+### Core Runtime Fields
+
+- `enabled`
+- `backend_name`
+  - `local`
+  - `gcs`
+- `storage_mode`
+  - `local_only`
+  - `gcs_for_new_writes`
+  - `gcs_primary_with_local_fallback`
+- `bucket_or_container`
+- `base_prefix`
+  - default shape: `sites/<site_name>`
+- `credential_source`
+  - `adc_or_workload_identity` recommended
+  - `service_account_file` fallback
+
+### Secret And Identity Fields
+
+- `project_id` optional
+- `service_account_file_path` and only used when the fallback mode is selected
+
+The production recommendation should remain:
+
+- Workload Identity / ADC in production
+- mounted service-account file only for local dev or single-server fallback
+
+### URL And Access Fields
+
+- `object_url_base`
+- `download_url_base`
+- `preview_url_base`
+
+Important:
+
+- these bases are acceptable for public or proxy-backed access
+- they are not enough by themselves for private governed file delivery
+
+### Migration Control Fields
+
+- `migrate_public_files`
+- `migrate_private_files`
+- `batch_size`
+- `delete_local_after_verification`
+  - default off
+- `migration_status`
+- `last_validation_on`
+- `last_migration_on`
+- `migration_summary_json`
+
+### Form Actions
+
+- `Test Connection`
+- `Dry Run Attachment Offload`
+- `Queue Offload Jobs`
+- `Dry Run Local Prune`
+- `Queue Local Prune Jobs`
+
+The more advanced controls from the original proposal remain future work:
+
+- save-and-cutover workflow actions
+- pause/resume migration controls
+- reconcile-missing-local-files operator flow
+
+## Runtime Resolution Proposal
+
+Keep the existing config/env path, but extend it with settings lookup.
+
+Recommended resolution order:
+
+1. emergency env override
+2. cached `Drive Storage Settings`
+3. legacy `frappe.conf` / env profile
+4. local default
+
+This keeps the current code paths viable while allowing the Desk page to become the normal operator workflow.
+
+## Critical Scope Correction
+
+If the goal is "put our files in GCS instead of on the bench site", the correct storage scope is:
+
+- `sites/<site>/public/files/**`
+- `sites/<site>/private/files/**`
+- including `private/files/ifitwala_drive/**`
+
+The migration target is not:
+
+- `site_config.json`
+- backups
+- logs
+- locks
+- assets
+- temp files
+- arbitrary files elsewhere under `sites/<site>`
+
+Moving the whole site folder would mix application/runtime concerns into the Drive storage boundary and would be a bad architectural cut.
+
+## Operating Model
+
+### 1. New Governed Uploads
+
+Once `storage_mode = gcs_for_new_writes`:
+
+- `create_upload_session` issues GCS upload targets
+- `finalize_upload_session` writes the final blob to GCS
+- `Drive File.storage_backend` becomes `gcs`
+- `Drive File.storage_object_key` remains the canonical storage locator
+
+This is the first cutover and should happen before legacy migration.
+
+### 2. Existing Governed Drive Files
+
+For existing `Drive File` rows with `storage_backend = local`:
+
+- enqueue background reconcile work
+- copy the local blob to GCS
+- verify size and hash
+- update `Drive File.storage_backend`
+- update `Drive File.storage_object_key` if the destination key changes
+- only change `File.file_url` after the read path is confirmed
+
+This preserves governance and does not invent new metadata.
+
+### 3. Legacy Frappe `File` Attachments Outside Drive Governance
+
+These should not be turned into fake governed Drive files.
+
+Instead:
+
+- offload their blob bytes to GCS
+- preserve the existing `File` row
+- track migration state separately from Drive governance
+- keep the read path compatible for old consumers
+
+That respects the rule that no file becomes meaningful governance state without real classification metadata.
+
+## Legacy Offload Flow
+
+Recommended sequence:
+
+1. Save settings and validate bucket access.
+2. Enable `gcs_for_new_writes`.
+3. Keep legacy attachments readable from local storage.
+4. Run background offload in batches.
+5. Verify counts, size, and checksums.
+6. Flip to `gcs_primary_with_local_fallback`.
+7. After a stability window, optionally prune local blobs.
+
+This should be idempotent:
+
+- if the target object already exists and matches size/hash, mark the item completed
+- retries must not duplicate logical records
+- local deletion must never happen before verification
+
+## Async Job Model
+
+Use the existing `Drive Processing Job` with `job_type = offload` for per-file or per-batch copy work.
+Use `Drive Processing Job` with `job_type = offload` for per-file copy jobs.
+
+Each job should capture:
+
+- `file`
+- optional `drive_file`
+- source path
+- destination object key
+- size
+- checksum
+- verification result
+- cleanup eligibility
+
+Queue recommendation:
+
+- dry run on `drive_default`
+- bulk offload on `drive_heavy`
+
+Current implementation:
+
+- dry run stays synchronous and writes summary data onto `Drive Storage Settings`
+- queueing creates `Drive Processing Job` rows on `drive_heavy`
+- queued jobs copy the local blob into the active storage backend
+- governed `Drive File` rows are updated to the remote `storage_backend` / `storage_object_key`
+- legacy `File` rows are left unchanged for read compatibility
+- `services/files/legacy_access.py` resolves missing local `File.file_url` values to short-lived remote download grants
+- `before_request` redirects app-routed `/files/...` and `/private/files/...` requests to those remote grants when the local blob is missing
+- completed offloads can be scanned again for verified local prune candidates
+- `prune_local` jobs delete private local blobs only after remote object existence and size can be re-verified
+- `prune_local` jobs can also delete public local blobs after `File.file_url` is rewritten to a canonical remote/proxy URL
+- canonical public URL resolution prefers a direct remote public URL and falls back to `/api/method/ifitwala_drive.api.access.redirect_public_file?file_id=<FILE_ID>`
+
+## Read Compatibility Requirement
+
+This proposal only makes sense if old file URLs keep working during migration.
+
+That means we need one of these before final cutover:
+
+- a compatibility read layer that serves `/files/...` and `/private/files/...` from GCS when the local blob is gone
+- or a canonical proxy route that legacy `File.file_url` values are migrated onto
+
+Current implementation status:
+
+- app-routed requests now use the first option: they resolve the existing `File.file_url`, enforce private-file ownership checks, and redirect to a short-lived remote download grant
+- public legacy attachments now use the second option during prune: `File.file_url` is rewritten to a canonical remote/proxy URL before the local blob is removed
+- static public `/files/...` delivery may still bypass Python entirely depending on the web tier, so preserving stale copied old `/files/...` links still requires the web layer to route misses into the app
+
+What we should not do:
+
+- point private governed files directly at raw bucket URLs
+- require callers to guess bucket paths
+- rewrite every upstream consumer individually
+
+## Public And Private Topology
+
+A single bucket can work initially, but the design should still separate public and private behavior.
+
+Recommended posture:
+
+- private files remain default
+- public organization/school media can use a public prefix or separate public bucket
+- `object_url_base` is most useful for public media or proxy/CDN domains
+- private downloads/previews should use signed grants or an app-controlled proxy
+
+Before full private cutover, `gcs.py` should grow a real private-read grant path instead of relying only on configured base URLs.
+
+## What Not To Do
+
+- do not auto-migrate all existing files when the settings document is merely saved
+- do not move the whole `sites/<site>` folder
+- do not create fake `Drive File` rows for legacy attachments with no governance metadata
+- do not bypass Drive upload sessions for new governed flows
+- do not delete verified local blobs until remote reads are proven
+- do not expose raw GCS paths to UI code or business code
+
+## Minimal Delivery Plan
+
+### Slice 1
+
+- add `Drive Storage Settings`
+- add cached runtime resolution from the Single DocType
+- add `Test Connection`
+
+Status:
+- implemented
+
+### Slice 2
+
+- use settings-driven GCS for new governed uploads
+- keep legacy attachments local
+
+Status:
+- implemented
+
+### Slice 3
+
+- add dry run reporting for existing `File` rows under `public/files` and `private/files`
+- add queued `offload` jobs for governed and legacy attachment offload
+
+Status:
+- partially implemented
+- dry run reporting exists
+- queued offload jobs exist
+- execution copies blobs into remote storage
+- governed `Drive File` metadata updates are implemented
+- legacy `File` rows still remain local-first until compatibility reads are added
+
+### Slice 4
+
+- add compatibility reads for migrated legacy files
+- add optional cleanup/prune of local blobs after verification
+
+Status:
+- implemented for private files and partially implemented overall
+- missing-local reads now redirect to remote download grants for app-routed `/files/...` and `/private/files/...` requests
+- private local prune now exists after remote-object verification and owner-context checks
+- `delete_local_after_verification` can prune immediately for eligible private offloads
+- public local prune now exists after canonical public URL rewrite
+- preserving stale old `/files/...` links still needs deployment support
+
+## Decision Summary
+
+The right proposal is:
+
+- one Single DocType page for site storage settings
+- immediate GCS cutover for new Drive-managed uploads
+- separate, explicit, background offload for existing attachment roots
+- strict separation between governed Drive files and legacy non-governed Frappe attachments
+
+That gets you to the original goal of "bucket-backed site files" without breaking the current Drive architecture or inventing unsafe fallback behavior.

@@ -1,181 +1,166 @@
-# Coupling with Ifitwala_Ed
+# Coupling With Ifitwala_Ed
 
-## Non-negotiable position
+Status: LOCKED boundary contract
+Date: 2026-04-21
+Code refs:
+- `ifitwala_ed/api/file_access.py`
+- `ifitwala_ed/integrations/drive/bridge.py`
+- `ifitwala_ed/integrations/drive/media.py`
+- `ifitwala_ed/integrations/drive/workflow_specs.py`
+- `ifitwala_ed/utilities/governed_uploads.py`
+- `ifitwala_drive/api/media.py`
+- `ifitwala_drive/services/integration/ifitwala_ed_media.py`
+- `ifitwala_drive/services/uploads/finalize.py`
+- `ifitwala_drive/services/uploads/sessions.py`
+- `ifitwala_drive/services/files/access.py`
 
-Ifitwala_drive is separate as an app boundary, but **tightly coupled to Ifitwala_Ed at all times**.
+## Bottom line
 
-That means:
+- Ed remains the workflow and permission authority.
+- Drive remains the governed file execution authority.
+- Neither app may reach through the other app's internals to finish its job.
+- Ingress and finalize now follow the locked boundary.
+- Governed derivative scheduling and profile-image delivery now stay on the Drive side of the boundary.
+- Remaining migration work is about removing compatibility baggage, not reopening the boundary.
 
-* Ifitwala_Ed remains the workflow authority.
-* Ifitwala_drive remains the file authority.
-* Neither should drift into the other’s job.
+## 1. The boundary
 
-## Integration rule
+### 1.1 Ed owns
 
-Ifitwala_Ed should stop thinking in:
+- workflow meaning
+- which business record owns the file
+- tenant scope
+- who may upload, replace, open, preview, or delete in product context
+- which post-finalize business mutation should run
 
-* raw `File`
-* raw attachment path
-* generic upload widget
+### 1.2 Drive owns
 
-And start thinking in:
+- upload session lifecycle
+- blob ingress
+- temporary object handling
+- finalize
+- storage identity
+- versions
+- bindings
+- derivatives
+- grants
 
-* Drive resource
-* Drive submission artifact
-* Drive media reference
-* Drive upload session
-* Drive canonical file/ref URL
+## 2. Allowed interactions
 
-## Example integrations
+### 2.1 Session creation
 
-### Task resource
+Ed may ask Drive to create an upload session using a workflow identifier and the workflow-specific business identifiers required to resolve the spec.
 
-Task stores:
+Current rule:
 
-* bound resource IDs / canonical refs
+- new session creation fails closed without `workflow_id`
+- wrapper-specific session metadata must be returned only through `workflow_result`
 
-Drive stores:
+### 2.2 Finalize
 
-* actual file/resource metadata
-* versions
-* folder placement
-* preview state
+Drive finalizes the upload and creates authoritative Drive records.
 
-### Task submission
+Ed participates only through the approved integration surface for:
 
-Task Submission stores:
+- authoritative workflow-spec resolution and validation
+- post-finalize business mutation
 
-* one or more Drive artifact references
+When Ed already holds buffered upload bytes in-process, it may hand those bytes back through the Drive-owned `ingest_upload_session_content(...)` helper.
+That trusted server-side seam must resolve the session from Drive authority and must not require Ed to replay browser upload-token headers.
 
-Drive stores:
+### 2.3 Read/open/preview
 
-* file versions
-* slot `submission`
-* student subject ownership
-* retention metadata
+Ed authorizes the surface-specific action.
 
-This preserves your locked rule that deleting student files must not break grades or analytics.
+Drive issues the download or preview grant.
 
-### Admissions
+## 3. Forbidden interactions
 
-Student Applicant stores:
+### 3.1 Forbidden on the Ed side
 
-* required document refs
-* review state
+Ed must not:
 
-Drive stores:
+- load and mutate `Drive Upload Session` directly as part of upload ingress
+- call Drive storage backends directly
+- write temporary objects into Drive storage
+- rename or move finalized Drive objects
+- generate governed derivatives outside Drive
+- probe storage directly to decide governed display URLs for Drive-managed media
+- treat `File Classification` as authority for new work
 
-* applicant-owned files
-* slots like `identity_passport`, `prior_transcript`, etc.
+### 3.2 Forbidden on the Drive side
 
-### Organization/school media
+Drive must not:
 
-Ifitwala_Ed surfaces continue to use:
+- import Ed dispatcher/file-routing internals to finish governed finalization
+- import Ed image-derivative helpers
+- rely on Ed-local storage paths as file truth
+- treat Ed compatibility projections as primary governance records
 
-* organization media picker
-* governed upload flow
-* canonical references
+## 4. Integration surface direction
 
-This already matches your organization-media extension.
+Target shape:
 
-## UX guidance for coupling
+- one narrow Ed integration module resolves `GovernedUploadSpec` by `workflow_id`
+- one narrow Ed integration module runs post-finalize business mutation by `workflow_id`
+- Drive persists `workflow_id` and `contract_version` on the upload-session contract so finalize does not rediscover workflow meaning ad hoc
 
-### Context first
+This is preferable to many wrapper-specific imports spread across both repos.
 
-Inside Ifitwala_Ed surfaces, users should mostly see:
+Current runtime note:
 
-* Add resource
-* Reuse resource
-* Upload work
-* Replace submission
-* Choose organization media
+- the registry now exists in `ifitwala_ed/integrations/drive/workflow_specs.py`
+- Drive wrapper services now create sessions using `workflow_id` plus workflow-specific identifiers internally
+- the generic session/finalize DTOs now carry `workflow_id`, `contract_version`, and typed `workflow_result`
+- wrapper-specific extras such as `row_name` or admissions item metadata must not leak out as scattered top-level keys
+- Drive also exposes surface-scoped grant wrappers where generic owner-doc checks are not the same as Ed surface authorization, including org-communication attachments, employee images, public website media, and supporting-material previews opened from placement-aware academic surfaces
+- legacy profile-image cleanup is now patch-driven through those same public Drive media wrappers: Ed migration code reimports missing Employee/Student/Guardian profile images via the upload seam and requeues current governed avatar derivatives via the preview-derivative seam instead of adding new runtime repair paths
+- wrapper-specific public endpoints still exist only as ergonomics shims during migration
+- Ed and Drive runtime entrypoints now import only explicit public bridge/API modules; reload fallback wrappers and `sys.path` rescue are retired
 
-not:
+## 5. MIME contract
 
-* “browse bucket”
-* “pick random storage path”
+Ed is responsible for deriving `mime_type_hint` correctly.
 
-### Drive surface when needed
+Rules:
 
-Provide a Drive browser for:
+- use the uploaded file object's MIME when available
+- otherwise fall back to filename-based resolution
+- never forward the multipart transport envelope as the file MIME
 
-* teacher libraries
-* course/shared resources
-* admin search/retrieval
-* organization media management
+Drive remains responsible for inspecting bytes and failing closed on mismatch.
 
----
+## 6. Read contract
 
-# 5) Phased rollout
+For private governed media:
 
-## Phase 0 — foundation
+- Ed decides whether the current user may perform the surface action
+- Drive decides which artifact to serve and issues the grant
 
-Goal:
+The browser must not be taught to guess:
 
-* keep costs low
-* lock architecture
-* stop drift
+- storage paths
+- derivative paths
+- raw private file URLs
 
-Deliverables:
+## 7. Deployment and evolution rule
 
-* Ifitwala_drive app skeleton
-* canonical service boundary
-* upload session model
-* preserved classification/slot model
-* object-storage abstraction
-* Ed integration wrappers
+Because the apps are tightly coupled:
 
-## Phase 1 — first real governed flows
+- cross-app contract changes must land together
+- docs must be updated together
+- tests must cover the shared boundary
+- seam tests must pin buffered-upload token handling and the locked session/finalize DTO shapes
 
-Migrate first:
+But tight coupling is not permission to call each other's internals arbitrarily.
 
-* task resources
-* task submissions
-* applicant documents
-* organization media
+## 8. Remaining migration work
 
-Why these first:
+Current code still shows these transitional behaviors:
 
-* highest product value
-* strongest governance need
-* already partially specified in your docs.
+- Drive still emits native `File` compatibility projections for current Ed surfaces
+- historical `File Classification` rows still require cleanup through the Ed migration patch
+- some older Ed storage-compatibility helpers still exist for historical image fields and copied legacy links, but current governed admissions, communication, planning, learning, and evidence DTOs no longer use `File.file_url` as their primary identity
+- some historical audit/discussion notes may still mention the retired `File Classification` and Ed-side derivative model and must not be treated as runtime design guidance
 
-## Phase 2 — Drive UX
-
-Add:
-
-* teacher resource library
-* shared team/course folders
-* search/filter
-* Drive browser
-* resource reuse flows
-* template/workspace distribution UX
-
-## Phase 3 — processing and optimization
-
-Add only when justified:
-
-* richer previews
-* derivative generation expansion
-* scanning
-* quota dashboards
-* lifecycle automation
-* cost analytics
-
-## Phase 4 — Press-operated scale
-
-When customer count/load justifies it:
-
-* bucket policy automation
-* worker topology by tenant class
-* environment class policy
-* cost and quota surfaces in Ifitwala_Press
-* possible split of services/workers
-
-## Things explicitly not to do too early
-
-* full consumer-grade generic drive clone
-* deep infra complexity before product fit
-* PG-specific over-optimization as architecture center
-* externalized permission graph systems before your simpler ownership/context model is exhausted
-* blind mass file duplication for classroom workflows
+These are migration constraints, not target architecture.

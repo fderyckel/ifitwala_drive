@@ -1,6 +1,5 @@
 import frappe
 
-
 LEGACY_DESK_RECORDS = (
 	("Desktop Icon", "Drive"),
 	("Workspace Sidebar", "Drive"),
