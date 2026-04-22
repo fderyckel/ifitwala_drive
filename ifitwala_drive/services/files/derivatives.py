@@ -28,7 +28,7 @@ _SUPPORTED_IMAGE_PREVIEW_MIME_TYPES = {
 _SUPPORTED_PDF_PREVIEW_MIME_TYPES = {"application/pdf"}
 _IMAGE_DERIVATIVE_SPECS = {
 	"thumb": {
-		"max_width": 400,
+		"max_width": 160,
 		"quality": 78,
 		"output_format": "WEBP",
 		"mime_type": "image/webp",

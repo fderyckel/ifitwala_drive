@@ -17,10 +17,10 @@ def _purge_modules(*prefixes: str) -> None:
 			or module_name.startswith("ifitwala_drive.services.folders")
 			or module_name.startswith("ifitwala_drive.services.files.derivatives")
 			or module_name.startswith("ifitwala_drive.services.files.versions")
+			or module_name == "ifitwala_drive.services.integration._ed_delegate"
 			or module_name.startswith("ifitwala_drive.services.integration.ifitwala_ed_")
-			or module_name.startswith("ifitwala_ed.integrations.drive")
-			or module_name.startswith("ifitwala_ed.utilities.file_")
-			or module_name.startswith("ifitwala_ed.utilities.governed_")
+			or module_name == "ifitwala_ed"
+			or module_name.startswith("ifitwala_ed.")
 		):
 			sys.modules.pop(module_name, None)
 	FakeDoc._insert_counters = {}
@@ -35,6 +35,14 @@ def _ensure_ed_repo_on_path() -> None:
 		ed_repo_root_text = str(ed_repo_root)
 		if ed_repo_root_text not in sys.path:
 			sys.path.insert(0, ed_repo_root_text)
+		return
+
+	if any(
+		module_name == "ifitwala_ed" or module_name.startswith("ifitwala_ed.") for module_name in sys.modules
+	):
+		return
+
+	_install_fake_ifitwala_ed()
 
 
 class FakeDoc:
@@ -312,7 +320,7 @@ def _install_fake_ifitwala_ed():
 			frappe.throw("Missing required field: task_submission")
 		if payload.get("owner_doctype") not in (None, "", "Task Submission"):
 			frappe.throw(
-				"Task Submission upload field 'owner_doctype' does not match the authoritative owner context."
+				"Task Submission owner context does not match the authoritative field 'owner_doctype'."
 			)
 		task_submission_doc = frappe.get_doc("Task Submission", task_submission_name)
 		authoritative = _build_task_submission_upload_contract(task_submission_doc)
@@ -320,7 +328,7 @@ def _install_fake_ifitwala_ed():
 			provided = payload.get(fieldname)
 			if provided not in (None, "", authoritative_value):
 				frappe.throw(
-					"Task Submission upload field '{field_name}' does not match the authoritative owner context.".format(
+					"Task Submission owner context does not match the authoritative field '{field_name}'.".format(
 						field_name=fieldname
 					)
 				)
@@ -411,6 +419,11 @@ def _install_fake_ifitwala_ed():
 	bridge.resolve_upload_session_context = _resolve_upload_session_context
 	bridge.resolve_finalize_contract = _resolve_finalize_contract
 	bridge.run_post_finalize = _run_post_finalize
+	tasks = types.ModuleType("ifitwala_ed.integrations.drive.tasks")
+	tasks.build_task_submission_upload_contract = _build_task_submission_upload_contract
+	tasks.assert_task_submission_upload_access = lambda task_submission, permission_type="write": (
+		frappe.get_doc("Task Submission", task_submission)
+	)
 
 	ifitwala_ed = types.ModuleType("ifitwala_ed")
 	ifitwala_ed.__path__ = [str(ed_package_root)]
@@ -418,6 +431,7 @@ def _install_fake_ifitwala_ed():
 	ifitwala_ed.integrations = integrations
 	integrations.drive = drive_integrations
 	drive_integrations.bridge = bridge
+	drive_integrations.tasks = tasks
 
 	sys.modules["ifitwala_ed"] = ifitwala_ed
 	sys.modules["ifitwala_ed.utilities"] = utilities
@@ -426,6 +440,7 @@ def _install_fake_ifitwala_ed():
 	sys.modules["ifitwala_ed.integrations"] = integrations
 	sys.modules["ifitwala_ed.integrations.drive"] = drive_integrations
 	sys.modules["ifitwala_ed.integrations.drive.bridge"] = bridge
+	sys.modules["ifitwala_ed.integrations.drive.tasks"] = tasks
 
 
 def _load_module(module_name: str):
@@ -708,8 +723,9 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 	_install_fake_ifitwala_ed()
 	module = _load_module("ifitwala_drive.services.uploads.finalize")
 	sys.modules["magic"] = types.SimpleNamespace(
-		from_buffer=lambda content,
-		mime=True: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+		from_buffer=lambda content, mime=True: (
+			"application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+		)
 	)
 	finalized_artifact: dict[str, str] = {}
 
@@ -1632,9 +1648,11 @@ def test_create_drive_file_artifacts_repairs_existing_file_without_current_versi
 	monkeypatch.setattr(
 		module,
 		"ensure_current_drive_file_version",
-		lambda *, drive_file_doc: repair_calls.append(drive_file_doc.name)
-		or setattr(drive_file_doc, "current_version", "DFV-0100")
-		or "DFV-0100",
+		lambda *, drive_file_doc: (
+			repair_calls.append(drive_file_doc.name)
+			or setattr(drive_file_doc, "current_version", "DFV-0100")
+			or "DFV-0100"
+		),
 	)
 	upload_session_doc = FakeDoc(
 		{

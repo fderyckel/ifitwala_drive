@@ -548,8 +548,10 @@ def test_issue_preview_grant_requeues_missing_explicit_thumbnail_derivative(monk
 	monkeypatch.setattr(
 		module,
 		"sync_preview_pipeline_for_current_version",
-		lambda *, drive_file_doc, mime_type: sync_calls.append((drive_file_doc.name, mime_type))
-		or {"preview_status": "ready", "derivative_ids": [], "drive_processing_job_id": "DPJ-0099"},
+		lambda *, drive_file_doc, mime_type: (
+			sync_calls.append((drive_file_doc.name, mime_type))
+			or {"preview_status": "ready", "derivative_ids": [], "drive_processing_job_id": "DPJ-0099"}
+		),
 	)
 
 	try:
@@ -608,15 +610,19 @@ def test_request_preview_derivatives_repairs_missing_current_version_before_sync
 	monkeypatch.setattr(
 		module,
 		"ensure_current_drive_file_version",
-		lambda *, drive_file_doc: repair_calls.append(drive_file_doc.name)
-		or setattr(drive_file_doc, "current_version", "DFV-0011")
-		or "DFV-0011",
+		lambda *, drive_file_doc: (
+			repair_calls.append(drive_file_doc.name)
+			or setattr(drive_file_doc, "current_version", "DFV-0011")
+			or "DFV-0011"
+		),
 	)
 	monkeypatch.setattr(
 		module,
 		"sync_preview_pipeline_for_current_version",
-		lambda *, drive_file_doc, mime_type: sync_calls.append((drive_file_doc.name, mime_type))
-		or {"preview_status": "pending", "derivative_ids": [], "drive_processing_job_id": "DPJ-0011"},
+		lambda *, drive_file_doc, mime_type: (
+			sync_calls.append((drive_file_doc.name, mime_type))
+			or {"preview_status": "pending", "derivative_ids": [], "drive_processing_job_id": "DPJ-0011"}
+		),
 	)
 
 	response = module.request_preview_derivatives_for_doc(
@@ -700,12 +706,14 @@ def test_issue_preview_grant_allows_ready_explicit_derivative_while_primary_prev
 	monkeypatch.setattr(
 		module,
 		"sync_preview_pipeline_for_current_version",
-		lambda *, drive_file_doc, mime_type: sync_calls.append((drive_file_doc.name, mime_type))
-		or {
-			"preview_status": "pending",
-			"derivative_ids": ["DFD-0010"],
-			"drive_processing_job_id": "DPJ-0010",
-		},
+		lambda *, drive_file_doc, mime_type: (
+			sync_calls.append((drive_file_doc.name, mime_type))
+			or {
+				"preview_status": "pending",
+				"derivative_ids": ["DFD-0010"],
+				"drive_processing_job_id": "DPJ-0010",
+			}
+		),
 	)
 	monkeypatch.setattr(module, "resolve_ready_preview_derivative", lambda **kwargs: ready_card)
 	monkeypatch.setattr(

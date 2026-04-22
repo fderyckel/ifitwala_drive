@@ -27,8 +27,8 @@ def _install_fake_frappe(*, conf=None, settings_doc=None):
 	frappe = types.ModuleType("frappe")
 	frappe.conf = conf or {}
 	frappe.local = types.SimpleNamespace(site=(frappe.conf.get("site_name") or "site-a"))
-	frappe.get_cached_doc = (
-		lambda doctype, name=None: settings_doc if doctype == "Drive Storage Settings" else None
+	frappe.get_cached_doc = lambda doctype, name=None: (
+		settings_doc if doctype == "Drive Storage Settings" else None
 	)
 	frappe.get_single = lambda doctype: settings_doc if doctype == "Drive Storage Settings" else None
 	frappe.get_doc = lambda doctype, name=None: settings_doc if doctype == "Drive Storage Settings" else None

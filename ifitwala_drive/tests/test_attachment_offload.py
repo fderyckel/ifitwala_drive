@@ -141,10 +141,8 @@ def _install_fake_frappe(
 	frappe._ = lambda message: message
 	frappe.get_all = _get_all
 	frappe.get_doc = _get_doc
-	frappe.get_cached_doc = (
-		lambda doctype, name=None: settings_doc
-		if doctype == "Drive Storage Settings"
-		else FakeDoc._docs_map[(doctype, name)]
+	frappe.get_cached_doc = lambda doctype, name=None: (
+		settings_doc if doctype == "Drive Storage Settings" else FakeDoc._docs_map[(doctype, name)]
 	)
 	frappe.get_site_path = lambda *parts: str(Path(site_root, *parts))
 	frappe.whitelist = lambda *args, **kwargs: lambda fn: fn

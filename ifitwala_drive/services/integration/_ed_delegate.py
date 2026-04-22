@@ -1,35 +1,22 @@
 from __future__ import annotations
 
+import importlib
+
 import frappe
 from frappe import _
 
 
 def load_ed_drive_module(module_name: str):
 	try:
-		if module_name == "ifitwala_ed.integrations.drive.bridge":
-			from ifitwala_ed.integrations.drive import bridge as ed_bridge_module
-
-			return ed_bridge_module
-		if module_name == "ifitwala_ed.integrations.drive.admissions":
-			from ifitwala_ed.integrations.drive import admissions as ed_admissions_module
-
-			return ed_admissions_module
-		if module_name == "ifitwala_ed.integrations.drive.media":
-			from ifitwala_ed.integrations.drive import media as ed_media_module
-
-			return ed_media_module
-		if module_name == "ifitwala_ed.integrations.drive.materials":
-			from ifitwala_ed.integrations.drive import materials as ed_materials_module
-
-			return ed_materials_module
-		if module_name == "ifitwala_ed.integrations.drive.org_communications":
-			from ifitwala_ed.integrations.drive import org_communications as ed_org_communications_module
-
-			return ed_org_communications_module
-		if module_name == "ifitwala_ed.integrations.drive.tasks":
-			from ifitwala_ed.integrations.drive import tasks as ed_tasks_module
-
-			return ed_tasks_module
+		if module_name in {
+			"ifitwala_ed.integrations.drive.bridge",
+			"ifitwala_ed.integrations.drive.admissions",
+			"ifitwala_ed.integrations.drive.media",
+			"ifitwala_ed.integrations.drive.materials",
+			"ifitwala_ed.integrations.drive.org_communications",
+			"ifitwala_ed.integrations.drive.tasks",
+		}:
+			return importlib.import_module(module_name)
 	except ImportError as exc:
 		frappe.throw(
 			_(

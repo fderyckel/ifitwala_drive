@@ -121,7 +121,7 @@ const locationBadges = computed(() => {
 	if (query.doctype && query.name) badges.push("Context");
 	if (folderSummary.value?.folder_kind) badges.push(folderSummary.value.folder_kind);
 	if (folderSummary.value?.is_private) badges.push("Private");
-	else if (folderSummary.value?.is_private === 0) badges.push("Shared");
+	else if (folderSummary.value?.is_private === false) badges.push("Shared");
 	if (locationUploadActions.value.length) badges.push("Upload enabled");
 	return badges;
 });

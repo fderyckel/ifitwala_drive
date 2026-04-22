@@ -50,8 +50,10 @@ def _purge_modules(*prefixes: str) -> None:
 		if (
 			any(module_name == prefix or module_name.startswith(f"{prefix}.") for prefix in prefixes)
 			or module_name.startswith("ifitwala_drive.services.folders")
+			or module_name == "ifitwala_drive.services.integration._ed_delegate"
 			or module_name.startswith("ifitwala_drive.services.integration.ifitwala_ed_")
-			or module_name.startswith("ifitwala_ed.integrations.drive")
+			or module_name == "ifitwala_ed"
+			or module_name.startswith("ifitwala_ed.")
 		):
 			sys.modules.pop(module_name, None)
 	FakeDoc._insert_counters = {}
@@ -63,6 +65,92 @@ def _ensure_ed_repo_on_path() -> None:
 		ed_repo_root_text = str(ed_repo_root)
 		if ed_repo_root_text not in sys.path:
 			sys.path.insert(0, ed_repo_root_text)
+		return
+
+	if any(
+		module_name == "ifitwala_ed" or module_name.startswith("ifitwala_ed.") for module_name in sys.modules
+	):
+		return
+
+	_install_fake_ifitwala_ed()
+
+
+def _install_fake_ifitwala_ed():
+	import frappe
+
+	ed_package_root = Path(__file__).resolve().parents[2].parent / "ifitwala_ed" / "ifitwala_ed"
+	integrations_package_root = ed_package_root / "integrations"
+	drive_integrations_package_root = integrations_package_root / "drive"
+
+	def _build_org_communication_upload_contract(
+		org_communication_doc,
+		*,
+		row_name: str | None = None,
+	) -> dict[str, object]:
+		resolved_row_name = str(row_name or "row-001")
+		return {
+			"owner_doctype": "Org Communication",
+			"owner_name": org_communication_doc.name,
+			"attached_doctype": "Org Communication",
+			"attached_name": org_communication_doc.name,
+			"organization": getattr(org_communication_doc, "organization", None),
+			"school": getattr(org_communication_doc, "school", None),
+			"primary_subject_type": "Organization",
+			"primary_subject_id": getattr(org_communication_doc, "organization", None),
+			"data_class": "administrative",
+			"purpose": "administrative",
+			"retention_policy": "fixed_7y",
+			"slot": f"communication_attachment__{resolved_row_name}",
+			"row_name": resolved_row_name,
+			"course": None,
+			"student_group": None,
+		}
+
+	def _resolve_upload_session_context(
+		workflow_id: str, workflow_payload: dict[str, object]
+	) -> dict[str, object]:
+		if workflow_id != "org_communication.attachment":
+			raise RuntimeError(f"unexpected workflow_id: {workflow_id}")
+		delegate = importlib.import_module("ifitwala_ed.integrations.drive.org_communications")
+		context = delegate.build_org_communication_upload_contract(
+			frappe.get_doc("Org Communication", workflow_payload.get("org_communication")),
+			row_name=workflow_payload.get("row_name"),
+		)
+		return {
+			**context,
+			"workflow_id": workflow_id,
+			"contract_version": "1",
+			"is_private": 1,
+		}
+
+	org_communications = types.ModuleType("ifitwala_ed.integrations.drive.org_communications")
+	org_communications.assert_org_communication_upload_access = (
+		lambda org_communication, permission_type="write": frappe.get_doc(
+			"Org Communication", org_communication
+		)
+	)
+	org_communications.build_org_communication_upload_contract = _build_org_communication_upload_contract
+
+	bridge = types.ModuleType("ifitwala_ed.integrations.drive.bridge")
+	bridge.resolve_upload_session_context = _resolve_upload_session_context
+
+	integrations = types.ModuleType("ifitwala_ed.integrations")
+	integrations.__path__ = [str(integrations_package_root)]
+	drive_integrations = types.ModuleType("ifitwala_ed.integrations.drive")
+	drive_integrations.__path__ = [str(drive_integrations_package_root)]
+	drive_integrations.bridge = bridge
+	drive_integrations.org_communications = org_communications
+	integrations.drive = drive_integrations
+
+	ifitwala_ed = types.ModuleType("ifitwala_ed")
+	ifitwala_ed.__path__ = [str(ed_package_root)]
+	ifitwala_ed.integrations = integrations
+
+	sys.modules["ifitwala_ed"] = ifitwala_ed
+	sys.modules["ifitwala_ed.integrations"] = integrations
+	sys.modules["ifitwala_ed.integrations.drive"] = drive_integrations
+	sys.modules["ifitwala_ed.integrations.drive.bridge"] = bridge
+	sys.modules["ifitwala_ed.integrations.drive.org_communications"] = org_communications
 
 
 def _install_fake_frappe(*, exists_map=None, value_map=None, docs_map=None):
@@ -180,7 +268,7 @@ def test_upload_org_communication_attachment_uses_class_context_folder():
 	importlib.import_module("ifitwala_ed.integrations.drive")
 	delegate = types.ModuleType("ifitwala_ed.integrations.drive.org_communications")
 	delegate.assert_org_communication_upload_access = (
-		lambda org_communication_name, permission_type="write": org_communication
+		lambda org_communication_name, permission_type="write": (org_communication)
 	)
 	delegate.build_org_communication_upload_contract = lambda doc, row_name=None: {
 		"owner_doctype": "Org Communication",
@@ -245,7 +333,7 @@ def test_upload_org_communication_attachment_uses_school_context_folder_without_
 	importlib.import_module("ifitwala_ed.integrations.drive")
 	delegate = types.ModuleType("ifitwala_ed.integrations.drive.org_communications")
 	delegate.assert_org_communication_upload_access = (
-		lambda org_communication_name, permission_type="write": org_communication
+		lambda org_communication_name, permission_type="write": (org_communication)
 	)
 	delegate.build_org_communication_upload_contract = lambda doc, row_name=None: {
 		"owner_doctype": "Org Communication",
@@ -305,7 +393,7 @@ def test_upload_org_communication_attachment_uses_organization_context_folder_wi
 	importlib.import_module("ifitwala_ed.integrations.drive")
 	delegate = types.ModuleType("ifitwala_ed.integrations.drive.org_communications")
 	delegate.assert_org_communication_upload_access = (
-		lambda org_communication_name, permission_type="write": org_communication
+		lambda org_communication_name, permission_type="write": (org_communication)
 	)
 	delegate.build_org_communication_upload_contract = lambda doc, row_name=None: {
 		"owner_doctype": "Org Communication",
@@ -365,7 +453,7 @@ def test_upload_org_communication_attachment_rejects_incomplete_class_context():
 	importlib.import_module("ifitwala_ed.integrations.drive")
 	delegate = types.ModuleType("ifitwala_ed.integrations.drive.org_communications")
 	delegate.assert_org_communication_upload_access = (
-		lambda org_communication_name, permission_type="write": org_communication
+		lambda org_communication_name, permission_type="write": (org_communication)
 	)
 	delegate.build_org_communication_upload_contract = lambda doc, row_name=None: {
 		"owner_doctype": "Org Communication",
@@ -426,8 +514,8 @@ def test_org_communication_attachment_grant_services_use_ed_authorized_read_cont
 	importlib.import_module("ifitwala_ed.integrations.drive")
 	delegate_calls = []
 	delegate = types.ModuleType("ifitwala_ed.integrations.drive.org_communications")
-	delegate.assert_org_communication_attachment_read_access = (
-		lambda org_communication, row_name: delegate_calls.append((org_communication, row_name))
+	delegate.assert_org_communication_attachment_read_access = lambda org_communication, row_name: (
+		delegate_calls.append((org_communication, row_name))
 		or {
 			"org_communication": "COMM-0001",
 			"row_name": "row-001",

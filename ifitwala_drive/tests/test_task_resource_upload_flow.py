@@ -62,8 +62,10 @@ def _purge_modules(*prefixes: str) -> None:
 		if (
 			any(module_name == prefix or module_name.startswith(f"{prefix}.") for prefix in prefixes)
 			or module_name.startswith("ifitwala_drive.services.folders")
+			or module_name == "ifitwala_drive.services.integration._ed_delegate"
 			or module_name.startswith("ifitwala_drive.services.integration.ifitwala_ed_")
-			or module_name.startswith("ifitwala_ed.integrations.drive")
+			or module_name == "ifitwala_ed"
+			or module_name.startswith("ifitwala_ed.")
 		):
 			sys.modules.pop(module_name, None)
 	FakeDoc._insert_counters = {}
@@ -75,6 +77,143 @@ def _ensure_ed_repo_on_path() -> None:
 		ed_repo_root_text = str(ed_repo_root)
 		if ed_repo_root_text not in sys.path:
 			sys.path.insert(0, ed_repo_root_text)
+		return
+
+	if any(
+		module_name == "ifitwala_ed" or module_name.startswith("ifitwala_ed.") for module_name in sys.modules
+	):
+		return
+
+	_install_fake_ifitwala_ed()
+
+
+def _install_fake_ifitwala_ed():
+	import frappe
+
+	ed_package_root = Path(__file__).resolve().parents[2].parent / "ifitwala_ed" / "ifitwala_ed"
+	integrations_package_root = ed_package_root / "integrations"
+	drive_integrations_package_root = integrations_package_root / "drive"
+
+	def _build_task_resource_upload_contract(task_doc, *, row_name: str | None = None) -> dict[str, object]:
+		course = getattr(task_doc, "default_course", None)
+		school = frappe.db.get_value("Course", course, "school")
+		organization = frappe.db.get_value("School", school, "organization")
+		resolved_row_name = str(row_name or "row-001")
+		return {
+			"owner_doctype": "Task",
+			"owner_name": task_doc.name,
+			"attached_doctype": "Task",
+			"attached_name": task_doc.name,
+			"organization": organization,
+			"school": school,
+			"primary_subject_type": "Organization",
+			"primary_subject_id": organization,
+			"data_class": "academic",
+			"purpose": "learning_resource",
+			"retention_policy": "until_program_end_plus_1y",
+			"slot": f"supporting_material__{resolved_row_name}",
+			"row_name": resolved_row_name,
+			"course": course,
+		}
+
+	def _build_supporting_material_upload_contract(material_doc) -> dict[str, object]:
+		course = getattr(material_doc, "course", None)
+		school = frappe.db.get_value("Course", course, "school")
+		organization = frappe.db.get_value("School", school, "organization")
+		return {
+			"owner_doctype": "Supporting Material",
+			"owner_name": material_doc.name,
+			"attached_doctype": "Supporting Material",
+			"attached_name": material_doc.name,
+			"organization": organization,
+			"school": school,
+			"primary_subject_type": "Organization",
+			"primary_subject_id": organization,
+			"data_class": "academic",
+			"purpose": "learning_resource",
+			"retention_policy": "until_program_end_plus_1y",
+			"slot": "material_file",
+			"course": course,
+		}
+
+	def _run_task_post_finalize(upload_session_doc, created_file) -> dict[str, object]:
+		task_doc = frappe.get_doc("Task", upload_session_doc.owner_name)
+		row_name = str(getattr(upload_session_doc, "intended_slot", "") or "").split("__", 1)[-1]
+		task_doc.append(
+			"attachments",
+			{
+				"name": row_name,
+				"file": created_file.file_url,
+				"file_name": created_file.file_name,
+				"file_size": created_file.file_size,
+				"public": 0,
+				"section_break_sbex": created_file.file_name,
+			},
+		)
+		task_doc.save(ignore_permissions=True)
+		return {"row_name": row_name}
+
+	def _resolve_upload_session_context(
+		workflow_id: str, workflow_payload: dict[str, object]
+	) -> dict[str, object]:
+		if workflow_id == "task.resource":
+			context = _build_task_resource_upload_contract(
+				frappe.get_doc("Task", workflow_payload.get("task")),
+				row_name=workflow_payload.get("row_name"),
+			)
+			return {
+				**context,
+				"workflow_id": workflow_id,
+				"contract_version": "1",
+				"is_private": 1,
+			}
+		if workflow_id == "supporting_material.file":
+			context = _build_supporting_material_upload_contract(
+				frappe.get_doc("Supporting Material", workflow_payload.get("material"))
+			)
+			return {
+				**context,
+				"workflow_id": workflow_id,
+				"contract_version": "1",
+				"is_private": 1,
+			}
+		raise RuntimeError(f"unexpected workflow_id: {workflow_id}")
+
+	tasks = types.ModuleType("ifitwala_ed.integrations.drive.tasks")
+	tasks.build_task_resource_upload_contract = _build_task_resource_upload_contract
+	tasks.assert_task_resource_upload_access = lambda task, permission_type="write": frappe.get_doc(
+		"Task", task
+	)
+	tasks.run_task_post_finalize = _run_task_post_finalize
+
+	materials = types.ModuleType("ifitwala_ed.integrations.drive.materials")
+	materials.build_supporting_material_upload_contract = _build_supporting_material_upload_contract
+	materials.assert_supporting_material_upload_access = lambda material, permission_type="write": (
+		frappe.get_doc("Supporting Material", material)
+	)
+
+	bridge = types.ModuleType("ifitwala_ed.integrations.drive.bridge")
+	bridge.resolve_upload_session_context = _resolve_upload_session_context
+
+	integrations = types.ModuleType("ifitwala_ed.integrations")
+	integrations.__path__ = [str(integrations_package_root)]
+	drive_integrations = types.ModuleType("ifitwala_ed.integrations.drive")
+	drive_integrations.__path__ = [str(drive_integrations_package_root)]
+	drive_integrations.bridge = bridge
+	drive_integrations.tasks = tasks
+	drive_integrations.materials = materials
+	integrations.drive = drive_integrations
+
+	ifitwala_ed = types.ModuleType("ifitwala_ed")
+	ifitwala_ed.__path__ = [str(ed_package_root)]
+	ifitwala_ed.integrations = integrations
+
+	sys.modules["ifitwala_ed"] = ifitwala_ed
+	sys.modules["ifitwala_ed.integrations"] = integrations
+	sys.modules["ifitwala_ed.integrations.drive"] = drive_integrations
+	sys.modules["ifitwala_ed.integrations.drive.bridge"] = bridge
+	sys.modules["ifitwala_ed.integrations.drive.tasks"] = tasks
+	sys.modules["ifitwala_ed.integrations.drive.materials"] = materials
 
 
 def _install_fake_frappe(*, exists_map=None, value_map=None, docs_map=None):
@@ -341,10 +480,8 @@ def test_material_grant_services_use_authorized_delegate_context(monkeypatch):
 	importlib.import_module("ifitwala_ed.integrations.drive")
 	delegate_calls = []
 	delegate = types.ModuleType("ifitwala_ed.integrations.drive.materials")
-	delegate.assert_supporting_material_read_access = (
-		lambda material, placement=None, drive_file_id=None: delegate_calls.append(
-			(material, placement, drive_file_id)
-		)
+	delegate.assert_supporting_material_read_access = lambda material, placement=None, drive_file_id=None: (
+		delegate_calls.append((material, placement, drive_file_id))
 		or {
 			"material": "MAT-0001",
 			"placement": placement,

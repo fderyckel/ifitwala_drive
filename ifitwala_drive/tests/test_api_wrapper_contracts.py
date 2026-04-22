@@ -154,27 +154,27 @@ def test_access_and_upload_wrappers_map_explicit_payloads():
 		recorder: dict[str, object] = {}
 
 		access_module = types.ModuleType("ifitwala_drive.services.files.access")
-		access_module.issue_download_grant_service = lambda payload: recorder.setdefault(
-			"download", payload
-		) or {"status": "ok"}
-		access_module.issue_preview_grant_service = lambda payload: recorder.setdefault(
-			"preview", payload
-		) or {"status": "ok"}
+		access_module.issue_download_grant_service = lambda payload: (
+			recorder.setdefault("download", payload) or {"status": "ok"}
+		)
+		access_module.issue_preview_grant_service = lambda payload: (
+			recorder.setdefault("preview", payload) or {"status": "ok"}
+		)
 		sys.modules["ifitwala_drive.services.files.access"] = access_module
 
 		versions_module = types.ModuleType("ifitwala_drive.services.files.versions")
-		versions_module.replace_drive_file_version_service = lambda payload: recorder.setdefault(
-			"replace", payload
-		) or {"status": "ok"}
+		versions_module.replace_drive_file_version_service = lambda payload: (
+			recorder.setdefault("replace", payload) or {"status": "ok"}
+		)
 		sys.modules["ifitwala_drive.services.files.versions"] = versions_module
 
 		erasure_module = types.ModuleType("ifitwala_drive.services.audit.erasure")
-		erasure_module.create_drive_erasure_request_service = lambda payload: recorder.setdefault(
-			"erasure_create", payload
-		) or {"status": "ok"}
-		erasure_module.execute_drive_erasure_request_service = lambda payload: recorder.setdefault(
-			"erasure_execute", payload
-		) or {"status": "ok"}
+		erasure_module.create_drive_erasure_request_service = lambda payload: (
+			recorder.setdefault("erasure_create", payload) or {"status": "ok"}
+		)
+		erasure_module.execute_drive_erasure_request_service = lambda payload: (
+			recorder.setdefault("erasure_execute", payload) or {"status": "ok"}
+		)
 		sys.modules["ifitwala_drive.services.audit.erasure"] = erasure_module
 
 		legacy_module = types.ModuleType("ifitwala_drive.services.files.legacy_access")
@@ -190,18 +190,18 @@ def test_access_and_upload_wrappers_map_explicit_payloads():
 		sys.modules["ifitwala_drive.services.storage.base"] = storage_module
 
 		finalize_module = types.ModuleType("ifitwala_drive.services.uploads.finalize")
-		finalize_module.finalize_upload_session_service = lambda payload: recorder.setdefault(
-			"finalize", payload
-		) or {"status": "ok"}
+		finalize_module.finalize_upload_session_service = lambda payload: (
+			recorder.setdefault("finalize", payload) or {"status": "ok"}
+		)
 		sys.modules["ifitwala_drive.services.uploads.finalize"] = finalize_module
 
 		sessions_module = types.ModuleType("ifitwala_drive.services.uploads.sessions")
-		sessions_module.create_upload_session_service = lambda payload: recorder.setdefault(
-			"create", payload
-		) or {"status": "ok"}
-		sessions_module.abort_upload_session_service = lambda payload: recorder.setdefault(
-			"abort", payload
-		) or {"status": "ok"}
+		sessions_module.create_upload_session_service = lambda payload: (
+			recorder.setdefault("create", payload) or {"status": "ok"}
+		)
+		sessions_module.abort_upload_session_service = lambda payload: (
+			recorder.setdefault("abort", payload) or {"status": "ok"}
+		)
 		sessions_module.load_upload_contract = lambda *args, **kwargs: {"upload_strategy": "proxy_post"}
 		sys.modules["ifitwala_drive.services.uploads.sessions"] = sessions_module
 
@@ -362,15 +362,15 @@ def test_materials_wrapper_maps_grant_payload():
 		recorder = {}
 		service_module = types.ModuleType("ifitwala_drive.services.integration.ifitwala_ed_materials")
 
-		service_module.upload_supporting_material_service = lambda payload: recorder.setdefault(
-			"upload", payload
-		) or {"status": "ok"}
-		service_module.issue_supporting_material_download_grant_service = lambda payload: recorder.setdefault(
-			"download", payload
-		) or {"status": "ok"}
-		service_module.issue_supporting_material_preview_grant_service = lambda payload: recorder.setdefault(
-			"preview", payload
-		) or {"status": "ok"}
+		service_module.upload_supporting_material_service = lambda payload: (
+			recorder.setdefault("upload", payload) or {"status": "ok"}
+		)
+		service_module.issue_supporting_material_download_grant_service = lambda payload: (
+			recorder.setdefault("download", payload) or {"status": "ok"}
+		)
+		service_module.issue_supporting_material_preview_grant_service = lambda payload: (
+			recorder.setdefault("preview", payload) or {"status": "ok"}
+		)
 		sys.modules["ifitwala_drive.services.integration.ifitwala_ed_materials"] = service_module
 
 		module = _load_module("ifitwala_drive.api.materials")

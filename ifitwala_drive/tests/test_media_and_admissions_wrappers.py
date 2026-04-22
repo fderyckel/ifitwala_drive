@@ -60,8 +60,10 @@ def _purge_modules(*prefixes: str) -> None:
 		if (
 			any(module_name == prefix or module_name.startswith(f"{prefix}.") for prefix in prefixes)
 			or module_name.startswith("ifitwala_drive.services.folders")
+			or module_name == "ifitwala_drive.services.integration._ed_delegate"
 			or module_name.startswith("ifitwala_drive.services.integration.ifitwala_ed_")
-			or module_name.startswith("ifitwala_ed.integrations.drive")
+			or module_name == "ifitwala_ed"
+			or module_name.startswith("ifitwala_ed.")
 		):
 			sys.modules.pop(module_name, None)
 	FakeDoc._insert_counters = {}
@@ -73,6 +75,532 @@ def _ensure_ed_repo_on_path() -> None:
 		ed_repo_root_text = str(ed_repo_root)
 		if ed_repo_root_text not in sys.path:
 			sys.path.insert(0, ed_repo_root_text)
+		return
+
+	if "ifitwala_ed" in sys.modules:
+		return
+
+	_install_fake_ifitwala_ed()
+
+
+def _install_fake_ifitwala_ed():
+	import frappe
+
+	ed_package_root = Path(__file__).resolve().parents[2].parent / "ifitwala_ed" / "ifitwala_ed"
+	utilities_package_root = ed_package_root / "utilities"
+	integrations_package_root = ed_package_root / "integrations"
+	drive_integrations_package_root = integrations_package_root / "drive"
+	admission_package_root = ed_package_root / "admission"
+	api_package_root = ed_package_root / "api"
+
+	profile_image_slot = "profile_image"
+	guardian_profile_image_slot_prefix = "guardian_profile_image__"
+	health_vaccination_slot_prefix = "health_vaccination_proof_"
+
+	def _get_org_from_school(school: str) -> str:
+		organization = frappe.db.get_value("School", school, "organization")
+		if not organization:
+			frappe.throw("Organization is required for file classification.")
+		return organization
+
+	def _build_employee_image_contract(employee_doc) -> dict[str, object]:
+		return {
+			"owner_doctype": "Employee",
+			"owner_name": employee_doc.name,
+			"attached_doctype": "Employee",
+			"attached_name": employee_doc.name,
+			"organization": getattr(employee_doc, "organization", None),
+			"school": getattr(employee_doc, "school", None),
+			"primary_subject_type": "Employee",
+			"primary_subject_id": employee_doc.name,
+			"data_class": "identity_image",
+			"purpose": "employee_profile_display",
+			"retention_policy": "employment_duration_plus_grace",
+			"slot": profile_image_slot,
+		}
+
+	def _build_student_image_contract(student_doc) -> dict[str, object]:
+		school = getattr(student_doc, "anchor_school", None)
+		return {
+			"owner_doctype": "Student",
+			"owner_name": student_doc.name,
+			"attached_doctype": "Student",
+			"attached_name": student_doc.name,
+			"organization": _get_org_from_school(school),
+			"school": school,
+			"primary_subject_type": "Student",
+			"primary_subject_id": student_doc.name,
+			"data_class": "identity_image",
+			"purpose": "student_profile_display",
+			"retention_policy": "until_school_exit_plus_6m",
+			"slot": profile_image_slot,
+		}
+
+	def _build_guardian_image_contract(guardian_doc) -> dict[str, object]:
+		return {
+			"owner_doctype": "Guardian",
+			"owner_name": guardian_doc.name,
+			"attached_doctype": "Guardian",
+			"attached_name": guardian_doc.name,
+			"organization": getattr(guardian_doc, "organization", None),
+			"school": None,
+			"primary_subject_type": "Guardian",
+			"primary_subject_id": guardian_doc.name,
+			"data_class": "identity_image",
+			"purpose": "guardian_profile_display",
+			"retention_policy": "until_school_exit_plus_6m",
+			"slot": profile_image_slot,
+		}
+
+	def _build_organization_media_contract(
+		*,
+		organization: str,
+		slot: str,
+		school: str | None = None,
+		upload_source: str,
+	) -> dict[str, object]:
+		from ifitwala_ed.utilities.organization_media import build_organization_media_classification
+
+		classification = build_organization_media_classification(
+			organization=organization,
+			school=school,
+			slot=slot,
+			upload_source=upload_source,
+		)
+		return {
+			"owner_doctype": "Organization",
+			"owner_name": organization,
+			"attached_doctype": "Organization",
+			"attached_name": organization,
+			"organization": organization,
+			"school": school,
+			"primary_subject_type": classification["primary_subject_type"],
+			"primary_subject_id": classification["primary_subject_id"],
+			"data_class": classification["data_class"],
+			"purpose": classification["purpose"],
+			"retention_policy": classification["retention_policy"],
+			"slot": classification["slot"],
+		}
+
+	def _build_health_vaccination_slot(
+		*,
+		vaccine_name: str | None,
+		date_value: str | None,
+		row_index: int | None = None,
+	) -> str:
+		base = "_".join(
+			part for part in [(vaccine_name or "").strip(), (date_value or "").strip()] if part
+		).strip()
+		if not base:
+			base = f"row_{int(row_index or 0) + 1}"
+		return f"{health_vaccination_slot_prefix}{frappe.scrub(base)[:80]}"
+
+	def _get_student_applicant_scope(student_applicant: str) -> dict[str, object]:
+		applicant_row = (
+			frappe.db.get_value(
+				"Student Applicant",
+				student_applicant,
+				["organization", "school"],
+				as_dict=True,
+			)
+			or {}
+		)
+		if not applicant_row.get("organization") or not applicant_row.get("school"):
+			frappe.throw("Student Applicant must have organization and school.")
+		return applicant_row
+
+	def _get_applicant_document_context(payload: dict[str, object]) -> dict[str, object]:
+		admission_api = importlib.import_module("ifitwala_ed.admission.admissions_portal")
+		get_applicant_document_slot_spec = importlib.import_module(
+			"ifitwala_ed.admission.admission_utils"
+		).get_applicant_document_slot_spec
+
+		doc = admission_api._resolve_applicant_document(
+			applicant_document=payload.get("applicant_document"),
+			student_applicant=payload.get("student_applicant"),
+			document_type=payload.get("document_type"),
+		)
+		item_doc = admission_api._resolve_applicant_document_item(
+			applicant_document=doc,
+			applicant_document_item=payload.get("applicant_document_item"),
+			item_key=payload.get("item_key"),
+			item_label=payload.get("item_label"),
+			fallback_label=payload.get("filename_original"),
+		)
+		document_type_code = (
+			frappe.db.get_value("Applicant Document Type", doc.document_type, "code") or doc.document_type
+		)
+		slot_spec = get_applicant_document_slot_spec(
+			document_type=doc.document_type,
+			doc_type_code=document_type_code,
+		)
+		applicant_row = _get_student_applicant_scope(doc.student_applicant)
+		return {
+			"owner_doctype": "Student Applicant",
+			"owner_name": doc.student_applicant,
+			"attached_doctype": "Applicant Document Item",
+			"attached_name": item_doc.name,
+			"organization": applicant_row["organization"],
+			"school": applicant_row["school"],
+			"primary_subject_type": "Student Applicant",
+			"primary_subject_id": doc.student_applicant,
+			"data_class": slot_spec["data_class"],
+			"purpose": slot_spec["purpose"],
+			"retention_policy": slot_spec["retention_policy"],
+			"slot": f"{slot_spec['slot']}_{frappe.scrub(item_doc.item_key)[:80]}",
+			"applicant_document": doc.name,
+			"applicant_document_item": item_doc.name,
+			"item_key": item_doc.item_key,
+			"item_label": item_doc.item_label,
+			"document_type": doc.document_type,
+			"document_type_code": document_type_code,
+		}
+
+	def _get_applicant_health_vaccination_context(payload: dict[str, object]) -> dict[str, object]:
+		health_row = (
+			frappe.db.get_value(
+				"Applicant Health Profile",
+				payload.get("applicant_health_profile"),
+				["name", "student_applicant"],
+				as_dict=True,
+			)
+			or {}
+		)
+		applicant_row = _get_student_applicant_scope(str(payload.get("student_applicant") or ""))
+		return {
+			"owner_doctype": "Student Applicant",
+			"owner_name": payload.get("student_applicant"),
+			"attached_doctype": "Applicant Health Profile",
+			"attached_name": health_row["name"],
+			"organization": applicant_row["organization"],
+			"school": applicant_row["school"],
+			"primary_subject_type": "Student Applicant",
+			"primary_subject_id": payload.get("student_applicant"),
+			"data_class": "safeguarding",
+			"purpose": "medical_record",
+			"retention_policy": "until_school_exit_plus_6m",
+			"slot": _build_health_vaccination_slot(
+				vaccine_name=str(payload.get("vaccine_name") or ""),
+				date_value=str(payload.get("date") or ""),
+				row_index=payload.get("row_index"),
+			),
+		}
+
+	def _get_applicant_profile_image_context(payload: dict[str, object]) -> dict[str, object]:
+		applicant_row = _get_student_applicant_scope(str(payload.get("student_applicant") or ""))
+		return {
+			"owner_doctype": "Student Applicant",
+			"owner_name": payload.get("student_applicant"),
+			"attached_doctype": "Student Applicant",
+			"attached_name": payload.get("student_applicant"),
+			"organization": applicant_row["organization"],
+			"school": applicant_row["school"],
+			"primary_subject_type": "Student Applicant",
+			"primary_subject_id": payload.get("student_applicant"),
+			"data_class": "identity_image",
+			"purpose": "applicant_profile_display",
+			"retention_policy": "until_school_exit_plus_6m",
+			"slot": profile_image_slot,
+		}
+
+	def _get_applicant_guardian_image_context(payload: dict[str, object]) -> dict[str, object]:
+		guardian_row_name = str(payload.get("guardian_row_name") or "")
+		applicant_row = _get_student_applicant_scope(str(payload.get("student_applicant") or ""))
+		return {
+			"owner_doctype": "Student Applicant",
+			"owner_name": payload.get("student_applicant"),
+			"attached_doctype": "Student Applicant Guardian",
+			"attached_name": guardian_row_name,
+			"organization": applicant_row["organization"],
+			"school": applicant_row["school"],
+			"primary_subject_type": "Student Applicant",
+			"primary_subject_id": payload.get("student_applicant"),
+			"data_class": "identity_image",
+			"purpose": "applicant_profile_display",
+			"retention_policy": "until_school_exit_plus_6m",
+			"slot": f"{guardian_profile_image_slot_prefix}{frappe.scrub(guardian_row_name)[:80]}",
+		}
+
+	def _get_admissions_attached_field_override(upload_session_doc) -> str | None:
+		if (
+			getattr(upload_session_doc, "owner_doctype", None) == "Student Applicant"
+			and getattr(upload_session_doc, "attached_doctype", None) == "Applicant Health Profile"
+			and str(getattr(upload_session_doc, "intended_slot", "") or "").startswith(
+				health_vaccination_slot_prefix
+			)
+		):
+			return "vaccinations"
+		if (
+			getattr(upload_session_doc, "owner_doctype", None) == "Student Applicant"
+			and getattr(upload_session_doc, "attached_doctype", None) == "Student Applicant"
+			and getattr(upload_session_doc, "intended_slot", None) == profile_image_slot
+		):
+			return "applicant_image"
+		if (
+			getattr(upload_session_doc, "owner_doctype", None) == "Student Applicant"
+			and getattr(upload_session_doc, "attached_doctype", None) == "Student Applicant Guardian"
+			and str(getattr(upload_session_doc, "intended_slot", "") or "").startswith(
+				guardian_profile_image_slot_prefix
+			)
+		):
+			return "guardian_image"
+		return None
+
+	def _get_drive_file_for_file(file_name: str):
+		rows = frappe.get_all(
+			"Drive File",
+			fields=["name"],
+			filters={"file": file_name},
+			limit=1,
+		)
+		if not rows:
+			frappe.throw(f"Drive File not found for File {file_name}")
+		first_row = rows[0]
+		drive_file_name = first_row["name"] if isinstance(first_row, dict) else first_row
+		return frappe.get_doc("Drive File", drive_file_name)
+
+	def _run_media_post_finalize(upload_session_doc, created_file) -> dict[str, object]:
+		file_url = getattr(created_file, "file_url", None)
+		if upload_session_doc.owner_doctype == "Employee":
+			frappe.db.set_value(
+				"Employee",
+				upload_session_doc.owner_name,
+				"employee_image",
+				file_url,
+				update_modified=False,
+			)
+			return {"file_url": file_url}
+		if upload_session_doc.owner_doctype == "Student":
+			frappe.db.set_value(
+				"Student",
+				upload_session_doc.owner_name,
+				"student_image",
+				file_url,
+				update_modified=False,
+			)
+			invalidate_cache = getattr(
+				importlib.import_module("ifitwala_ed.api.portal"),
+				"invalidate_student_portal_identity_cache",
+				None,
+			)
+			if callable(invalidate_cache):
+				invalidate_cache(student=upload_session_doc.owner_name)
+			return {"file_url": file_url}
+		if upload_session_doc.owner_doctype == "Guardian":
+			frappe.db.set_value(
+				"Guardian",
+				upload_session_doc.owner_name,
+				{
+					"guardian_image": file_url,
+					"organization": upload_session_doc.organization,
+				},
+				update_modified=False,
+			)
+			return {"file_url": file_url}
+		return {"file_url": file_url}
+
+	def _run_admissions_post_finalize(upload_session_doc, created_file) -> dict[str, object]:
+		drive_file_doc = _get_drive_file_for_file(created_file.name)
+		response = {
+			"drive_file_id": drive_file_doc.name,
+			"canonical_ref": getattr(drive_file_doc, "canonical_ref", None),
+		}
+		file_url = getattr(created_file, "file_url", None)
+		if file_url:
+			response["file_url"] = file_url
+
+		attached_doctype = getattr(upload_session_doc, "attached_doctype", None)
+		intended_slot = str(getattr(upload_session_doc, "intended_slot", "") or "")
+		if attached_doctype == "Applicant Document Item":
+			frappe.db.set_value(
+				"Applicant Document Item",
+				upload_session_doc.attached_name,
+				"review_status",
+				None,
+				update_modified=False,
+			)
+			response["applicant_document_item"] = upload_session_doc.attached_name
+			return response
+		if attached_doctype == "Student Applicant" and intended_slot == profile_image_slot:
+			frappe.db.set_value(
+				"Student Applicant",
+				upload_session_doc.owner_name,
+				"applicant_image",
+				file_url,
+				update_modified=False,
+			)
+			return response
+		if attached_doctype == "Student Applicant Guardian" and intended_slot.startswith(
+			guardian_profile_image_slot_prefix
+		):
+			frappe.db.set_value(
+				"Student Applicant Guardian",
+				upload_session_doc.attached_name,
+				"guardian_image",
+				file_url,
+				update_modified=False,
+			)
+			response["guardian_row_name"] = upload_session_doc.attached_name
+			return response
+		if attached_doctype == "Applicant Health Profile" and intended_slot.startswith(
+			health_vaccination_slot_prefix
+		):
+			response["applicant_health_profile"] = upload_session_doc.attached_name
+			return response
+		return response
+
+	def _resolve_upload_session_context(
+		workflow_id: str, workflow_payload: dict[str, object]
+	) -> dict[str, object]:
+		if workflow_id == "media.employee_profile_image":
+			context = _build_employee_image_contract(
+				frappe.get_doc("Employee", workflow_payload.get("employee"))
+			)
+			is_private = 1
+		elif workflow_id == "media.student_profile_image":
+			context = _build_student_image_contract(
+				frappe.get_doc("Student", workflow_payload.get("student"))
+			)
+			is_private = 1
+		elif workflow_id == "media.guardian_profile_image":
+			context = _build_guardian_image_contract(
+				frappe.get_doc("Guardian", workflow_payload.get("guardian"))
+			)
+			is_private = 1
+		elif workflow_id == "organization_media.organization_logo":
+			from ifitwala_ed.utilities.organization_media import build_organization_logo_slot
+
+			context = _build_organization_media_contract(
+				organization=str(workflow_payload.get("organization") or ""),
+				slot=build_organization_logo_slot(str(workflow_payload.get("organization") or "")),
+				school=None,
+				upload_source=str(workflow_payload.get("upload_source") or "Desk"),
+			)
+			is_private = 0
+		elif workflow_id == "admissions.applicant_document":
+			context = _get_applicant_document_context(workflow_payload)
+			is_private = 1
+		elif workflow_id == "admissions.applicant_profile_image":
+			context = _get_applicant_profile_image_context(workflow_payload)
+			is_private = 1
+		elif workflow_id == "admissions.applicant_guardian_image":
+			context = _get_applicant_guardian_image_context(workflow_payload)
+			is_private = 1
+		elif workflow_id == "admissions.applicant_health_vaccination":
+			context = _get_applicant_health_vaccination_context(workflow_payload)
+			is_private = 1
+		else:
+			raise RuntimeError(f"unexpected workflow_id: {workflow_id}")
+
+		return {
+			**context,
+			"workflow_id": workflow_id,
+			"contract_version": "1",
+			"is_private": is_private,
+		}
+
+	organization_media = sys.modules.get("ifitwala_ed.utilities.organization_media")
+	if organization_media is None:
+		organization_media = types.ModuleType("ifitwala_ed.utilities.organization_media")
+		organization_media.build_organization_logo_slot = lambda organization: (
+			f"organization_logo__{frappe.scrub(organization)[:80]}"
+		)
+		organization_media.build_organization_media_classification = lambda **kwargs: {
+			"primary_subject_type": "Organization",
+			"primary_subject_id": kwargs["organization"],
+			"data_class": "operational",
+			"purpose": "organization_public_media",
+			"retention_policy": "immediate_on_request",
+			"slot": kwargs["slot"],
+		}
+
+	api_portal = sys.modules.get("ifitwala_ed.api.portal")
+	if api_portal is None:
+		api_portal = types.ModuleType("ifitwala_ed.api.portal")
+		api_portal.invalidate_student_portal_identity_cache = lambda **kwargs: None
+
+	admissions_portal = sys.modules.get("ifitwala_ed.admission.admissions_portal")
+	if admissions_portal is None:
+		admissions_portal = types.ModuleType("ifitwala_ed.admission.admissions_portal")
+		admissions_portal._resolve_applicant_document = lambda **kwargs: (_ for _ in ()).throw(
+			RuntimeError("Applicant document test delegate is not installed.")
+		)
+		admissions_portal._resolve_applicant_document_item = lambda **kwargs: (_ for _ in ()).throw(
+			RuntimeError("Applicant document test delegate is not installed.")
+		)
+
+	admission_utils = sys.modules.get("ifitwala_ed.admission.admission_utils")
+	if admission_utils is None:
+		admission_utils = types.ModuleType("ifitwala_ed.admission.admission_utils")
+		admission_utils.get_applicant_document_slot_spec = lambda **kwargs: {
+			"slot": "identity_document",
+			"data_class": "legal",
+			"purpose": "identification_document",
+			"retention_policy": "until_school_exit_plus_6m",
+		}
+
+	media = types.ModuleType("ifitwala_ed.integrations.drive.media")
+	media.build_employee_image_contract = _build_employee_image_contract
+	media.build_student_image_contract = _build_student_image_contract
+	media.build_guardian_image_contract = _build_guardian_image_contract
+	media.build_organization_media_contract = _build_organization_media_contract
+	media.run_media_post_finalize = _run_media_post_finalize
+
+	admissions = types.ModuleType("ifitwala_ed.integrations.drive.admissions")
+	admissions.get_applicant_document_context = _get_applicant_document_context
+	admissions.get_applicant_health_vaccination_context = _get_applicant_health_vaccination_context
+	admissions.get_applicant_profile_image_context = _get_applicant_profile_image_context
+	admissions.get_applicant_guardian_image_context = _get_applicant_guardian_image_context
+	admissions.get_admissions_attached_field_override = _get_admissions_attached_field_override
+	admissions.run_admissions_post_finalize = _run_admissions_post_finalize
+
+	bridge = types.ModuleType("ifitwala_ed.integrations.drive.bridge")
+	bridge.resolve_upload_session_context = _resolve_upload_session_context
+
+	utilities = sys.modules.get("ifitwala_ed.utilities") or types.ModuleType("ifitwala_ed.utilities")
+	utilities.__path__ = [str(utilities_package_root)]
+	utilities.organization_media = organization_media
+
+	admission = sys.modules.get("ifitwala_ed.admission") or types.ModuleType("ifitwala_ed.admission")
+	admission.__path__ = [str(admission_package_root)]
+	admission.admissions_portal = admissions_portal
+	admission.admission_utils = admission_utils
+
+	api = sys.modules.get("ifitwala_ed.api") or types.ModuleType("ifitwala_ed.api")
+	api.__path__ = [str(api_package_root)]
+	api.portal = api_portal
+
+	integrations = sys.modules.get("ifitwala_ed.integrations") or types.ModuleType("ifitwala_ed.integrations")
+	integrations.__path__ = [str(integrations_package_root)]
+	drive_integrations = sys.modules.get("ifitwala_ed.integrations.drive") or types.ModuleType(
+		"ifitwala_ed.integrations.drive"
+	)
+	drive_integrations.__path__ = [str(drive_integrations_package_root)]
+	drive_integrations.bridge = bridge
+	drive_integrations.media = media
+	drive_integrations.admissions = admissions
+	integrations.drive = drive_integrations
+
+	ifitwala_ed = sys.modules.get("ifitwala_ed") or types.ModuleType("ifitwala_ed")
+	ifitwala_ed.__path__ = [str(ed_package_root)]
+	ifitwala_ed.utilities = utilities
+	ifitwala_ed.admission = admission
+	ifitwala_ed.api = api
+	ifitwala_ed.integrations = integrations
+
+	sys.modules["ifitwala_ed"] = ifitwala_ed
+	sys.modules["ifitwala_ed.utilities"] = utilities
+	sys.modules["ifitwala_ed.utilities.organization_media"] = organization_media
+	sys.modules["ifitwala_ed.admission"] = admission
+	sys.modules["ifitwala_ed.admission.admissions_portal"] = admissions_portal
+	sys.modules["ifitwala_ed.admission.admission_utils"] = admission_utils
+	sys.modules["ifitwala_ed.api"] = api
+	sys.modules["ifitwala_ed.api.portal"] = api_portal
+	sys.modules["ifitwala_ed.integrations"] = integrations
+	sys.modules["ifitwala_ed.integrations.drive"] = drive_integrations
+	sys.modules["ifitwala_ed.integrations.drive.bridge"] = bridge
+	sys.modules["ifitwala_ed.integrations.drive.media"] = media
+	sys.modules["ifitwala_ed.integrations.drive.admissions"] = admissions
 
 
 def _install_fake_frappe(*, exists_map=None, value_map=None, docs_map=None):
