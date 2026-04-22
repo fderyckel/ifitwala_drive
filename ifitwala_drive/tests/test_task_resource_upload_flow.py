@@ -148,7 +148,11 @@ def _install_fake_sessions(recorder):
 
 	def create_upload_session_service(payload):
 		recorder["payload"] = payload
-		return {"upload_session_id": "DUS-0001", "status": "created"}
+		return {
+			"upload_session_id": "DUS-0001",
+			"status": "created",
+			"workflow_result": payload.get("workflow_result") or {},
+		}
 
 	module.create_upload_session_service = create_upload_session_service
 	sys.modules["ifitwala_drive.services.uploads.sessions"] = module
@@ -190,7 +194,7 @@ def test_upload_task_resource_uses_task_contract_and_course_folder():
 	)
 
 	assert response["upload_session_id"] == "DUS-0001"
-	assert response["row_name"]
+	assert response["workflow_result"]["row_name"]
 	assert recorder["payload"]["owner_doctype"] == "Task"
 	assert recorder["payload"]["attached_doctype"] == "Task"
 	assert recorder["payload"]["attached_name"] == "TASK-0001"

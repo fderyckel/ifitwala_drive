@@ -540,6 +540,13 @@ def test_dry_run_local_prune_blocks_public_and_allows_private(monkeypatch):
 			backend_name="gcs", storage_mode="gcs_primary_with_local_fallback", base_prefix="sites/site-a"
 		),
 	)
+	monkeypatch.setattr(
+		module,
+		"build_canonical_public_file_url",
+		lambda *, file_id, storage_backend, object_key: (
+			f"/api/method/ifitwala_drive.api.access.redirect_public_file?file_id={file_id}"
+		),
+	)
 
 	class FakeStorage:
 		def read_object_metadata(self, *, object_key: str):
@@ -553,7 +560,7 @@ def test_dry_run_local_prune_blocks_public_and_allows_private(monkeypatch):
 		def build_public_object_url(self, *, object_key: str):
 			return None
 
-		monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
+	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
 
 	response = module.dry_run_local_prune_service(settings_doc=settings)
 

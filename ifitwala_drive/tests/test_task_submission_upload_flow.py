@@ -15,6 +15,8 @@ def _purge_modules(*prefixes: str) -> None:
 		if (
 			any(module_name == prefix or module_name.startswith(f"{prefix}.") for prefix in prefixes)
 			or module_name.startswith("ifitwala_drive.services.folders")
+			or module_name.startswith("ifitwala_drive.services.files.derivatives")
+			or module_name.startswith("ifitwala_drive.services.files.versions")
 			or module_name.startswith("ifitwala_drive.services.integration.ifitwala_ed_")
 			or module_name.startswith("ifitwala_ed.integrations.drive")
 			or module_name.startswith("ifitwala_ed.utilities.file_")
@@ -1529,13 +1531,24 @@ def test_create_drive_file_artifacts_recovers_from_duplicate_inserts():
 			"current_version": "DFV-0099",
 		}
 	)
+	existing_drive_file_version = FakeDoc(
+		{
+			"doctype": "Drive File Version",
+			"name": "DFV-0099",
+			"drive_file": "DF-0099",
+			"version_no": 1,
+			"is_current": 1,
+			"file": "FILE-0001",
+			"storage_object_key": "files/ab/cd/object.docx",
+		}
+	)
 	_install_fake_frappe(
 		docs_map={},
 		duplicate_insert_once={
 			"Drive File": 1,
 		},
 		duplicate_insert_materialized_docs={
-			"Drive File": existing_drive_file,
+			"Drive File": [existing_drive_file, existing_drive_file_version],
 		},
 	)
 	module = _load_module("ifitwala_drive.services.files.creation")

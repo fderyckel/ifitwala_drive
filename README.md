@@ -87,6 +87,11 @@ This runs:
 - `ruff format --check`
 - the full Python test suite currently checked into `ifitwala_drive/tests`
 
+The Python suite is `pytest`-based. In a Bench environment, install the test
+extra (or at minimum `pytest`) into the bench Python environment and run
+`python -m pytest`, not `bench --site <site> run-tests`, for these repo-level
+unit tests.
+
 GitHub Actions runs separate CI jobs for Ruff, the full Python suite, and the frontend type-check/build path for pull requests targeting `main` and for pushes to `main`.
 
 ### Frontend Build

@@ -9,7 +9,11 @@ from typing import ClassVar
 
 def _purge_modules(*prefixes: str) -> None:
 	for module_name in list(sys.modules):
-		if any(module_name == prefix or module_name.startswith(f"{prefix}.") for prefix in prefixes):
+		if (
+			any(module_name == prefix or module_name.startswith(f"{prefix}.") for prefix in prefixes)
+			or module_name.startswith("ifitwala_drive.services.files.derivatives")
+			or module_name.startswith("ifitwala_drive.services.files.versions")
+		):
 			sys.modules.pop(module_name, None)
 
 
@@ -37,6 +41,7 @@ class FakeDoc:
 		doctype = getattr(self, "doctype", "")
 		if not getattr(self, "name", None):
 			prefix_map = {
+				"Drive File Version": "DFV",
 				"Drive File Derivative": "DFD",
 				"Drive Processing Job": "DPJ",
 			}
@@ -288,14 +293,21 @@ def test_issue_preview_grant_uses_ready_derivative_when_present(monkeypatch):
 			"owner_name": "TSUB-0001",
 			"file": "FILE-0004",
 			"current_version": "DFV-0004",
-			"display_name": "policy.pdf",
+			"display_name": "policy.png",
 			"storage_backend": "gcs",
-			"storage_object_key": "files/original/policy.pdf",
+			"storage_object_key": "files/original/policy.png",
 		}
 	)
 	task_submission = FakeDoc({"name": "TSUB-0001"})
+	version_doc = FakeDoc(
+		{
+			"name": "DFV-0004",
+			"drive_file": "DF-0004",
+			"mime_type": "image/png",
+		}
+	)
 	file_doc = FakeDoc(
-		{"name": "FILE-0004", "file_url": "https://storage.ifitwala.invalid/original/policy.pdf"}
+		{"name": "FILE-0004", "file_url": "https://storage.ifitwala.invalid/original/policy.png"}
 	)
 	derivative_doc = FakeDoc(
 		{
@@ -312,6 +324,7 @@ def test_issue_preview_grant_uses_ready_derivative_when_present(monkeypatch):
 		docs_map={
 			("Drive File", "DF-0004"): drive_file,
 			("Task Submission", "TSUB-0001"): task_submission,
+			("Drive File Version", "DFV-0004"): version_doc,
 			("File", "FILE-0004"): file_doc,
 			("Drive File Derivative", "DFD-0001"): derivative_doc,
 		},
@@ -325,7 +338,7 @@ def test_issue_preview_grant_uses_ready_derivative_when_present(monkeypatch):
 		def issue_preview_grant(self, *, object_key, file_url, expires_on, filename=None):
 			assert object_key == "derivatives/policy/viewer-preview.webp"
 			assert file_url is None
-			assert filename == "policy.pdf"
+			assert filename == "policy.png"
 			return {"grant_type": "signed_url", "url": "https://preview.invalid/policy.webp"}
 
 	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
@@ -881,7 +894,7 @@ def test_issue_preview_grant_uses_explicit_pdf_card_derivative_when_requested(mo
 	}
 
 
-def test_issue_preview_grant_falls_back_to_original_object_when_no_ready_derivative(monkeypatch):
+def test_issue_preview_grant_falls_back_to_original_object_for_unsupported_preview_mime(monkeypatch):
 	_purge_modules(
 		"frappe",
 		"ifitwala_drive.services.audit.events",
@@ -897,19 +910,27 @@ def test_issue_preview_grant_falls_back_to_original_object_when_no_ready_derivat
 			"owner_name": "TSUB-0001",
 			"file": "FILE-0005",
 			"current_version": "DFV-0005",
-			"display_name": "policy.pdf",
+			"display_name": "policy.txt",
 			"storage_backend": "gcs",
-			"storage_object_key": "files/original/policy.pdf",
+			"storage_object_key": "files/original/policy.txt",
 		}
 	)
 	task_submission = FakeDoc({"name": "TSUB-0001"})
+	version_doc = FakeDoc(
+		{
+			"name": "DFV-0005",
+			"drive_file": "DF-0005",
+			"mime_type": "text/plain",
+		}
+	)
 	file_doc = FakeDoc(
-		{"name": "FILE-0005", "file_url": "https://storage.ifitwala.invalid/original/policy.pdf"}
+		{"name": "FILE-0005", "file_url": "https://storage.ifitwala.invalid/original/policy.txt"}
 	)
 	_install_fake_frappe(
 		docs_map={
 			("Drive File", "DF-0005"): drive_file,
 			("Task Submission", "TSUB-0001"): task_submission,
+			("Drive File Version", "DFV-0005"): version_doc,
 			("File", "FILE-0005"): file_doc,
 		},
 	)
@@ -920,18 +941,19 @@ def test_issue_preview_grant_falls_back_to_original_object_when_no_ready_derivat
 			raise AssertionError("Download grant should not be issued in this test.")
 
 		def issue_preview_grant(self, *, object_key, file_url, expires_on, filename=None):
-			assert object_key == "files/original/policy.pdf"
-			assert file_url == "https://storage.ifitwala.invalid/original/policy.pdf"
-			assert filename == "policy.pdf"
-			return {"grant_type": "signed_url", "url": "https://preview.invalid/original.pdf"}
+			assert object_key == "files/original/policy.txt"
+			assert file_url == "https://storage.ifitwala.invalid/original/policy.txt"
+			assert filename == "policy.txt"
+			return {"grant_type": "signed_url", "url": "https://preview.invalid/original.txt"}
 
+	monkeypatch.setattr(module, "_ensure_preview_pipeline_requested", lambda *, doc, payload=None: False)
 	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
 
 	response = module.issue_preview_grant_service({"drive_file_id": "DF-0005"})
 
 	assert response == {
 		"grant_type": "signed_url",
-		"url": "https://preview.invalid/original.pdf",
+		"url": "https://preview.invalid/original.txt",
 		"expires_on": "2026-03-19 10:10:00",
 		"preview_status": "ready",
 	}

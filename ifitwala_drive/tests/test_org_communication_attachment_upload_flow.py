@@ -136,7 +136,11 @@ def _install_fake_sessions(recorder):
 
 	def create_upload_session_service(payload):
 		recorder["payload"] = payload
-		return {"upload_session_id": "DUS-0001", "status": "created"}
+		return {
+			"upload_session_id": "DUS-0001",
+			"status": "created",
+			"workflow_result": payload.get("workflow_result") or {},
+		}
 
 	module.create_upload_session_service = create_upload_session_service
 	sys.modules["ifitwala_drive.services.uploads.sessions"] = module
@@ -208,7 +212,7 @@ def test_upload_org_communication_attachment_uses_class_context_folder():
 	)
 
 	assert response["upload_session_id"] == "DUS-0001"
-	assert response["row_name"] == "row-001"
+	assert response["workflow_result"]["row_name"] == "row-001"
 	assert recorder["payload"]["owner_doctype"] == "Org Communication"
 	assert recorder["payload"]["attached_doctype"] == "Org Communication"
 	assert recorder["payload"]["organization"] == "ORG-0001"
@@ -273,7 +277,7 @@ def test_upload_org_communication_attachment_uses_school_context_folder_without_
 	)
 
 	assert response["upload_session_id"] == "DUS-0001"
-	assert response["row_name"] == "row-002"
+	assert response["workflow_result"]["row_name"] == "row-002"
 	assert recorder["payload"]["organization"] == "ORG-0001"
 	assert recorder["payload"]["school"] == "SCH-0002"
 	assert recorder["payload"]["slot"] == "communication_attachment__row-002"
@@ -333,7 +337,7 @@ def test_upload_org_communication_attachment_uses_organization_context_folder_wi
 	)
 
 	assert response["upload_session_id"] == "DUS-0001"
-	assert response["row_name"] == "row-003"
+	assert response["workflow_result"]["row_name"] == "row-003"
 	assert recorder["payload"]["organization"] == "ORG-0001"
 	assert recorder["payload"]["school"] is None
 	assert recorder["payload"]["slot"] == "communication_attachment__row-003"
