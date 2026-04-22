@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
 from typing import Any
 
 import frappe
@@ -73,8 +72,8 @@ def ensure_native_file_projection(
 			finalize_contract=finalize_contract,
 		)
 	)
-	if not getattr(file_doc, "flags", None):
-		file_doc.flags = SimpleNamespace()
+	if getattr(file_doc, "flags", None) is None:
+		file_doc.flags = frappe._dict()
 	file_doc.flags.governed_upload = True
 	# Skip Ed's legacy route/derivative hooks for Drive-managed compatibility rows.
 	file_doc.flags.drive_compat_projection = True

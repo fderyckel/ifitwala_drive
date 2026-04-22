@@ -46,6 +46,8 @@ class FakeDoc:
 	def __init__(self, data=None):
 		for key, value in (data or {}).items():
 			setattr(self, key, value)
+		if not hasattr(self, "flags"):
+			self.flags = FakeFlags()
 		self.saved = 0
 		self.inserted = 0
 
@@ -92,6 +94,17 @@ class FakeDoc:
 
 class DuplicateEntryError(Exception):
 	pass
+
+
+class FakeFlags(dict):
+	def __getattr__(self, key):
+		try:
+			return self[key]
+		except KeyError as exc:
+			raise AttributeError(key) from exc
+
+	def __setattr__(self, key, value):
+		self[key] = value
 
 
 def _install_fake_frappe(
@@ -765,6 +778,7 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 		"file_size": 543210,
 	}
 	created_file = FakeDoc._docs_map[("File", "FILE-0001")]
+	assert isinstance(created_file.flags, FakeFlags)
 	assert getattr(created_file.flags, "governed_upload", False) is True
 	assert getattr(created_file.flags, "drive_compat_projection", False) is True
 

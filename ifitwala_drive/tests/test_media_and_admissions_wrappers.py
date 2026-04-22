@@ -218,6 +218,7 @@ def test_media_api_exports_expected_wrappers_and_delegates():
 		"issue_guardian_image_download_grant",
 		"issue_guardian_image_preview_grant",
 		"request_guardian_image_preview_derivatives",
+		"issue_public_employee_image_preview_grant",
 		"issue_public_website_media_download_grant",
 		"issue_public_website_media_preview_grant",
 		"issue_student_image_download_grant",
@@ -280,6 +281,14 @@ def test_media_api_exports_expected_wrappers_and_delegates():
 			derivative_roles=["thumb", "card"],
 		)["wrapper"]
 		== "request_guardian_image_preview_derivatives"
+	)
+	assert (
+		module.issue_public_employee_image_preview_grant(
+			employee="EMP-0001",
+			file_id="FILE-EMP-1",
+			derivative_role="card",
+		)["wrapper"]
+		== "issue_public_employee_image_preview_grant"
 	)
 	assert (
 		module.issue_public_website_media_download_grant(
@@ -418,6 +427,14 @@ def test_media_api_exports_expected_wrappers_and_delegates():
 				"guardian": "GRD-0001",
 				"file_id": "FILE-GRD-1",
 				"derivative_roles": ["thumb", "card"],
+			},
+		),
+		(
+			"issue_public_employee_image_preview_grant",
+			{
+				"employee": "EMP-0001",
+				"file_id": "FILE-EMP-1",
+				"derivative_role": "card",
 			},
 		),
 		(
@@ -622,6 +639,75 @@ def test_public_website_media_grant_services_use_delegate_scoped_access():
 	]
 
 
+def test_public_employee_image_preview_grant_service_uses_delegate_scoped_access():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.integration.ifitwala_ed_media",
+		"ifitwala_ed.integrations.drive.media",
+	)
+	drive_file = FakeDoc(
+		{
+			"name": "DF-EMP-1",
+			"owner_doctype": "Employee",
+			"owner_name": "EMP-0001",
+			"purpose": "employee_profile_display",
+			"slot": "profile_image",
+			"status": "active",
+			"preview_status": "ready",
+		}
+	)
+	_install_fake_frappe(
+		exists_map={
+			("Drive File", "DF-EMP-1"): True,
+		},
+		docs_map={("Drive File", "DF-EMP-1"): drive_file},
+	)
+	_ensure_ed_repo_on_path()
+	importlib.import_module("ifitwala_ed")
+	importlib.import_module("ifitwala_ed.integrations")
+	importlib.import_module("ifitwala_ed.integrations.drive")
+	delegate_calls = []
+	delegate = types.ModuleType("ifitwala_ed.integrations.drive.media")
+	delegate.assert_public_employee_image_read_access = lambda employee, *, file_name: (
+		delegate_calls.append((employee, file_name))
+		or {
+			"employee": "EMP-0001",
+			"file_id": "FILE-EMP-1",
+			"drive_file_id": "DF-EMP-1",
+		}
+	)
+	sys.modules["ifitwala_ed.integrations.drive.media"] = delegate
+
+	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_media")
+	preview_calls = []
+
+	module._issue_preview_grant_for_doc = lambda *, doc, payload=None: (
+		preview_calls.append({"doc": doc.name, "payload": payload})
+		or {"url": f"https://preview.example.com/{doc.name}"}
+	)
+
+	response = module.issue_public_employee_image_preview_grant_service(
+		{
+			"employee": "EMP-0001",
+			"file_id": "FILE-EMP-1",
+			"derivative_role": "card",
+		}
+	)
+
+	assert delegate_calls == [("EMP-0001", "FILE-EMP-1")]
+	assert response == {"url": "https://preview.example.com/DF-EMP-1"}
+	assert preview_calls == [
+		{
+			"doc": "DF-EMP-1",
+			"payload": {
+				"employee": "EMP-0001",
+				"file_id": "FILE-EMP-1",
+				"derivative_role": "card",
+			},
+		}
+	]
+
+
 def test_student_preview_derivative_request_service_uses_delegate_scoped_access():
 	_purge_modules(
 		"frappe",
@@ -723,7 +809,7 @@ def test_upload_student_image_uses_authoritative_contract():
 	assert recorder["payload"]["primary_subject_id"] == "STU-0001"
 	assert recorder["payload"]["organization"] == "ORG-0001"
 	assert recorder["payload"]["slot"] == "profile_image"
-	assert recorder["payload"]["is_private"] == 0
+	assert recorder["payload"]["is_private"] == 1
 	assert recorder["payload"]["folder"].startswith("DRF-")
 
 
@@ -760,7 +846,7 @@ def test_upload_employee_image_uses_employee_folder_tree():
 	assert recorder["payload"]["organization"] == "ORG-0001"
 	assert recorder["payload"]["school"] == "SCH-0001"
 	assert recorder["payload"]["slot"] == "profile_image"
-	assert recorder["payload"]["is_private"] == 0
+	assert recorder["payload"]["is_private"] == 1
 	assert recorder["payload"]["folder"].startswith("DRF-")
 
 
@@ -799,7 +885,7 @@ def test_upload_guardian_image_uses_guardian_org_contract():
 	assert recorder["payload"]["school"] is None
 	assert recorder["payload"]["purpose"] == "guardian_profile_display"
 	assert recorder["payload"]["slot"] == "profile_image"
-	assert recorder["payload"]["is_private"] == 0
+	assert recorder["payload"]["is_private"] == 1
 	assert recorder["payload"]["folder"].startswith("DRF-")
 
 

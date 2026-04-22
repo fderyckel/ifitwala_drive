@@ -60,6 +60,10 @@ def assert_public_website_media_read_access(*, file_name: str) -> dict[str, Any]
 	return _call_delegate("assert_public_website_media_read_access", file_name=file_name)
 
 
+def assert_public_employee_image_read_access(employee: str, *, file_name: str) -> dict[str, Any]:
+	return _call_delegate("assert_public_employee_image_read_access", employee, file_name=file_name)
+
+
 def _build_organization_media_contract(
 	*,
 	organization: str,
@@ -77,8 +81,6 @@ def _build_organization_media_contract(
 
 
 def upload_employee_image_service(payload: dict[str, Any]) -> dict[str, Any]:
-	from ifitwala_drive.services.uploads.sessions import create_upload_session_service
-
 	employee = payload.get("employee")
 	filename_original = payload.get("filename_original")
 	if not employee:
@@ -107,15 +109,12 @@ def upload_employee_image_service(payload: dict[str, Any]) -> dict[str, Any]:
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
 			"idempotency_key": payload.get("idempotency_key"),
-			"is_private": 0,
 			"upload_source": payload.get("upload_source") or "Desk",
 		}
 	)
 
 
 def upload_student_image_service(payload: dict[str, Any]) -> dict[str, Any]:
-	from ifitwala_drive.services.uploads.sessions import create_upload_session_service
-
 	student = payload.get("student")
 	filename_original = payload.get("filename_original")
 	if not student:
@@ -144,15 +143,12 @@ def upload_student_image_service(payload: dict[str, Any]) -> dict[str, Any]:
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
 			"idempotency_key": payload.get("idempotency_key"),
-			"is_private": 0,
 			"upload_source": payload.get("upload_source") or "Desk",
 		}
 	)
 
 
 def upload_guardian_image_service(payload: dict[str, Any]) -> dict[str, Any]:
-	from ifitwala_drive.services.uploads.sessions import create_upload_session_service
-
 	guardian = payload.get("guardian")
 	filename_original = payload.get("filename_original")
 	if not guardian:
@@ -180,7 +176,6 @@ def upload_guardian_image_service(payload: dict[str, Any]) -> dict[str, Any]:
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
 			"idempotency_key": payload.get("idempotency_key"),
-			"is_private": 0,
 			"upload_source": payload.get("upload_source") or "Desk",
 		}
 	)
@@ -507,6 +502,34 @@ def _get_authorized_public_website_media_drive_file(payload: dict[str, Any]):
 	return context, drive_file_doc
 
 
+def _get_authorized_public_employee_image_drive_file(payload: dict[str, Any]):
+	employee = str(payload.get("employee") or "").strip()
+	file_id = str(payload.get("file_id") or "").strip()
+	if not employee:
+		frappe.throw(_("Missing required field: employee"))
+	if not file_id:
+		frappe.throw(_("Missing required field: file_id"))
+
+	context = assert_public_employee_image_read_access(employee, file_name=file_id)
+	drive_file_id = str(context.get("drive_file_id") or "").strip()
+	if not drive_file_id:
+		frappe.throw(_("Governed public employee photo file was not found."))
+	if not frappe.db.exists("Drive File", drive_file_id):
+		frappe.throw(_("Drive File does not exist: {0}").format(drive_file_id))
+
+	drive_file_doc = frappe.get_doc("Drive File", drive_file_id)
+	if (
+		str(getattr(drive_file_doc, "owner_doctype", "") or "").strip() != "Employee"
+		or str(getattr(drive_file_doc, "owner_name", "") or "").strip()
+		!= str(context.get("employee") or "").strip()
+		or str(getattr(drive_file_doc, "purpose", "") or "").strip() != "employee_profile_display"
+		or str(getattr(drive_file_doc, "slot", "") or "").strip() != "profile_image"
+	):
+		frappe.throw(_("Governed public employee photo ownership is invalid."))
+
+	return context, drive_file_doc
+
+
 def issue_employee_image_download_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
 	_context, drive_file_doc = _get_authorized_employee_image_drive_file(payload)
 	_assert_can_issue_download(drive_file_doc)
@@ -566,6 +589,11 @@ def issue_public_website_media_preview_grant_service(payload: dict[str, Any]) ->
 	return _issue_preview_grant_for_doc(doc=drive_file_doc, payload=payload)
 
 
+def issue_public_employee_image_preview_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
+	_context, drive_file_doc = _get_authorized_public_employee_image_drive_file(payload)
+	return _issue_preview_grant_for_doc(doc=drive_file_doc, payload=payload)
+
+
 MEDIA_API_SERVICE_EXPORTS = {
 	"issue_employee_image_download_grant": issue_employee_image_download_grant_service,
 	"issue_employee_image_preview_grant": issue_employee_image_preview_grant_service,
@@ -573,6 +601,7 @@ MEDIA_API_SERVICE_EXPORTS = {
 	"issue_guardian_image_download_grant": issue_guardian_image_download_grant_service,
 	"issue_guardian_image_preview_grant": issue_guardian_image_preview_grant_service,
 	"request_guardian_image_preview_derivatives": request_guardian_image_preview_derivatives_service,
+	"issue_public_employee_image_preview_grant": issue_public_employee_image_preview_grant_service,
 	"issue_public_website_media_download_grant": issue_public_website_media_download_grant_service,
 	"issue_public_website_media_preview_grant": issue_public_website_media_preview_grant_service,
 	"issue_student_image_download_grant": issue_student_image_download_grant_service,

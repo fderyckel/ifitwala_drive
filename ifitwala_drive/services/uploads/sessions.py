@@ -161,6 +161,7 @@ def _load_existing_session_response(session_key: str) -> dict[str, Any] | None:
 def create_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 	payload = reconcile_upload_session_payload(payload)
 	validate_create_session_payload(payload)
+	resolved_is_private = int(bool(payload.get("is_private", 1)))
 
 	session_key = build_upload_session_key(payload, user=getattr(frappe.session, "user", None))
 	existing_response = _load_existing_session_response(session_key)
@@ -217,7 +218,7 @@ def create_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
 				"secondary_subjects": _build_secondary_subject_rows(payload),
 				"filename_original": payload["filename_original"],
 				"mime_type_hint": payload.get("mime_type_hint"),
-				"is_private": payload.get("is_private", 1),
+				"is_private": resolved_is_private,
 				"expected_size_bytes": payload.get("expected_size_bytes"),
 				"storage_backend": storage.backend_name,
 				"tmp_object_key": target["object_key"],
