@@ -165,7 +165,6 @@ def upload_applicant_guardian_image_service(payload: dict[str, Any]) -> dict[str
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
 			"idempotency_key": payload.get("idempotency_key"),
-			"is_private": 1,
 			"upload_source": payload.get("upload_source") or "SPA",
 		}
 	)
