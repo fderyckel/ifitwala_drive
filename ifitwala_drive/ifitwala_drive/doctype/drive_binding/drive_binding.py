@@ -16,8 +16,6 @@ _ALLOWED_BINDING_ROLES = {
 	"organization_media",
 	"employee_image",
 	"student_image",
-	"lesson_resource",
-	"lesson_activity_resource",
 	"supporting_material",
 	"communication_attachment",
 }
