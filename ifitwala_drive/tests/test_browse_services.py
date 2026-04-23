@@ -515,7 +515,7 @@ def test_list_context_files_returns_direct_owner_files_without_binding():
 	}
 
 
-def test_list_context_files_derives_general_reference_for_supporting_material():
+def test_list_context_files_derives_supporting_material_role_for_supporting_material():
 	_purge_modules("frappe", "ifitwala_drive.services.folders.browse")
 	material = FakeDoc({"name": "MAT-0001"})
 	_install_fake_frappe(
@@ -548,15 +548,15 @@ def test_list_context_files_derives_general_reference_for_supporting_material():
 		{
 			"doctype": "Supporting Material",
 			"name": "MAT-0001",
-			"binding_role": "general_reference",
+			"binding_role": "supporting_material",
 		}
 	)
 
 	assert response["context"] == {"doctype": "Supporting Material", "name": "MAT-0001"}
 	assert response["folders"] == []
 	assert len(response["files"]) == 1
-	assert response["files"][0]["binding_role"] == "general_reference"
-	assert response["items"][0]["binding_role"] == "general_reference"
+	assert response["files"][0]["binding_role"] == "supporting_material"
+	assert response["items"][0]["binding_role"] == "supporting_material"
 	assert response["upload_actions"] == [
 		{
 			"id": "supporting_material",

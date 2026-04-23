@@ -54,9 +54,9 @@ _BINDING_ROLE_DISPLAY_LABELS = {
 	"applicant_document": "Applicant document",
 	"communication_attachment": "Communication attachment",
 	"employee_image": "Employee image",
-	"general_reference": "Learning resource",
 	"guardian_image": "Guardian image",
 	"organization_media": "Media asset",
+	"supporting_material": "Supporting material",
 	"student_image": "Student image",
 	"submission_artifact": "Submission file",
 	"task_resource": "Task resource",
@@ -1256,7 +1256,7 @@ def _derive_direct_binding_role(row: dict[str, Any]) -> str | None:
 	if owner_doctype == "Task" and slot.startswith("supporting_material__"):
 		return "task_resource"
 	if owner_doctype == "Supporting Material" and slot == "material_file":
-		return "general_reference"
+		return "supporting_material"
 	if owner_doctype == "Task Submission":
 		return "submission_artifact"
 	if owner_doctype == "Organization":
