@@ -131,6 +131,11 @@ def upload_task_resource_service(payload: dict[str, Any]) -> dict[str, Any]:
 		"slot": payload.get("slot"),
 	}
 	authoritative = resolve_upload_session_context(workflow_id, workflow_payload)
+	workflow_payload = {
+		"task": task,
+		"row_name": authoritative["row_name"],
+		"slot": authoritative["slot"],
+	}
 	task_doc = assert_task_resource_upload_access(task, permission_type="write")
 
 	session_payload = {

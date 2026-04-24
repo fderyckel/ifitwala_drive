@@ -342,9 +342,43 @@ def test_upload_task_resource_uses_task_contract_and_course_folder():
 	assert recorder["payload"]["organization"] == "ORG-0001"
 	assert recorder["payload"]["school"] == "SCH-0001"
 	assert recorder["payload"]["slot"].startswith("supporting_material__")
+	assert recorder["payload"]["workflow_payload"]["row_name"] == response["workflow_result"]["row_name"]
+	assert recorder["payload"]["workflow_payload"]["slot"] == recorder["payload"]["slot"]
 	assert recorder["payload"]["purpose"] == "learning_resource"
 	assert recorder["payload"]["is_private"] == 1
 	assert recorder["payload"]["folder"].startswith("DRF-")
+
+
+def test_caught_duplicate_folder_messages_are_not_left_for_response():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.folders.resolution",
+	)
+	_install_fake_frappe()
+	module = _load_module("ifitwala_drive.services.folders.resolution")
+	import frappe
+
+	frappe.local = types.SimpleNamespace(
+		message_log=[
+			{
+				"title": "Duplicate Name",
+				"message": "Drive Folder <strong>DRF-0001</strong> already exists",
+			},
+			{
+				"title": "Duplicate Name",
+				"message": "Another DocType <strong>DOC-0001</strong> already exists",
+			},
+		]
+	)
+
+	module._discard_caught_duplicate_folder_messages()
+
+	assert frappe.local.message_log == [
+		{
+			"title": "Duplicate Name",
+			"message": "Another DocType <strong>DOC-0001</strong> already exists",
+		}
+	]
 
 
 def test_upload_supporting_material_uses_material_contract_and_course_folder():

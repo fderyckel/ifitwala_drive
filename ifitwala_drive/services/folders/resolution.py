@@ -86,6 +86,24 @@ def _build_system_key(
 	)
 
 
+def _discard_caught_duplicate_folder_messages() -> None:
+	local = getattr(frappe, "local", None)
+	messages = getattr(local, "message_log", None)
+	if not isinstance(messages, list):
+		return
+
+	def is_caught_folder_duplicate(message) -> bool:
+		if isinstance(message, dict):
+			title = str(message.get("title") or "")
+			body = str(message.get("message") or "")
+		else:
+			title = str(message)
+			body = str(message)
+		return "Duplicate Name" in title and "Drive Folder" in body and "already exists" in body
+
+	local.message_log = [message for message in messages if not is_caught_folder_duplicate(message)]
+
+
 def _ensure_folder(
 	*,
 	title: str,
@@ -158,6 +176,7 @@ def _ensure_folder(
 		except Exception as exc:
 			if not is_duplicate_entry_error(exc):
 				raise
+			_discard_caught_duplicate_folder_messages()
 
 			existing = frappe.db.get_value(
 				"Drive Folder",
