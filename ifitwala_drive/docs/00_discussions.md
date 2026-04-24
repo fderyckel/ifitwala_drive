@@ -230,7 +230,7 @@ If a file cannot be proven governed, routable, and policy-valid, stop. Do not si
 
 V1 must explicitly support:
 
-1. Task resources
+1. Task materials through `Supporting Material`
 2. Task submission artifacts
 3. Applicant documents
 4. Portfolio / journal artifacts
@@ -476,7 +476,7 @@ You asked for real folder navigation. But folders are a browse surface, not the 
 * `drive_file` (Link → Drive File, required)
 * `binding_doctype` (Data, required)
 * `binding_name` (Data, required)
-* `binding_role` (Select: `task_resource`, `submission_artifact`, `feedback_attachment`, `applicant_document`, `portfolio_evidence`, `organization_media`, `employee_image`, `student_image`)
+* `binding_role` (Select: `submission_artifact`, `feedback_attachment`, `applicant_document`, `portfolio_evidence`, `organization_media`, `employee_image`, `student_image`, `supporting_material`)
 * `slot` (Data, required)
 * `is_primary` (Check)
 * `sort_order` (Int)
@@ -728,10 +728,9 @@ Examples:
   * `create_upload_session`
   * `abort_upload_session`
   * `finalize_upload_session`
-* `resources.py`
+* `materials.py`
 
-  * `attach_existing_resource`
-  * `upload_task_resource`
+  * `upload_supporting_material`
 * `submissions.py`
 
   * `upload_submission_artifact`
@@ -859,7 +858,7 @@ Keep it small.
 ## Domain wrappers
 
 * `upload_task_submission_artifact(...)`
-* `upload_task_resource(...)`
+* `upload_supporting_material(...)`
 * `upload_applicant_document(...)`
 * `upload_portfolio_evidence(...)`
 * `upload_organization_media(...)`
@@ -888,7 +887,7 @@ Do **not** try to ship all of this at once.
 
 The right v1 functional target is:
 
-1. **Task resources**
+1. **Task materials through `Supporting Material`**
 2. **Task submissions**
 3. **Applicant documents**
 4. **Organization media**

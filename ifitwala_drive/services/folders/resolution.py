@@ -698,53 +698,6 @@ def resolve_supporting_material_folder(
 	)
 
 
-def resolve_task_resource_folder(
-	*,
-	task: str,
-	course: str,
-	organization: str,
-	school: str,
-) -> str:
-	course_root = _ensure_course_root(
-		course=course,
-		organization=organization,
-		school=school,
-	)
-	tasks_root = _ensure_folder(
-		title="Tasks",
-		parent_drive_folder=course_root,
-		owner_doctype="Course",
-		owner_name=course,
-		organization=organization,
-		school=school,
-		folder_kind="course_shared",
-		context_doctype="Course",
-		context_name=course,
-	)
-	task_root = _ensure_folder(
-		title=task,
-		parent_drive_folder=tasks_root,
-		owner_doctype="Task",
-		owner_name=task,
-		organization=organization,
-		school=school,
-		folder_kind="course_shared",
-		context_doctype="Task",
-		context_name=task,
-	)
-	return _ensure_folder(
-		title="Resources",
-		parent_drive_folder=task_root,
-		owner_doctype="Task",
-		owner_name=task,
-		organization=organization,
-		school=school,
-		folder_kind="course_shared",
-		context_doctype="Task",
-		context_name=task,
-	)
-
-
 def resolve_org_communication_attachment_folder(
 	*,
 	org_communication: str,

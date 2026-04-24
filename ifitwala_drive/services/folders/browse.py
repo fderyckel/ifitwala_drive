@@ -59,7 +59,6 @@ _BINDING_ROLE_DISPLAY_LABELS = {
 	"supporting_material": "Supporting material",
 	"student_image": "Student image",
 	"submission_artifact": "Submission file",
-	"task_resource": "Task resource",
 }
 
 _IDENTIFIER_PREFIX_HINTS = {
@@ -587,18 +586,6 @@ def _get_upload_actions_for_context(
 		return []
 
 	actions: list[dict[str, Any]] = []
-	if doctype == "Task" and _can_write("Task", name):
-		actions.append(
-			_build_upload_action(
-				action_id="task_resource",
-				label=_("Upload Resource"),
-				description=_("Add a governed file to this Task's Resources folder."),
-				api_method="ifitwala_drive.api.resources.upload_task_resource",
-				payload={"task": name, "upload_source": "SPA"},
-				destination_label=_("Task Resources"),
-			)
-		)
-
 	if doctype == "Supporting Material" and _can_write("Supporting Material", name):
 		actions.append(
 			_build_upload_action(
@@ -1253,8 +1240,6 @@ def _derive_direct_binding_role(row: dict[str, Any]) -> str | None:
 	slot = str(row.get("slot") or "").strip()
 	attached_doctype = str(row.get("attached_doctype") or "").strip()
 
-	if owner_doctype == "Task" and slot.startswith("supporting_material__"):
-		return "task_resource"
 	if owner_doctype == "Supporting Material" and slot == "material_file":
 		return "supporting_material"
 	if owner_doctype == "Task Submission":

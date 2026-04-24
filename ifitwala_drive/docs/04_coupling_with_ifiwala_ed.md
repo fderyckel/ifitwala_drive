@@ -113,7 +113,7 @@ Current runtime note:
 - Drive wrapper services now create sessions using `workflow_id` plus workflow-specific identifiers internally
 - the generic session/finalize DTOs now carry `workflow_id`, `contract_version`, and typed `workflow_result`
 - wrapper-specific extras such as `row_name` or admissions item metadata must not leak out as scattered top-level keys
-- task-resource wrapper services must carry the resolved `row_name` and `slot` inside `workflow_payload` after any pre-session folder/context resolution, so generic session reconciliation validates the same row that post-finalize will mutate
+- Task file delivery now uses the `supporting_material.file` workflow through Ed-owned `Supporting Material` plus `Material Placement`; Drive no longer exposes a separate Task-resource upload wrapper
 - Drive also exposes surface-scoped grant wrappers where generic owner-doc checks are not the same as Ed surface authorization, including org-communication attachments, employee images, public website media, and supporting-material previews opened from placement-aware academic surfaces
 - legacy profile-image cleanup is now patch-driven through those same public Drive media wrappers: Ed migration code reimports missing Employee/Student/Guardian profile images via the upload seam and requeues current governed avatar derivatives via the preview-derivative seam instead of adding new runtime repair paths
 - wrapper-specific public endpoints still exist only as ergonomics shims during migration
