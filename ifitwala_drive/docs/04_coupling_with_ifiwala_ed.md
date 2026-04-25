@@ -106,6 +106,7 @@ Target shape:
 - one narrow Ed integration module resolves `GovernedUploadSpec` by `workflow_id`
 - one narrow Ed integration module runs post-finalize business mutation by `workflow_id`
 - Drive persists `workflow_id` and `contract_version` on the upload-session contract so finalize does not rediscover workflow meaning ad hoc
+- legacy/pre-registry upload sessions without persisted workflow metadata are repaired by explicit migration/backfill patches or retired; finalize must not infer their workflow by scanning specs
 
 This is preferable to many wrapper-specific imports spread across both repos.
 
@@ -164,6 +165,7 @@ But tight coupling is not permission to call each other's internals arbitrarily.
 Current code still shows these transitional behaviors:
 
 - Drive still emits native `File` compatibility projections for current Ed surfaces
+- native `File` projection retirement is not complete because current Drive DocTypes and some Ed post-upload writes still carry `file_id`
 - historical `File Classification` rows still require cleanup through the Ed migration patch
 - some older Ed storage-compatibility helpers still exist for historical image fields and copied legacy links, but current governed admissions, communication, planning, learning, and evidence DTOs no longer use `File.file_url` as their primary identity
 - some historical audit/discussion notes may still mention the retired `File Classification` and Ed-side derivative model and must not be treated as runtime design guidance

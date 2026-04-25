@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 import sys
 import types
 from datetime import datetime, timedelta
@@ -113,6 +114,29 @@ class FakeFlags(dict):
 
 	def __setattr__(self, key, value):
 		self[key] = value
+
+
+def _task_submission_upload_contract_json(
+	*,
+	task_submission: str = "TSUB-0001",
+	student: str = "STU-0001",
+) -> str:
+	return json.dumps(
+		{
+			"upload_strategy": "proxy_post",
+			"upload_target": {"method": "POST", "url": "/proxy", "headers": {}},
+			"workflow": {
+				"workflow_id": "task.submission",
+				"contract_version": "1",
+				"workflow_payload": {
+					"task_submission": task_submission,
+					"student": student,
+				},
+				"workflow_result": {},
+			},
+		},
+		sort_keys=True,
+	)
 
 
 def _install_fake_frappe(
@@ -692,7 +716,7 @@ def test_finalize_uses_authoritative_governed_creation_path(monkeypatch):
 			"intended_purpose": "assessment_submission",
 			"intended_retention_policy": "until_school_exit_plus_6m",
 			"intended_slot": "submission",
-			"upload_contract_json": '{"upload_strategy":"proxy_post","upload_target":{"method":"POST","url":"/proxy","headers":{}},"workflow":{"workflow_id":"task.submission","contract_version":"1","workflow_payload":{"task_submission":"TSUB-0001","student":"STU-0001"},"workflow_result":{}}}',
+			"upload_contract_json": _task_submission_upload_contract_json(),
 			"secondary_subjects": [
 				types.SimpleNamespace(subject_type="Student", subject_id="STU-0002", role="co-owner")
 			],
@@ -832,6 +856,7 @@ def test_finalize_rejects_task_submission_context_drift(monkeypatch):
 			"intended_retention_policy": "until_school_exit_plus_6m",
 			"intended_slot": "submission",
 			"secondary_subjects": [],
+			"upload_contract_json": _task_submission_upload_contract_json(student="STU-9999"),
 		}
 	)
 	task_submission = FakeDoc(
@@ -884,6 +909,55 @@ def test_finalize_rejects_task_submission_context_drift(monkeypatch):
 		raise AssertionError("Expected finalize_upload_session_service to reject drifted session context.")
 
 
+def test_finalize_rejects_missing_workflow_metadata_before_storage(monkeypatch):
+	_purge_modules(
+		"frappe",
+		"ifitwala_ed",
+		"ifitwala_drive.services.uploads.finalize",
+		"ifitwala_drive.services.uploads.validation",
+	)
+	now = datetime(2026, 3, 17, 9, 0, 0)
+	session_doc = FakeDoc(
+		{
+			"name": "DUS-0001",
+			"status": "created",
+			"expires_on": now + timedelta(hours=2),
+			"tmp_object_key": "tmp/DUS-0001/legacy.docx",
+			"storage_backend": "local",
+			"attached_doctype": "Task Submission",
+			"attached_name": "TSUB-0001",
+			"owner_doctype": "Task Submission",
+			"owner_name": "TSUB-0001",
+			"organization": "ORG-0001",
+			"school": "SCH-0001",
+			"upload_source": "SPA",
+			"filename_original": "legacy.docx",
+			"is_private": 1,
+			"intended_primary_subject_type": "Student",
+			"intended_primary_subject_id": "STU-0001",
+			"intended_data_class": "assessment",
+			"intended_purpose": "assessment_submission",
+			"intended_retention_policy": "until_school_exit_plus_6m",
+			"intended_slot": "submission",
+			"secondary_subjects": [],
+		}
+	)
+	_install_fake_frappe(docs_map={("Drive Upload Session", "DUS-0001"): session_doc}, now=now)
+	module = _load_module("ifitwala_drive.services.uploads.finalize")
+	monkeypatch.setattr(
+		module,
+		"get_storage_backend",
+		lambda backend_name=None: (_ for _ in ()).throw(AssertionError("storage should not be resolved")),
+	)
+
+	try:
+		module.finalize_upload_session_service({"upload_session_id": "DUS-0001"})
+	except RuntimeError as exc:
+		assert "missing persisted workflow metadata" in str(exc)
+	else:
+		raise AssertionError("Expected finalize_upload_session_service to reject missing workflow metadata.")
+
+
 def test_finalize_rejects_missing_temporary_object(monkeypatch):
 	_purge_modules(
 		"frappe",
@@ -917,6 +991,7 @@ def test_finalize_rejects_missing_temporary_object(monkeypatch):
 			"intended_retention_policy": "until_school_exit_plus_6m",
 			"intended_slot": "submission",
 			"secondary_subjects": [],
+			"upload_contract_json": _task_submission_upload_contract_json(),
 		}
 	)
 	task_submission = FakeDoc(
@@ -994,6 +1069,7 @@ def test_finalize_rejects_empty_uploaded_object(monkeypatch):
 			"intended_retention_policy": "until_school_exit_plus_6m",
 			"intended_slot": "submission",
 			"secondary_subjects": [],
+			"upload_contract_json": _task_submission_upload_contract_json(),
 		}
 	)
 	task_submission = FakeDoc(
@@ -1072,6 +1148,7 @@ def test_finalize_rejects_dangerous_detected_mime(monkeypatch):
 			"intended_retention_policy": "until_school_exit_plus_6m",
 			"intended_slot": "submission",
 			"secondary_subjects": [],
+			"upload_contract_json": _task_submission_upload_contract_json(),
 		}
 	)
 	task_submission = FakeDoc(
@@ -1153,6 +1230,7 @@ def test_finalize_rejects_mime_hint_mismatch(monkeypatch):
 			"intended_retention_policy": "until_school_exit_plus_6m",
 			"intended_slot": "submission",
 			"secondary_subjects": [],
+			"upload_contract_json": _task_submission_upload_contract_json(),
 		}
 	)
 	task_submission = FakeDoc(
@@ -1233,6 +1311,7 @@ def test_finalize_requires_python_magic_runtime_dependency(monkeypatch):
 			"intended_retention_policy": "until_school_exit_plus_6m",
 			"intended_slot": "submission",
 			"secondary_subjects": [],
+			"upload_contract_json": _task_submission_upload_contract_json(),
 		}
 	)
 	task_submission = FakeDoc(
@@ -1323,6 +1402,7 @@ def test_finalize_rejects_unknown_detected_mime(monkeypatch):
 			"intended_retention_policy": "until_school_exit_plus_6m",
 			"intended_slot": "submission",
 			"secondary_subjects": [],
+			"upload_contract_json": _task_submission_upload_contract_json(),
 		}
 	)
 	task_submission = FakeDoc(

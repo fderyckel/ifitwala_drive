@@ -198,7 +198,9 @@ At minimum:
 The response must not rely on raw private file URLs as the primary browser contract.
 Current rule:
 
-- `file_id` remains part of the locked Ed/Drive seam until Ed no longer depends on the native `File` compatibility projection for post-upload reads
+- finalize resolves workflow behavior only from persisted `workflow_id` and `contract_version`; it must not scan workflow specs to detect legacy/pre-registry sessions
+- legacy sessions without persisted workflow metadata must be repaired or retired by explicit migration/backfill patches, not by finalize-time fallback logic
+- `file_id` remains part of the locked Ed/Drive seam only as a transitional compatibility projection until Drive DocTypes and Ed post-upload writes no longer require native `File`
 - wrapper-specific finalize extras such as admissions item metadata or generated row identifiers must live under `workflow_result`, not as top-level keys
 - generic finalize callers must not depend on raw `file_url`
 
@@ -232,6 +234,29 @@ Rules:
 - select the ready derivative when the preview contract requires one
 - return a short-lived preview contract
 - Drive-internal and server-to-server callers may select a concrete preview variant when they need thumbnail delivery, but Ed/browser-facing DTOs must expose only stable `preview_url` and `thumbnail_url` action URLs, never derivative role names
+
+## 7.5 Erasure execution contract
+
+Drive executes governed file erasure only from authoritative Drive metadata. Folders, storage paths, browser URLs, and compatibility `File` rows are not valid erasure truth.
+
+Execution inputs:
+
+- `erasure_request_id`
+- optional metadata filters for owner, attached document, slot, purpose, retention policy, organization, school, and data class
+- optional Ed decision items with `erase`, `retain`, `anonymize`, or `skip`
+
+Rules:
+
+- the `Drive Erasure Request` must already be approved before execution
+- Drive always scopes execution by the request subject
+- metadata filters narrow the subject scope; they do not replace the subject
+- legal hold blocks physical erasure even when Ed asks to erase
+- Ed decisions are legal/business instructions; Drive enforces storage mechanics and legal-hold safety
+- `anonymize` is treated as an Ed structured-record decision; Drive retains the file unless Ed explicitly sends an `erase` decision for that file
+- the response returns itemized `erased`, `retained`, and `skipped` rows with reasons
+- access events are recorded for actual file erasure
+
+Counsel-reviewed retention policy remains outside Drive code. Drive stores and filters retention metadata, but does not decide jurisdiction-specific legal outcomes.
 
 ## 8. MIME contract
 

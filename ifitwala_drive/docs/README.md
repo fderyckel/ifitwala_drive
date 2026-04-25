@@ -50,3 +50,10 @@ Companion docs must not weaken the authority of the active read order.
 - `File Classification` is retired and must not return as runtime authority.
 - Folders are UX/navigation only, never permission, ownership, retention, or erasure truth.
 - Browser and SPA contracts must not expose raw private storage paths.
+
+## Do Not Do
+
+- Do not restore finalize-time workflow detection for sessions missing persisted `workflow_id`.
+- Do not make compatibility `File` rows governance, retention, ownership, or erasure truth.
+- Do not put migration/backfill repair logic on the normal runtime path.
+- Do not add wrapper-specific owner, subject, slot, purpose, retention, organization, or school semantics when Ed's `GovernedUploadSpec` can resolve them.

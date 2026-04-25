@@ -398,13 +398,18 @@ def test_execute_drive_erasure_request_erases_all_versions_and_deactivates_bindi
 
 	response = module.execute_drive_erasure_request_service({"erasure_request_id": "DER-0001"})
 
-	assert response == {
-		"erasure_request_id": "DER-0001",
-		"status": "completed",
-		"deleted_count": 1,
-		"blocked_count": 0,
-		"slots_touched": ["submission"],
-	}
+	assert response["erasure_request_id"] == "DER-0001"
+	assert response["status"] == "completed"
+	assert response["deleted_count"] == 1
+	assert response["blocked_count"] == 0
+	assert response["retained_count"] == 0
+	assert response["skipped_count"] == 0
+	assert response["slots_touched"] == ["submission"]
+	assert response["metadata_filters"] == {}
+	assert [item["drive_file_id"] for item in response["erased"]] == ["DF-0001"]
+	assert response["erased"][0]["reason"] == "approved_subject_erasure"
+	assert response["retained"] == []
+	assert response["skipped"] == []
 	assert sorted(deleted_object_keys) == [
 		"derivatives/current-thumb.webp",
 		"derivatives/stale-viewer.webp",
@@ -425,6 +430,184 @@ def test_execute_drive_erasure_request_erases_all_versions_and_deactivates_bindi
 
 	access_event = FakeDoc._docs_map[("Drive Access Event", "DAE-0001")]
 	assert access_event.event_type == "erase"
+
+
+def test_execute_drive_erasure_request_uses_metadata_filters_and_ed_decision_audit(monkeypatch):
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.audit.erasure",
+		"ifitwala_drive.services.audit.events",
+	)
+	erase_file = FakeDoc(
+		{
+			"doctype": "Drive File",
+			"name": "DF-ERASE",
+			"primary_subject_type": "Student",
+			"primary_subject_id": "STU-0001",
+			"owner_doctype": "Task Submission",
+			"owner_name": "TSUB-0001",
+			"attached_doctype": "Task Submission",
+			"attached_name": "TSUB-0001",
+			"organization": "ORG-0001",
+			"school": "SCH-0001",
+			"data_class": "assessment",
+			"purpose": "assessment_submission",
+			"retention_policy": "until_school_exit_plus_6m",
+			"status": "active",
+			"erasure_state": "active",
+			"legal_hold": 0,
+			"slot": "submission",
+			"file": "FILE-ERASE",
+			"storage_backend": "local",
+			"storage_object_key": "files/erase.docx",
+			"current_version": "DFV-ERASE",
+			"preview_status": "ready",
+		}
+	)
+	retain_file = FakeDoc(
+		{
+			"doctype": "Drive File",
+			"name": "DF-RETAIN",
+			"primary_subject_type": "Student",
+			"primary_subject_id": "STU-0001",
+			"owner_doctype": "Student Log",
+			"owner_name": "SLOG-0001",
+			"attached_doctype": "Student Log",
+			"attached_name": "SLOG-0001",
+			"organization": "ORG-0001",
+			"school": "SCH-0001",
+			"data_class": "safeguarding",
+			"purpose": "safeguarding_evidence",
+			"retention_policy": "fixed_7y",
+			"status": "active",
+			"erasure_state": "active",
+			"legal_hold": 0,
+			"slot": "student_log_evidence__row_0001",
+			"file": "FILE-RETAIN",
+			"storage_backend": "local",
+			"storage_object_key": "files/retain.pdf",
+			"current_version": "DFV-RETAIN",
+			"preview_status": "ready",
+		}
+	)
+	hold_file = FakeDoc(
+		{
+			"doctype": "Drive File",
+			"name": "DF-HOLD",
+			"primary_subject_type": "Student",
+			"primary_subject_id": "STU-0001",
+			"owner_doctype": "Student",
+			"owner_name": "STU-0001",
+			"attached_doctype": "Student Patient",
+			"attached_name": "SPAT-0001",
+			"organization": "ORG-0001",
+			"school": "SCH-0001",
+			"data_class": "safeguarding",
+			"purpose": "medical_record",
+			"retention_policy": "until_school_exit_plus_6m",
+			"status": "active",
+			"erasure_state": "active",
+			"legal_hold": 1,
+			"slot": "health_vaccination_proof_mmr",
+			"file": "FILE-HOLD",
+			"storage_backend": "local",
+			"storage_object_key": "files/hold.pdf",
+			"current_version": "DFV-HOLD",
+			"preview_status": "ready",
+		}
+	)
+	out_of_scope_file = FakeDoc(
+		{
+			"doctype": "Drive File",
+			"name": "DF-OTHER-SCHOOL",
+			"primary_subject_type": "Student",
+			"primary_subject_id": "STU-0001",
+			"owner_doctype": "Task Submission",
+			"owner_name": "TSUB-0002",
+			"organization": "ORG-0001",
+			"school": "SCH-9999",
+			"purpose": "assessment_submission",
+			"retention_policy": "until_school_exit_plus_6m",
+			"status": "active",
+			"erasure_state": "active",
+			"legal_hold": 0,
+			"slot": "submission",
+			"file": "FILE-OTHER-SCHOOL",
+			"storage_backend": "local",
+			"storage_object_key": "files/other.docx",
+			"current_version": "DFV-OTHER-SCHOOL",
+			"preview_status": "ready",
+		}
+	)
+	request = FakeDoc(
+		{
+			"doctype": "Drive Erasure Request",
+			"name": "DER-0002",
+			"data_subject_type": "Student",
+			"data_subject_id": "STU-0001",
+			"scope": "files_only",
+			"status": "approved",
+			"result_deleted_count": 0,
+			"result_blocked_count": 0,
+		}
+	)
+	_install_fake_frappe(
+		docs_map={
+			("Drive File", "DF-ERASE"): erase_file,
+			("Drive File", "DF-RETAIN"): retain_file,
+			("Drive File", "DF-HOLD"): hold_file,
+			("Drive File", "DF-OTHER-SCHOOL"): out_of_scope_file,
+			("File", "FILE-ERASE"): FakeDoc({"doctype": "File", "name": "FILE-ERASE"}),
+			("Drive Erasure Request", "DER-0002"): request,
+		}
+	)
+	module = _load_module("ifitwala_drive.services.audit.erasure")
+	deleted_object_keys: list[str] = []
+
+	class FakeStorage:
+		def delete_object(self, *, object_key: str) -> None:
+			deleted_object_keys.append(object_key)
+
+	monkeypatch.setattr(module, "get_storage_backend", lambda backend_name=None: FakeStorage())
+	monkeypatch.setattr(
+		module,
+		"delete_derivative_artifacts_for_drive_file",
+		lambda drive_file_id: deleted_object_keys.append(f"derivatives/{drive_file_id}"),
+	)
+
+	response = module.execute_drive_erasure_request_service(
+		{
+			"erasure_request_id": "DER-0002",
+			"metadata_filters": {"organization": "ORG-0001", "school": "SCH-0001"},
+			"decision_items": [
+				{"drive_file_id": "DF-ERASE", "decision": "erase", "reason": "expired_retention"},
+				{"drive_file_id": "DF-RETAIN", "decision": "retain", "reason": "school_policy_fixed_7y"},
+				{"drive_file_id": "DF-HOLD", "decision": "erase", "reason": "subject_request"},
+			],
+		}
+	)
+
+	assert response["status"] == "blocked"
+	assert response["metadata_filters"] == {"organization": "ORG-0001", "school": "SCH-0001"}
+	assert response["deleted_count"] == 1
+	assert response["blocked_count"] == 1
+	assert response["retained_count"] == 2
+	assert response["skipped_count"] == 0
+	assert [item["drive_file_id"] for item in response["erased"]] == ["DF-ERASE"]
+	assert response["erased"][0]["reason"] == "expired_retention"
+	assert {(item["drive_file_id"], item["decision"], item["reason"]) for item in response["retained"]} == {
+		("DF-RETAIN", "retain", "school_policy_fixed_7y"),
+		("DF-HOLD", "retain", "legal_hold"),
+	}
+	assert "files/erase.docx" in deleted_object_keys
+	assert "derivatives/DF-ERASE" in deleted_object_keys
+	assert "files/other.docx" not in deleted_object_keys
+	assert erase_file.status == "erased"
+	assert retain_file.status == "active"
+	assert hold_file.erasure_state == "blocked_legal"
+	assert out_of_scope_file.status == "active"
+	assert request.result_deleted_count == 1
+	assert request.result_blocked_count == 1
 
 
 def test_prune_stale_derivatives_service_removes_expired_rows(monkeypatch):

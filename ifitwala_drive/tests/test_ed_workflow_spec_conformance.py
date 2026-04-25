@@ -521,6 +521,18 @@ def _wrapper_workflows_from_source() -> dict[str, str]:
 	return wrappers
 
 
+def _without_allowed_internal_derivative_doc_section(path: Path, text: str) -> str:
+	if path.name != "21_cross_portal_governed_attachment_preview_contract.md":
+		return text
+	start_marker = "## Internal Architecture: Data Model Direction"
+	end_marker = "Recommended statuses:"
+	start = text.find(start_marker)
+	end = text.find(end_marker, start)
+	if start == -1 or end == -1:
+		return text
+	return text[:start] + text[end:]
+
+
 @pytest.fixture(autouse=True)
 def _clean_modules():
 	_purge_modules("frappe", "ifitwala_drive.services", "ifitwala_ed")
@@ -694,6 +706,20 @@ def test_drive_wrapper_workflow_ids_are_valid_ed_specs():
 
 	assert wrapper_workflows == EXPECTED_WRAPPER_WORKFLOWS
 	assert set(wrapper_workflows.values()) <= known_workflows
+
+
+def test_drive_docs_keep_derivative_role_names_inside_internal_architecture_sections():
+	docs_root = _drive_repo_root() / "ifitwala_drive" / "docs"
+	forbidden_snippets = ("`thumb`", "`card`", "`viewer_preview`", "`pdf_card`", "`derivative_role`")
+	failures: list[str] = []
+
+	for path in sorted(docs_root.rglob("*.md")):
+		text = _without_allowed_internal_derivative_doc_section(path, path.read_text())
+		for snippet in forbidden_snippets:
+			if snippet in text:
+				failures.append(f"{path.relative_to(_drive_repo_root())} contains {snippet}")
+
+	assert failures == []
 
 
 @pytest.mark.parametrize(

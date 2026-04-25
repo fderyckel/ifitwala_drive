@@ -258,7 +258,7 @@ Refined delivery split:
 
 - list/card attachment surfaces in Ifitwala_Ed should request card-sized preview delivery through Ed-owned `thumbnail_url` routes; compact avatar/profile-image slots remain a separate internal derivative use case
 - the attachment card derivatives should be large enough for current inline preview cards, not micro-thumbnails that are immediately upscaled and blurred by Ed surfaces
-- governed profile-image card surfaces may request the `card` derivative where the original avatar contract needs a larger but still bounded image
+- governed profile-image card surfaces may request a larger but still bounded profile-image preview intent where the original avatar contract needs more detail
 - richer preview surfaces and inline card surfaces should be selected by server-side preview intent, not by browser-visible derivative role names
 - Drive's internal grant/service implementation may still map those intents to concrete derivative roles, with current richer-preview behavior preserved as the compatibility default during rollout
 - finalize/replace flows for supported image and PDF files should schedule the internally required derivative rows after the governing transaction commits
@@ -285,7 +285,7 @@ Derivative generation belongs to Drive async workers.
 Required behavior:
 
 1. resolve the current governed file version
-2. dedupe work by `drive_file_version + derivative_role`
+2. dedupe work by governed file version plus internal derivative identity
 3. generate derivative artifacts only for supported media classes
 4. persist derivative metadata rows
 5. update lightweight preview hints

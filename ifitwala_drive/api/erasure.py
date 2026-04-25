@@ -29,5 +29,15 @@ def create_drive_erasure_request(
 
 
 @frappe.whitelist()
-def execute_drive_erasure_request(erasure_request_id: str) -> dict[str, object]:
-	return execute_drive_erasure_request_service(compact_payload(erasure_request_id=erasure_request_id))
+def execute_drive_erasure_request(
+	erasure_request_id: str,
+	metadata_filters: dict[str, object] | str | None = None,
+	decision_items: list[dict[str, object]] | str | None = None,
+) -> dict[str, object]:
+	return execute_drive_erasure_request_service(
+		compact_payload(
+			erasure_request_id=erasure_request_id,
+			metadata_filters=metadata_filters,
+			decision_items=decision_items,
+		)
+	)
