@@ -176,10 +176,15 @@ def test_unknown_slot_fails():
 	(
 		"feedback",
 		"rubric_evidence",
+		"feedback_export__released__student",
+		"portfolio_export_pdf",
+		"journal_export_pdf",
 		"identity_passport_passport_copy",
+		"admissions_identity_passport_passport_copy",
 		"communication_attachment__row-001",
 		"organization_media__homepage_hero",
 		"health_vaccination_proof_mmr_2020-03-04",
+		"student_log_evidence__row-001",
 	),
 )
 def test_registry_slots_pass(slot: str):

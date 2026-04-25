@@ -12,11 +12,15 @@ _EXACT_SLOTS: Final[tuple[str, ...]] = (
 	"material_file",
 	"profile_image",
 	"portfolio_artefact",
+	"portfolio_export_pdf",
+	"journal_export_pdf",
 )
 
 _PREFIX_SLOTS: Final[tuple[str, ...]] = (
 	"identity_",
 	"prior_",
+	"admissions_",
+	"feedback_export__released__",
 	"supporting_material__",
 	"communication_attachment__",
 	"guardian_profile_image__",
@@ -25,6 +29,7 @@ _PREFIX_SLOTS: Final[tuple[str, ...]] = (
 	"school_logo__",
 	"school_gallery_image__",
 	"organization_media__",
+	"student_log_evidence__",
 )
 
 

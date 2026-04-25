@@ -14,6 +14,7 @@ def load_ed_drive_module(module_name: str):
 			"ifitwala_ed.integrations.drive.media",
 			"ifitwala_ed.integrations.drive.materials",
 			"ifitwala_ed.integrations.drive.org_communications",
+			"ifitwala_ed.integrations.drive.student_logs",
 			"ifitwala_ed.integrations.drive.tasks",
 		}:
 			return importlib.import_module(module_name)
