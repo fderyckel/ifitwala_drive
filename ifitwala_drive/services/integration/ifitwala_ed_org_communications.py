@@ -12,7 +12,7 @@ from ifitwala_drive.services.files.access import (
 )
 from ifitwala_drive.services.folders.resolution import resolve_org_communication_attachment_folder
 from ifitwala_drive.services.integration._ed_delegate import load_ed_drive_module
-from ifitwala_drive.services.integration.ifitwala_ed_bridge import resolve_upload_session_context
+from ifitwala_drive.services.integration.ifitwala_ed_bridge import reconcile_upload_session_payload
 
 _ED_MODULE = "ifitwala_ed.integrations.drive.org_communications"
 
@@ -100,7 +100,7 @@ def issue_org_communication_attachment_preview_grant_service(payload: dict[str, 
 
 
 def upload_org_communication_attachment_service(payload: dict[str, Any]) -> dict[str, Any]:
-	from ifitwala_drive.services.uploads.sessions import create_upload_session_service
+	from ifitwala_drive.services.uploads.sessions import create_resolved_upload_session_service
 
 	org_communication = payload.get("org_communication")
 	filename_original = payload.get("filename_original")
@@ -117,34 +117,33 @@ def upload_org_communication_attachment_service(payload: dict[str, Any]) -> dict
 		"row_name": provided_row_name,
 		"slot": payload.get("slot"),
 	}
-	authoritative = resolve_upload_session_context(workflow_id, workflow_payload)
-	org_communication_doc = assert_org_communication_upload_access(org_communication, permission_type="write")
-
-	response = create_upload_session_service(
+	resolved = reconcile_upload_session_payload(
 		{
-			**{
-				key: value
-				for key, value in authoritative.items()
-				if key not in {"row_name", "course", "student_group"}
-			},
+			"workflow_id": workflow_id,
 			"workflow_payload": workflow_payload,
-			"workflow_result": {
-				"row_name": authoritative["row_name"],
-				"slot": authoritative["slot"],
-			},
-			"folder": resolve_org_communication_attachment_folder(
-				org_communication=org_communication_doc.name,
-				course=authoritative["course"],
-				student_group=authoritative["student_group"],
-				organization=authoritative["organization"],
-				school=authoritative["school"],
-			),
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
 			"idempotency_key": payload.get("idempotency_key"),
-			"is_private": 1,
 			"upload_source": payload.get("upload_source") or "SPA",
+		}
+	)
+
+	response = create_resolved_upload_session_service(
+		{
+			**resolved,
+			"workflow_result": {
+				"row_name": resolved["row_name"],
+				"slot": resolved["slot"],
+			},
+			"folder": resolve_org_communication_attachment_folder(
+				org_communication=resolved["owner_name"],
+				course=resolved.get("course"),
+				student_group=resolved.get("student_group"),
+				organization=resolved["organization"],
+				school=resolved.get("school"),
+			),
+			"is_private": 1,
 		}
 	)
 	return response

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import ast
 import importlib
 import json
 import sys
 import types
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
@@ -31,6 +32,7 @@ class FakeFrappeError(Exception):
 
 class FakeDoc:
 	_insert_count = 0
+	_inserted_docs: ClassVar[list["FakeDoc"]] = []
 
 	def __init__(self, data: dict[str, Any] | None = None):
 		for key, value in (data or {}).items():
@@ -43,6 +45,7 @@ class FakeDoc:
 		if not getattr(self, "name", None):
 			FakeDoc._insert_count += 1
 			self.name = f"DUS-{FakeDoc._insert_count:04d}"
+		FakeDoc._inserted_docs.append(self)
 		return self
 
 
@@ -58,6 +61,7 @@ class FakeDB:
 
 def _install_fake_frappe() -> None:
 	FakeDoc._insert_count = 0
+	FakeDoc._inserted_docs = []
 	frappe = types.ModuleType("frappe")
 	frappe._ = lambda message: message
 	frappe.throw = lambda message, *args, **kwargs: (_ for _ in ()).throw(FakeFrappeError(message))
@@ -404,6 +408,24 @@ _SAMPLE_BY_KEY = {
 	(workflow_id, sample_name): contract for workflow_id, sample_name, contract in SAMPLE_CONTRACTS
 }
 
+EXPECTED_WRAPPER_WORKFLOWS: dict[str, str] = {
+	"upload_applicant_document_service": "admissions.applicant_document",
+	"upload_applicant_guardian_image_service": "admissions.applicant_guardian_image",
+	"upload_applicant_health_vaccination_proof_service": "admissions.applicant_health_vaccination",
+	"upload_applicant_profile_image_service": "admissions.applicant_profile_image",
+	"upload_employee_image_service": "media.employee_profile_image",
+	"upload_guardian_image_service": "media.guardian_profile_image",
+	"upload_org_communication_attachment_service": "org_communication.attachment",
+	"upload_organization_logo_service": "organization_media.organization_logo",
+	"upload_organization_media_asset_service": "organization_media.asset",
+	"upload_school_gallery_image_service": "organization_media.school_gallery_image",
+	"upload_school_logo_service": "organization_media.school_logo",
+	"upload_student_image_service": "media.student_profile_image",
+	"upload_student_log_evidence_attachment_service": "student_log.evidence_attachment",
+	"upload_supporting_material_service": "supporting_material.file",
+	"upload_task_submission_artifact_service": "task.submission",
+}
+
 
 def _sample_payload(workflow_id: str, sample_name: str = "default") -> dict[str, Any]:
 	return {
@@ -470,6 +492,33 @@ def _install_fake_logging() -> None:
 	logging_module = types.ModuleType("ifitwala_drive.services.logging")
 	logging_module.log_drive_event = lambda *args, **kwargs: None
 	sys.modules["ifitwala_drive.services.logging"] = logging_module
+
+
+def _drive_repo_root() -> Path:
+	return Path(__file__).resolve().parents[2]
+
+
+def _wrapper_workflows_from_source() -> dict[str, str]:
+	wrappers: dict[str, str] = {}
+	for path in sorted(
+		(_drive_repo_root() / "ifitwala_drive" / "services" / "integration").glob("ifitwala_ed_*.py")
+	):
+		tree = ast.parse(path.read_text())
+		for node in tree.body:
+			if not isinstance(node, ast.FunctionDef):
+				continue
+			if not node.name.startswith("upload_") or not node.name.endswith("_service"):
+				continue
+			for child in ast.walk(node):
+				if not isinstance(child, ast.Assign):
+					continue
+				if not any(
+					isinstance(target, ast.Name) and target.id == "workflow_id" for target in child.targets
+				):
+					continue
+				if isinstance(child.value, ast.Constant) and isinstance(child.value.value, str):
+					wrappers[node.name] = child.value.value
+	return wrappers
 
 
 @pytest.fixture(autouse=True)
@@ -576,6 +625,25 @@ def test_generic_create_upload_session_accepts_every_ed_workflow_sample(
 	assert response["upload_strategy"] == "proxy_post"
 	assert "/private/" not in json.dumps(response, sort_keys=True)
 
+	assert len(FakeDoc._inserted_docs) == 1
+	session_doc = FakeDoc._inserted_docs[0]
+	stored_contract = json.loads(session_doc.upload_contract_json)
+	workflow = stored_contract["workflow"]
+	assert workflow["workflow_id"] == workflow_id
+	assert workflow["contract_version"] == "1"
+	assert workflow["workflow_payload"] == {"sample_name": sample_name}
+	assert workflow["workflow_result"] == {}
+	for fieldname, expected_value in _contract.items():
+		session_field = {
+			"primary_subject_type": "intended_primary_subject_type",
+			"primary_subject_id": "intended_primary_subject_id",
+			"data_class": "intended_data_class",
+			"purpose": "intended_purpose",
+			"retention_policy": "intended_retention_policy",
+			"slot": "intended_slot",
+		}.get(fieldname, fieldname)
+		assert getattr(session_doc, session_field) == expected_value
+
 
 def test_resolved_create_upload_session_helper_does_not_reconcile_again():
 	_install_fake_frappe()
@@ -615,6 +683,17 @@ def test_resolved_create_upload_session_helper_does_not_reconcile_again():
 		"row_name": "ROW-0001",
 		"slot": "student_log_evidence__row_0001",
 	}
+
+
+def test_drive_wrapper_workflow_ids_are_valid_ed_specs():
+	_install_fake_frappe()
+	_ensure_ed_repo_on_path()
+	workflow_specs = importlib.import_module("ifitwala_ed.integrations.drive.workflow_specs")
+	known_workflows = {spec.workflow_id for spec in workflow_specs.iter_upload_specs()}
+	wrapper_workflows = _wrapper_workflows_from_source()
+
+	assert wrapper_workflows == EXPECTED_WRAPPER_WORKFLOWS
+	assert set(wrapper_workflows.values()) <= known_workflows
 
 
 @pytest.mark.parametrize(

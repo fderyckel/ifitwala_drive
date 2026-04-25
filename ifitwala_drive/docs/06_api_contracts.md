@@ -51,6 +51,14 @@ Consumers may receive:
 
 Consumers must not construct storage paths.
 
+### 1.4 Do Not Do
+
+- Do not add new wrapper-specific governance contracts when the workflow can be represented by `workflow_id + workflow_payload`.
+- Do not duplicate Ed-resolved owner, subject, slot, purpose, retention, organization, or school semantics in Drive wrappers.
+- Do not turn folders into permission, retention, ownership, or erasure truth.
+- Do not expose derivative role names as Ed/browser DTO fields; use stable `open_url`, optional `preview_url`, and optional `thumbnail_url`.
+- Do not add schema changes before seam tests prove the existing contract cannot express the workflow.
+
 ## 2. Cross-app integration surface
 
 The preferred long-term cross-app contract is:

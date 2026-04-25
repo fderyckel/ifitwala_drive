@@ -94,8 +94,10 @@ Drive must not:
 
 - import Ed dispatcher/file-routing internals to finish governed finalization
 - import Ed image-derivative helpers
+- hand-author owner, subject, slot, purpose, retention, organization, or school semantics already resolved by Ed
 - rely on Ed-local storage paths as file truth
 - treat Ed compatibility projections as primary governance records
+- expose derivative role names as Ed/SPA DTO contract fields
 
 ## 4. Integration surface direction
 

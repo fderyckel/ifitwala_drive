@@ -140,7 +140,9 @@ Direct Drive grant APIs remain valid for:
 This distinction is required because current Drive access checks are based on governed file ownership and standard document read access, not on Ed's portal-specific audience contracts.
 The APIs are not wrong in general. They are the wrong portal-facing boundary for Ed-owned surfaces.
 
-## Internal Data Model Direction
+## Internal Architecture: Data Model Direction
+
+This section is Drive-internal implementation guidance. The concrete derivative role names below must not be copied into Ifitwala_Ed, browser-facing DTOs, or SPA contracts; Ed/browser surfaces consume semantic action URLs such as `thumbnail_url`, `preview_url`, and `open_url`.
 
 ### Recommended new model: `Drive File Derivative`
 

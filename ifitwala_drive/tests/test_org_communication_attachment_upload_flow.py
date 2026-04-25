@@ -123,6 +123,18 @@ def _install_fake_ifitwala_ed():
 			"is_private": 1,
 		}
 
+	def _reconcile_upload_session_payload(payload: dict[str, object]) -> dict[str, object]:
+		workflow_id = payload.get("workflow_id")
+		workflow_payload = payload.get("workflow_payload") or {}
+		authoritative = _resolve_upload_session_context(str(workflow_id or ""), workflow_payload)
+		return {
+			**payload,
+			**authoritative,
+			"workflow_id": authoritative["workflow_id"],
+			"contract_version": authoritative["contract_version"],
+			"workflow_payload": workflow_payload,
+		}
+
 	org_communications = types.ModuleType("ifitwala_ed.integrations.drive.org_communications")
 	org_communications.assert_org_communication_upload_access = (
 		lambda org_communication, permission_type="write": frappe.get_doc(
@@ -133,6 +145,7 @@ def _install_fake_ifitwala_ed():
 
 	bridge = types.ModuleType("ifitwala_ed.integrations.drive.bridge")
 	bridge.resolve_upload_session_context = _resolve_upload_session_context
+	bridge.reconcile_upload_session_payload = _reconcile_upload_session_payload
 
 	integrations = types.ModuleType("ifitwala_ed.integrations")
 	integrations.__path__ = [str(integrations_package_root)]
@@ -222,7 +235,7 @@ def _install_fake_frappe(*, exists_map=None, value_map=None, docs_map=None):
 def _install_fake_sessions(recorder):
 	module = types.ModuleType("ifitwala_drive.services.uploads.sessions")
 
-	def create_upload_session_service(payload):
+	def create_resolved_upload_session_service(payload):
 		recorder["payload"] = payload
 		return {
 			"upload_session_id": "DUS-0001",
@@ -230,7 +243,8 @@ def _install_fake_sessions(recorder):
 			"workflow_result": payload.get("workflow_result") or {},
 		}
 
-	module.create_upload_session_service = create_upload_session_service
+	module.create_resolved_upload_session_service = create_resolved_upload_session_service
+	module.create_upload_session_service = create_resolved_upload_session_service
 	sys.modules["ifitwala_drive.services.uploads.sessions"] = module
 
 
