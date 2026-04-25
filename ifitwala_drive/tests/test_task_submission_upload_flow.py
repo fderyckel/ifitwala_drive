@@ -248,6 +248,7 @@ def _install_fake_frappe(
 	frappe.get_traceback = lambda: "traceback"
 	frappe.as_json = lambda value, indent=None: str(value)
 	frappe.logger = lambda: types.SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None)
+	frappe.get_roles = lambda user=None: []
 	frappe.get_site_path = lambda *parts: "/tmp/" + "/".join(parts)
 	frappe.form_dict = {}
 	frappe.request = None

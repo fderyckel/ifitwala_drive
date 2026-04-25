@@ -1,7 +1,7 @@
 # Canonical API Contracts
 
 Status: LOCKED target API direction
-Date: 2026-04-21
+Date: 2026-04-25
 Related docs:
 
 - `ifitwala_drive/docs/02_system_architecture.md`
@@ -117,6 +117,8 @@ Current rule:
 - current runtime may also include `upload_token` for browser/proxy upload targets
 - migration/backfill code must use internal service helpers or explicit `Drive Upload Session` materialization, not the public API
 - wrapper-specific create-session extras must live only under `workflow_result`, not as ad hoc top-level keys
+- slot meaning comes from the Ed-resolved `GovernedUploadSpec`; Drive validates slot shape and path safety, not a second exact/prefix slot registry
+- transitional wrappers may add local Drive metadata such as UX folders or typed `workflow_result` after Ed workflow resolution, but must not hand-author owner, subject, slot, purpose, retention, organization, or school semantics
 
 ## 4. Blob ingress contract
 

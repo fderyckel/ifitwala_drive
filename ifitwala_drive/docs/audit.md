@@ -57,7 +57,7 @@ Each feedback item is rated on a 0-1 scale for:
 ### 8. Governance Drift: Loose "Slot" Validation Strings
 **User Impact: 0.1 | Eng: 0.6**
 **Context**: "Slot semantics are law". 
-**Resolution**: `services/uploads/slots.py` now defines the canonical slot registry used by `validate_create_session_payload`. The registry is exact/prefix-based and only admits slot families already present in the repo contracts and tests, such as `submission`, `feedback`, `rubric_evidence`, `supporting_material__*`, `communication_attachment__*`, `identity_*`, `prior_*`, and the organization-media/public-image slot families.
+**Current note**: `services/uploads/slots.py` now validates slot shape and path safety for workflow-backed uploads. Slot meaning is owned by Ed's `GovernedUploadSpec`; Drive no longer keeps a second exact/prefix slot registry as runtime truth.
 **Implication**: New governed upload sessions now fail closed on free-form slot strings instead of treating `slot` as an undisciplined label.
 
 ### 9. Ambiguity: Google Workload Identity Documentation

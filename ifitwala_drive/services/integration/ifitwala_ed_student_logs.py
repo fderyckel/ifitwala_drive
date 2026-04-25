@@ -12,7 +12,7 @@ from ifitwala_drive.services.files.access import (
 )
 from ifitwala_drive.services.folders.resolution import resolve_student_log_evidence_folder
 from ifitwala_drive.services.integration._ed_delegate import load_ed_drive_module
-from ifitwala_drive.services.integration.ifitwala_ed_bridge import resolve_upload_session_context
+from ifitwala_drive.services.integration.ifitwala_ed_bridge import reconcile_upload_session_payload
 
 _ED_MODULE = "ifitwala_ed.integrations.drive.student_logs"
 
@@ -93,7 +93,7 @@ def issue_student_log_evidence_attachment_preview_grant_service(payload: dict[st
 
 
 def upload_student_log_evidence_attachment_service(payload: dict[str, Any]) -> dict[str, Any]:
-	from ifitwala_drive.services.uploads.sessions import create_upload_session_service
+	from ifitwala_drive.services.uploads.sessions import create_resolved_upload_session_service
 
 	student_log = payload.get("student_log")
 	filename_original = payload.get("filename_original")
@@ -110,29 +110,32 @@ def upload_student_log_evidence_attachment_service(payload: dict[str, Any]) -> d
 		"row_name": provided_row_name,
 		"slot": payload.get("slot"),
 	}
-	authoritative = resolve_upload_session_context(workflow_id, workflow_payload)
-	student_log_doc = assert_student_log_upload_access(student_log, permission_type="write")
-
-	response = create_upload_session_service(
+	resolved = reconcile_upload_session_payload(
 		{
-			**{key: value for key, value in authoritative.items() if key not in {"row_name"}},
+			"workflow_id": workflow_id,
 			"workflow_payload": workflow_payload,
-			"workflow_result": {
-				"row_name": authoritative["row_name"],
-				"slot": authoritative["slot"],
-			},
-			"folder": resolve_student_log_evidence_folder(
-				student=authoritative["primary_subject_id"],
-				student_log=student_log_doc.name,
-				organization=authoritative["organization"],
-				school=authoritative["school"],
-			),
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
 			"idempotency_key": payload.get("idempotency_key"),
-			"is_private": 1,
 			"upload_source": payload.get("upload_source") or "Desk",
+		}
+	)
+
+	response = create_resolved_upload_session_service(
+		{
+			**resolved,
+			"workflow_result": {
+				"row_name": resolved["row_name"],
+				"slot": resolved["slot"],
+			},
+			"folder": resolve_student_log_evidence_folder(
+				student=resolved["primary_subject_id"],
+				student_log=resolved["owner_name"],
+				organization=resolved["organization"],
+				school=resolved["school"],
+			),
+			"is_private": 1,
 		}
 	)
 	return response

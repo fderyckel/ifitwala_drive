@@ -510,6 +510,51 @@ def test_drive_validation_accepts_every_ed_workflow_sample(
 	validation.validate_create_session_payload(payload)
 
 
+def test_workflow_backed_slot_validation_is_shape_based_not_registry_based():
+	_install_fake_frappe()
+	validation = importlib.import_module("ifitwala_drive.services.uploads.validation")
+	payload = {
+		**_contract(
+			owner_doctype="Task Submission",
+			owner_name="TSUB-0001",
+			primary_subject_type="Student",
+			primary_subject_id="STU-0001",
+			data_class="assessment",
+			purpose="assessment_submission",
+			retention_policy="until_school_exit_plus_6m",
+			slot="future_workflow_slot__row_001",
+		),
+		"workflow_id": "future.workflow",
+		"contract_version": "1",
+		"filename_original": "future.pdf",
+	}
+
+	validation.validate_create_session_payload(payload)
+
+
+def test_path_shaped_workflow_slot_is_rejected():
+	_install_fake_frappe()
+	validation = importlib.import_module("ifitwala_drive.services.uploads.validation")
+	payload = {
+		**_contract(
+			owner_doctype="Task Submission",
+			owner_name="TSUB-0001",
+			primary_subject_type="Student",
+			primary_subject_id="STU-0001",
+			data_class="assessment",
+			purpose="assessment_submission",
+			retention_policy="until_school_exit_plus_6m",
+			slot="../private/student/passport",
+		),
+		"workflow_id": "task.submission",
+		"contract_version": "1",
+		"filename_original": "unsafe.pdf",
+	}
+
+	with pytest.raises(FakeFrappeError, match="Slot must be a workflow-resolved key"):
+		validation.validate_create_session_payload(payload)
+
+
 @pytest.mark.parametrize("workflow_id,sample_name,_contract", SAMPLE_CONTRACTS)
 def test_generic_create_upload_session_accepts_every_ed_workflow_sample(
 	workflow_id: str,
@@ -530,6 +575,46 @@ def test_generic_create_upload_session_accepts_every_ed_workflow_sample(
 	assert response["contract_version"] == "1"
 	assert response["upload_strategy"] == "proxy_post"
 	assert "/private/" not in json.dumps(response, sort_keys=True)
+
+
+def test_resolved_create_upload_session_helper_does_not_reconcile_again():
+	_install_fake_frappe()
+	_install_fake_storage()
+	_install_fake_logging()
+
+	bridge_module = types.ModuleType("ifitwala_drive.services.integration.ifitwala_ed_bridge")
+
+	def _reconcile_upload_session_payload(_payload):
+		raise AssertionError("Resolved helper must not call Ed reconciliation again.")
+
+	bridge_module.reconcile_upload_session_payload = _reconcile_upload_session_payload
+	sys.modules["ifitwala_drive.services.integration.ifitwala_ed_bridge"] = bridge_module
+
+	sessions = importlib.import_module("ifitwala_drive.services.uploads.sessions")
+	payload = {
+		**_SAMPLE_BY_KEY[("student_log.evidence_attachment", "default")],
+		"workflow_id": "student_log.evidence_attachment",
+		"contract_version": "1",
+		"workflow_payload": {"student_log": "SLOG-0001", "row_name": "ROW-0001"},
+		"workflow_result": {
+			"row_name": "ROW-0001",
+			"slot": "student_log_evidence__row_0001",
+		},
+		"filename_original": "student_log_evidence.pdf",
+		"mime_type_hint": "application/pdf",
+		"expected_size_bytes": 42,
+		"idempotency_key": "student-log-resolved-helper",
+		"upload_source": "Unit Test",
+	}
+
+	response = sessions.create_resolved_upload_session_service(payload)
+
+	assert response["status"] == "created"
+	assert response["workflow_id"] == "student_log.evidence_attachment"
+	assert response["workflow_result"] == {
+		"row_name": "ROW-0001",
+		"slot": "student_log_evidence__row_0001",
+	}
 
 
 @pytest.mark.parametrize(

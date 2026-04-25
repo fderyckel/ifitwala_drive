@@ -106,6 +106,8 @@ def _load_drive_file_doctype_module():
 
 def _valid_payload():
 	return {
+		"workflow_id": "task.submission",
+		"contract_version": "1",
 		"owner_doctype": "Task Submission",
 		"owner_name": "TSUB-0001",
 		"attached_doctype": "Task Submission",
@@ -155,7 +157,7 @@ def test_invalid_owner_fails():
 		validation.validate_create_session_payload(payload)
 
 
-def test_unknown_slot_fails():
+def test_path_shaped_slot_fails():
 	FrappeError = _install_fake_frappe(
 		exists_map={
 			("Organization", "ORG-0001"): True,
@@ -165,9 +167,9 @@ def test_unknown_slot_fails():
 	)
 	validation = _load_validation_module()
 	payload = _valid_payload()
-	payload["slot"] = "freeform_slot"
+	payload["slot"] = "../private/student/passport"
 
-	with pytest.raises(FrappeError, match="canonical Drive slot registry"):
+	with pytest.raises(FrappeError, match="Slot must be a workflow-resolved key"):
 		validation.validate_create_session_payload(payload)
 
 

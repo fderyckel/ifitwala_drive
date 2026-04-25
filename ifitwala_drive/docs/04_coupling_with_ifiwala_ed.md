@@ -1,7 +1,7 @@
 # Coupling With Ifitwala_Ed
 
 Status: LOCKED boundary contract
-Date: 2026-04-21
+Date: 2026-04-25
 Code refs:
 - `ifitwala_ed/api/file_access.py`
 - `ifitwala_ed/integrations/drive/bridge.py`
@@ -112,7 +112,9 @@ Current runtime note:
 - the registry now exists in `ifitwala_ed/integrations/drive/workflow_specs.py`
 - Drive wrapper services now create sessions using `workflow_id` plus workflow-specific identifiers internally
 - the generic session/finalize DTOs now carry `workflow_id`, `contract_version`, and typed `workflow_result`
+- Drive no longer maintains a parallel exact/prefix slot registry for workflow-backed uploads; Ed owns slot meaning through `GovernedUploadSpec`, and Drive enforces slot shape/path-safety before storage/session materialization
 - wrapper-specific extras such as `row_name` or admissions item metadata must not leak out as scattered top-level keys
+- wrapper-specific upload shims may decorate Ed-resolved payloads with Drive-owned presentation metadata such as folders, but must not duplicate governance semantics already resolved by Ed
 - Task file delivery now uses the `supporting_material.file` workflow through Ed-owned `Supporting Material` plus `Material Placement`; Drive no longer exposes a separate Task-resource upload wrapper
 - Drive also exposes surface-scoped grant wrappers where generic owner-doc checks are not the same as Ed surface authorization, including org-communication attachments, Student Log evidence, employee images, public website media, and supporting-material previews opened from placement-aware academic surfaces
 - legacy profile-image cleanup is now patch-driven through those same public Drive media wrappers: Ed migration code reimports missing Employee/Student/Guardian profile images via the upload seam and requeues current governed avatar derivatives via the preview-derivative seam instead of adding new runtime repair paths
