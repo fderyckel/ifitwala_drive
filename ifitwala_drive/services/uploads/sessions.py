@@ -158,7 +158,7 @@ def _load_existing_session_response(session_key: str) -> dict[str, Any] | None:
 	return _serialize_session_response(doc, target)
 
 
-def create_resolved_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
+def _create_upload_session_from_resolved_payload(payload: dict[str, Any]) -> dict[str, Any]:
 	validate_create_session_payload(payload)
 	resolved_is_private = int(bool(payload.get("is_private", 1)))
 
@@ -253,7 +253,7 @@ def create_resolved_upload_session_service(payload: dict[str, Any]) -> dict[str,
 
 
 def create_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:
-	return create_resolved_upload_session_service(reconcile_upload_session_payload(payload))
+	return _create_upload_session_from_resolved_payload(reconcile_upload_session_payload(payload))
 
 
 def abort_upload_session_service(payload: dict[str, Any]) -> dict[str, Any]:

@@ -657,44 +657,16 @@ def test_generic_create_upload_session_accepts_every_ed_workflow_sample(
 		assert getattr(session_doc, session_field) == expected_value
 
 
-def test_resolved_create_upload_session_helper_does_not_reconcile_again():
+def test_upload_sessions_expose_one_public_create_boundary():
 	_install_fake_frappe()
 	_install_fake_storage()
 	_install_fake_logging()
-
-	bridge_module = types.ModuleType("ifitwala_drive.services.integration.ifitwala_ed_bridge")
-
-	def _reconcile_upload_session_payload(_payload):
-		raise AssertionError("Resolved helper must not call Ed reconciliation again.")
-
-	bridge_module.reconcile_upload_session_payload = _reconcile_upload_session_payload
-	sys.modules["ifitwala_drive.services.integration.ifitwala_ed_bridge"] = bridge_module
+	_install_fake_bridge()
 
 	sessions = importlib.import_module("ifitwala_drive.services.uploads.sessions")
-	payload = {
-		**_SAMPLE_BY_KEY[("student_log.evidence_attachment", "default")],
-		"workflow_id": "student_log.evidence_attachment",
-		"contract_version": "1",
-		"workflow_payload": {"student_log": "SLOG-0001", "row_name": "ROW-0001"},
-		"workflow_result": {
-			"row_name": "ROW-0001",
-			"slot": "student_log_evidence__row_0001",
-		},
-		"filename_original": "student_log_evidence.pdf",
-		"mime_type_hint": "application/pdf",
-		"expected_size_bytes": 42,
-		"idempotency_key": "student-log-resolved-helper",
-		"upload_source": "Unit Test",
-	}
 
-	response = sessions.create_resolved_upload_session_service(payload)
-
-	assert response["status"] == "created"
-	assert response["workflow_id"] == "student_log.evidence_attachment"
-	assert response["workflow_result"] == {
-		"row_name": "ROW-0001",
-		"slot": "student_log_evidence__row_0001",
-	}
+	assert callable(getattr(sessions, "create_upload_session_service", None))
+	assert not hasattr(sessions, "create_resolved_upload_session_service")
 
 
 def test_drive_wrapper_workflow_ids_are_valid_ed_specs():

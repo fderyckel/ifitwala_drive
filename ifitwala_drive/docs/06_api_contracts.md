@@ -127,6 +127,7 @@ Current rule:
 - wrapper-specific create-session extras must live only under `workflow_result`, not as ad hoc top-level keys
 - slot meaning comes from the Ed-resolved `GovernedUploadSpec`; Drive validates slot shape and path safety, not a second exact/prefix slot registry
 - transitional wrappers may add local Drive metadata such as UX folders or typed `workflow_result` after Ed workflow resolution, but must not hand-author owner, subject, slot, purpose, retention, organization, or school semantics
+- `create_upload_session_service(...)` is the only public Drive session creation service; wrappers must not import resolved-session helper names or bypass the generic workflow boundary
 
 ## 4. Blob ingress contract
 
