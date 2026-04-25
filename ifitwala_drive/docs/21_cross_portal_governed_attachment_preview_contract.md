@@ -128,6 +128,7 @@ For Ifitwala_Ed-owned portals:
 - Ed should validate the business surface first, then call Drive to issue a short-lived grant, then redirect
 - when a surface-scoped Drive wrapper exists, Ed should call that public `ifitwala_drive.api.*` wrapper only; it should not import Drive integration services directly as a runtime fallback
 - Org Communication staff, student, and guardian reads should use the narrow communications wrappers (`ifitwala_drive.api.communications.issue_org_communication_attachment_preview_grant` / `issue_org_communication_attachment_download_grant`) so Drive can trust Ed's audience contract instead of re-checking raw `Org Communication` role permissions on the portal user
+- Student Log evidence reads should use the narrow Student Log wrappers (`ifitwala_drive.api.student_logs.issue_student_log_evidence_attachment_preview_grant` / `issue_student_log_evidence_attachment_download_grant`) so Drive relies on Ed's parent-log and attachment-row visibility contract instead of generic DocType read checks
 
 Direct Drive grant APIs remain valid for:
 

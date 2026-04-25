@@ -550,6 +550,49 @@ def resolve_task_submission_folder(
 	)
 
 
+def resolve_student_log_evidence_folder(
+	*,
+	student: str,
+	student_log: str,
+	organization: str,
+	school: str,
+) -> str:
+	student_root = _ensure_student_root(student=student, organization=organization, school=school)
+	logs_root = _ensure_folder(
+		title="Student Logs",
+		parent_drive_folder=student_root,
+		owner_doctype="Student",
+		owner_name=student,
+		organization=organization,
+		school=school,
+		folder_kind="student_workspace",
+		context_doctype="Student",
+		context_name=student,
+	)
+	log_root = _ensure_folder(
+		title=student_log,
+		parent_drive_folder=logs_root,
+		owner_doctype="Student Log",
+		owner_name=student_log,
+		organization=organization,
+		school=school,
+		folder_kind="student_workspace",
+		context_doctype="Student Log",
+		context_name=student_log,
+	)
+	return _ensure_folder(
+		title="Evidence",
+		parent_drive_folder=log_root,
+		owner_doctype="Student Log",
+		owner_name=student_log,
+		organization=organization,
+		school=school,
+		folder_kind="student_workspace",
+		context_doctype="Student Log",
+		context_name=student_log,
+	)
+
+
 def _ensure_courses_root(*, organization: str) -> str:
 	return _ensure_folder(
 		title="Courses",

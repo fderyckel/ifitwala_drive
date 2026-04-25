@@ -244,6 +244,7 @@ But:
 - they must not become a second place where workflow semantics are authored
 - Ed callers must use the public `ifitwala_drive.api.*` wrapper when a surface-scoped wrapper exists; they must not import Drive integration services directly as a runtime fallback
 - if a required public wrapper export is unavailable, the caller must fail closed or use its own already-authorized local delivery path; it must not fall back to generic owner-doc grant APIs for an Ed-owned surface
+- current surface-scoped public wrappers include Student Log evidence (`ifitwala_drive.api.student_logs.upload_student_log_evidence_attachment`, `issue_student_log_evidence_attachment_preview_grant`, and `issue_student_log_evidence_attachment_download_grant`)
 
 ## 10. Current-runtime note
 
