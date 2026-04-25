@@ -61,7 +61,7 @@ The preferred long-term cross-app contract is:
 - `finalize_upload_session(upload_session_id, received_size_bytes, content_hash?)`
 - `abort_upload_session(upload_session_id)`
 - `issue_download_grant(drive_file_id | canonical_ref)`
-- `issue_preview_grant(drive_file_id | canonical_ref, derivative_role?)`
+- `issue_preview_grant(drive_file_id | canonical_ref)`
 
 ### 2.2 Drive -> Ed
 
@@ -223,6 +223,7 @@ Rules:
 - resolve by `drive_file_id` or `canonical_ref`
 - select the ready derivative when the preview contract requires one
 - return a short-lived preview contract
+- Drive-internal and server-to-server callers may select a concrete preview variant when they need thumbnail delivery, but Ed/browser-facing DTOs must expose only stable `preview_url` and `thumbnail_url` action URLs, never derivative role names
 
 ## 8. MIME contract
 
