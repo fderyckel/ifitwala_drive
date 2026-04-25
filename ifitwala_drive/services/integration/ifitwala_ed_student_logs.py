@@ -10,9 +10,7 @@ from ifitwala_drive.services.files.access import (
 	_assert_can_issue_preview,
 	_issue_grant,
 )
-from ifitwala_drive.services.folders.resolution import resolve_student_log_evidence_folder
 from ifitwala_drive.services.integration._ed_delegate import load_ed_drive_module
-from ifitwala_drive.services.integration.ifitwala_ed_bridge import reconcile_upload_session_payload
 
 _ED_MODULE = "ifitwala_ed.integrations.drive.student_logs"
 
@@ -93,7 +91,7 @@ def issue_student_log_evidence_attachment_preview_grant_service(payload: dict[st
 
 
 def upload_student_log_evidence_attachment_service(payload: dict[str, Any]) -> dict[str, Any]:
-	from ifitwala_drive.services.uploads.sessions import create_resolved_upload_session_service
+	from ifitwala_drive.services.uploads.sessions import create_upload_session_service
 
 	student_log = payload.get("student_log")
 	filename_original = payload.get("filename_original")
@@ -110,7 +108,7 @@ def upload_student_log_evidence_attachment_service(payload: dict[str, Any]) -> d
 		"row_name": provided_row_name,
 		"slot": payload.get("slot"),
 	}
-	resolved = reconcile_upload_session_payload(
+	return create_upload_session_service(
 		{
 			"workflow_id": workflow_id,
 			"workflow_payload": workflow_payload,
@@ -121,21 +119,3 @@ def upload_student_log_evidence_attachment_service(payload: dict[str, Any]) -> d
 			"upload_source": payload.get("upload_source") or "Desk",
 		}
 	)
-
-	response = create_resolved_upload_session_service(
-		{
-			**resolved,
-			"workflow_result": {
-				"row_name": resolved["row_name"],
-				"slot": resolved["slot"],
-			},
-			"folder": resolve_student_log_evidence_folder(
-				student=resolved["primary_subject_id"],
-				student_log=resolved["owner_name"],
-				organization=resolved["organization"],
-				school=resolved["school"],
-			),
-			"is_private": 1,
-		}
-	)
-	return response
