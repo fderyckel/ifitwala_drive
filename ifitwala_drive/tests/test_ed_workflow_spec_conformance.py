@@ -301,6 +301,20 @@ SAMPLE_CONTRACTS: tuple[tuple[str, str, dict[str, Any]], ...] = (
 		),
 	),
 	(
+		"student_referral.attachment",
+		"default",
+		_contract(
+			owner_doctype="Student Referral",
+			owner_name="SRF-0001",
+			primary_subject_type="Student",
+			primary_subject_id="STU-0001",
+			data_class="safeguarding",
+			purpose="safeguarding_evidence",
+			retention_policy="fixed_7y",
+			slot="student_referral_attachment__row_0001",
+		),
+	),
+	(
 		"media.employee_profile_image",
 		"default",
 		_contract(
