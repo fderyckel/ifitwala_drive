@@ -21,11 +21,13 @@ def upload_applicant_document(
 	applicant_document: str | None = None,
 	applicant_document_item: str | None = None,
 	item_key: str | None = None,
+	item_label: str | None = None,
 	slot: str | None = None,
 	mime_type_hint: str | None = None,
 	expected_size_bytes: int | str | None = None,
 	idempotency_key: str | None = None,
 	upload_source: str | None = None,
+	is_private: int | str | None = None,
 ) -> dict[str, Any]:
 	"""Workflow-aware wrapper for admissions document uploads."""
 	return upload_applicant_document_service(
@@ -36,11 +38,13 @@ def upload_applicant_document(
 			applicant_document=applicant_document,
 			applicant_document_item=applicant_document_item,
 			item_key=item_key,
+			item_label=item_label,
 			slot=slot,
 			mime_type_hint=mime_type_hint,
 			expected_size_bytes=expected_size_bytes,
 			idempotency_key=idempotency_key,
 			upload_source=upload_source,
+			is_private=is_private,
 		)
 	)
 

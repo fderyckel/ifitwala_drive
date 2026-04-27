@@ -99,7 +99,9 @@ def test_admissions_wrapper_maps_explicit_payload():
 			filename_original="passport.pdf",
 			document_type="Passport",
 			item_key="passport_copy",
+			item_label="Passport Copy",
 			idempotency_key="retry-applicant-001",
+			is_private=1,
 		)
 		module.upload_applicant_health_vaccination_proof(
 			student_applicant="APP-0001",
@@ -115,7 +117,9 @@ def test_admissions_wrapper_maps_explicit_payload():
 			"filename_original": "passport.pdf",
 			"document_type": "Passport",
 			"item_key": "passport_copy",
+			"item_label": "Passport Copy",
 			"idempotency_key": "retry-applicant-001",
+			"is_private": 1,
 		}
 		assert recorder["health"] == {
 			"student_applicant": "APP-0001",
