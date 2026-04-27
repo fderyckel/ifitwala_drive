@@ -1,7 +1,7 @@
 # Canonical API Contracts
 
 Status: LOCKED target API direction
-Date: 2026-04-25
+Date: 2026-04-27
 Related docs:
 
 - `ifitwala_drive/docs/02_system_architecture.md`
@@ -236,6 +236,14 @@ Rules:
 - return a short-lived preview contract
 - Drive-internal and server-to-server callers may select a concrete preview variant when they need thumbnail delivery, but Ed/browser-facing DTOs must expose only stable `preview_url` and `thumbnail_url` action URLs, never derivative role names
 
+### Surface-scoped Ed grants
+
+Rules:
+
+- generic `issue_download_grant` and `issue_preview_grant` remain owner-DocPerm based
+- Ed-owned portal surfaces whose business authorization is not broad owner DocPerm must use a surface-scoped wrapper after Ed validates that surface context
+- admissions applicant document/profile/health reads must use `ifitwala_drive.api.admissions.issue_admissions_file_download_grant` and `issue_admissions_file_preview_grant`, not the generic owner-doc grant API
+
 ## 7.5 Erasure execution contract
 
 Drive executes governed file erasure only from authoritative Drive metadata. Folders, storage paths, browser URLs, and compatibility `File` rows are not valid erasure truth.
@@ -281,7 +289,7 @@ But:
 - they must not become a second place where workflow semantics are authored
 - Ed callers must use the public `ifitwala_drive.api.*` wrapper when a surface-scoped wrapper exists; they must not import Drive integration services directly as a runtime fallback
 - if a required public wrapper export is unavailable, the caller must fail closed or use its own already-authorized local delivery path; it must not fall back to generic owner-doc grant APIs for an Ed-owned surface
-- current surface-scoped public wrappers include Student Log evidence (`ifitwala_drive.api.student_logs.upload_student_log_evidence_attachment`, `issue_student_log_evidence_attachment_preview_grant`, and `issue_student_log_evidence_attachment_download_grant`)
+- current surface-scoped public wrappers include admissions files (`ifitwala_drive.api.admissions.issue_admissions_file_preview_grant` and `issue_admissions_file_download_grant`) and Student Log evidence (`ifitwala_drive.api.student_logs.upload_student_log_evidence_attachment`, `issue_student_log_evidence_attachment_preview_grant`, and `issue_student_log_evidence_attachment_download_grant`)
 
 ## 10. Current-runtime note
 

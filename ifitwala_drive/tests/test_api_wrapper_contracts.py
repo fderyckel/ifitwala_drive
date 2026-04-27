@@ -87,6 +87,16 @@ def test_admissions_wrapper_maps_explicit_payload():
 			recorder["health"] = payload
 			return {"status": "ok"}
 
+		def _download_service(payload):
+			recorder["download"] = payload
+			return {"status": "ok"}
+
+		def _preview_service(payload):
+			recorder["preview"] = payload
+			return {"status": "ok"}
+
+		service_module.issue_admissions_file_download_grant_service = _download_service
+		service_module.issue_admissions_file_preview_grant_service = _preview_service
 		service_module.upload_applicant_document_service = _document_service
 		service_module.upload_applicant_profile_image_service = lambda payload: {"status": "ok"}
 		service_module.upload_applicant_guardian_image_service = lambda payload: {"status": "ok"}
@@ -111,6 +121,19 @@ def test_admissions_wrapper_maps_explicit_payload():
 			filename_original="proof.png",
 			row_index=0,
 		)
+		module.issue_admissions_file_download_grant(
+			file_id="FILE-0001",
+			drive_file_id="DF-0001",
+			context_doctype="Student Applicant",
+			context_name="APP-0001",
+		)
+		module.issue_admissions_file_preview_grant(
+			file_id="FILE-0001",
+			drive_file_id="DF-0001",
+			context_doctype="Student Applicant",
+			context_name="APP-0001",
+			derivative_role="viewer_preview",
+		)
 
 		assert recorder["document"] == {
 			"student_applicant": "APP-0001",
@@ -128,6 +151,19 @@ def test_admissions_wrapper_maps_explicit_payload():
 			"date": "2020-03-04",
 			"filename_original": "proof.png",
 			"row_index": 0,
+		}
+		assert recorder["download"] == {
+			"file_id": "FILE-0001",
+			"drive_file_id": "DF-0001",
+			"context_doctype": "Student Applicant",
+			"context_name": "APP-0001",
+		}
+		assert recorder["preview"] == {
+			"file_id": "FILE-0001",
+			"drive_file_id": "DF-0001",
+			"context_doctype": "Student Applicant",
+			"context_name": "APP-0001",
+			"derivative_role": "viewer_preview",
 		}
 	finally:
 		_purge_modules(

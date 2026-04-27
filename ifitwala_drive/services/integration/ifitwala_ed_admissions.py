@@ -5,6 +5,11 @@ from typing import Any
 import frappe
 from frappe import _
 
+from ifitwala_drive.services.files.access import (
+	_assert_can_issue_download,
+	_issue_grant,
+	_issue_preview_grant_for_doc,
+)
 from ifitwala_drive.services.folders.resolution import (
 	resolve_applicant_document_folder,
 	resolve_applicant_guardian_image_folder,
@@ -234,3 +239,46 @@ def get_admissions_attached_field_override(upload_session_doc) -> str | None:
 
 def run_admissions_post_finalize(upload_session_doc, created_file) -> dict[str, Any]:
 	return _call_delegate("run_admissions_post_finalize", upload_session_doc, created_file)
+
+
+def assert_admissions_file_read_access(payload: dict[str, Any]) -> dict[str, Any]:
+	return _call_delegate("assert_admissions_file_read_access", payload)
+
+
+def _get_authorized_admissions_drive_file(payload: dict[str, Any]):
+	context = assert_admissions_file_read_access(payload)
+	drive_file_id = str(context.get("drive_file_id") or "").strip()
+	if not drive_file_id:
+		frappe.throw(_("Governed admissions file was not found."))
+	if not frappe.db.exists("Drive File", drive_file_id):
+		frappe.throw(_("Drive File does not exist: {0}").format(drive_file_id))
+
+	drive_file_doc = frappe.get_doc("Drive File", drive_file_id)
+	student_applicant = str(context.get("student_applicant") or "").strip()
+	if not student_applicant:
+		frappe.throw(_("Admissions file access is missing Student Applicant context."))
+
+	if (
+		str(getattr(drive_file_doc, "owner_doctype", "") or "").strip() != "Student Applicant"
+		or str(getattr(drive_file_doc, "owner_name", "") or "").strip() != student_applicant
+		or str(getattr(drive_file_doc, "primary_subject_type", "") or "").strip() != "Student Applicant"
+		or str(getattr(drive_file_doc, "primary_subject_id", "") or "").strip() != student_applicant
+	):
+		frappe.throw(_("Governed admissions file ownership is invalid."))
+
+	file_id = str(context.get("file_id") or "").strip()
+	if file_id and str(getattr(drive_file_doc, "file", "") or "").strip() != file_id:
+		frappe.throw(_("Governed admissions file binding is invalid."))
+
+	return context, drive_file_doc
+
+
+def issue_admissions_file_download_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
+	_context, drive_file_doc = _get_authorized_admissions_drive_file(payload)
+	_assert_can_issue_download(drive_file_doc)
+	return _issue_grant(doc=drive_file_doc, grant_kind="download")
+
+
+def issue_admissions_file_preview_grant_service(payload: dict[str, Any]) -> dict[str, Any]:
+	_context, drive_file_doc = _get_authorized_admissions_drive_file(payload)
+	return _issue_preview_grant_for_doc(doc=drive_file_doc, payload=payload)

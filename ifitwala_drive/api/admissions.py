@@ -6,6 +6,8 @@ import frappe
 
 from ifitwala_drive.api._payloads import compact_payload
 from ifitwala_drive.services.integration.ifitwala_ed_admissions import (
+	issue_admissions_file_download_grant_service,
+	issue_admissions_file_preview_grant_service,
 	upload_applicant_document_service,
 	upload_applicant_guardian_image_service,
 	upload_applicant_health_vaccination_proof_service,
@@ -121,5 +123,45 @@ def upload_applicant_health_vaccination_proof(
 			expected_size_bytes=expected_size_bytes,
 			idempotency_key=idempotency_key,
 			upload_source=upload_source,
+		)
+	)
+
+
+@frappe.whitelist()
+def issue_admissions_file_download_grant(
+	file_id: str | None = None,
+	drive_file_id: str | None = None,
+	canonical_ref: str | None = None,
+	context_doctype: str | None = None,
+	context_name: str | None = None,
+) -> dict[str, Any]:
+	return issue_admissions_file_download_grant_service(
+		compact_payload(
+			file_id=file_id,
+			drive_file_id=drive_file_id,
+			canonical_ref=canonical_ref,
+			context_doctype=context_doctype,
+			context_name=context_name,
+		)
+	)
+
+
+@frappe.whitelist()
+def issue_admissions_file_preview_grant(
+	file_id: str | None = None,
+	drive_file_id: str | None = None,
+	canonical_ref: str | None = None,
+	context_doctype: str | None = None,
+	context_name: str | None = None,
+	derivative_role: str | None = None,
+) -> dict[str, Any]:
+	return issue_admissions_file_preview_grant_service(
+		compact_payload(
+			file_id=file_id,
+			drive_file_id=drive_file_id,
+			canonical_ref=canonical_ref,
+			context_doctype=context_doctype,
+			context_name=context_name,
+			derivative_role=derivative_role,
 		)
 	)
