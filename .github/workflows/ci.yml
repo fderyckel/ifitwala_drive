@@ -43,10 +43,19 @@ jobs:
   pytest:
     name: Pytest
     runs-on: ubuntu-latest
+    env:
+      IFITWALA_ED_REPO: ${{ github.workspace }}/ifitwala_ed
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Check out Ifitwala_Ed contract source
+        uses: actions/checkout@v4
+        with:
+          repository: fderyckel/ifitwala_ed
+          ref: main
+          path: ifitwala_ed
 
       - name: Set up Python
         uses: actions/setup-python@v5

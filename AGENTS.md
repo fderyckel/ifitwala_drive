@@ -258,6 +258,34 @@ Whenever code changes, update the relevant docs to reflect:
 
 If a change affects how **Ifitwala_Ed** uploads, stores, resolves, previews, downloads, or otherwise delivers files, that downstream contract change must be made explicit in the docs and **Ifitwala_Ed must be informed**. Treat this as part of the implementation, not optional follow-up.
 
+### 4.7 Ed/Drive seam debugging discipline
+
+When debugging or changing Drive code that is called by Ifitwala_Ed, treat the seam as a chain of explicit contracts, not one request.
+
+Trace these layers separately:
+
+- Ed browser or server payload
+- Ed whitelisted API binding (`kwargs`, `frappe.form_dict`, JSON body, and nested `args`)
+- Ed business/domain helper payload
+- Ed Drive workflow/context resolver payload
+- Drive public wrapper payload
+- Drive integration service/session payload
+- Drive finalize/post-finalize payload
+
+Rules:
+
+- A valid Ed caller payload is not proof that a Drive wrapper or service received the same values.
+- Do not label an error as permission-related until the exact throw site and missing/invalid field at that layer are identified.
+- Public Drive wrappers that are also whitelisted Frappe methods must tolerate the request-binding shapes Ed portals and Frappe clients use, but must still pass only approved workflow fields into governed services.
+- Drive services must fail closed on missing governance context; request-binding tolerance belongs at public wrapper boundaries, not as a generic fallback in governed services.
+- Do not fix only the outer wrapper if the same invariant can still fail in a deeper in-process Ed delegate, workflow resolver, or post-finalize callback.
+
+Regression coverage for seam fixes must include the failing handoff depth:
+
+- one test for public wrapper payload binding when binding is involved
+- one service or workflow-spec test for the governed context passed to Drive
+- one Ed-side resolver or domain-helper test when Drive delegates back into Ed
+
 ---
 
 ## 5. Required Initial Use Cases

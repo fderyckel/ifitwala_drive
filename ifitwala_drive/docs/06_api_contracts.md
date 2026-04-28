@@ -200,6 +200,7 @@ At minimum:
 The response must not rely on raw private file URLs as the primary browser contract.
 Current rule:
 
+- finalize first validates that `Drive Upload Session.upload_contract_json.workflow` contains persisted `workflow_id` and `contract_version`; missing metadata fails before storage resolution or Ed finalize delegation
 - finalize resolves workflow behavior only from persisted `workflow_id` and `contract_version`; it must not scan workflow specs to detect legacy/pre-registry sessions
 - legacy sessions without persisted workflow metadata must be repaired or retired by explicit migration/backfill patches, not by finalize-time fallback logic
 - `file_id` remains part of the locked Ed/Drive seam only as a transitional compatibility projection until Drive DocTypes and Ed post-upload writes no longer require native `File`

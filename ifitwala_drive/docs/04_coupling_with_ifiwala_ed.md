@@ -115,6 +115,7 @@ Current runtime note:
 - the registry now exists in `ifitwala_ed/integrations/drive/workflow_specs.py`
 - Drive wrapper services now create sessions using `workflow_id` plus workflow-specific identifiers internally
 - the generic session/finalize DTOs now carry `workflow_id`, `contract_version`, and typed `workflow_result`
+- Drive finalize validates persisted `workflow_id` and `contract_version` on the upload-session contract before calling the Ed finalize resolver; missing workflow metadata is a Drive-side fail-closed condition, not an Ed rediscovery path
 - Drive no longer maintains a parallel exact/prefix slot registry for workflow-backed uploads; Ed owns slot meaning through `GovernedUploadSpec`, and Drive enforces slot shape/path-safety before storage/session materialization
 - wrapper-specific extras such as `row_name` or admissions item metadata must not leak out as scattered top-level keys
 - wrapper-specific upload shims may decorate Ed-resolved payloads with Drive-owned presentation metadata such as folders, but must not duplicate governance semantics already resolved by Ed
@@ -156,6 +157,7 @@ Because the apps are tightly coupled:
 - cross-app contract changes must land together
 - docs must be updated together
 - tests must cover the shared boundary
+- CI and local test runners for Drive cross-app conformance must provide the Ed contract source explicitly, using `IFITWALA_ED_REPO` or a sibling checkout
 - seam tests must pin buffered-upload token handling and the locked session/finalize DTO shapes
 
 But tight coupling is not permission to call each other's internals arbitrarily.

@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import importlib
 import json
+import os
 import sys
 import types
 from pathlib import Path
@@ -18,12 +19,27 @@ def _purge_modules(*prefixes: str) -> None:
 
 
 def _ensure_ed_repo_on_path() -> None:
-	ed_repo_root = Path(__file__).resolve().parents[2].parent / "ifitwala_ed"
-	if not ed_repo_root.exists():
-		raise AssertionError(f"Ifitwala_Ed repo not found at expected path: {ed_repo_root}")
-	ed_repo_root_text = str(ed_repo_root)
-	if ed_repo_root_text not in sys.path:
-		sys.path.insert(0, ed_repo_root_text)
+	candidate_roots = []
+	if os.environ.get("IFITWALA_ED_REPO"):
+		candidate_roots.append(Path(os.environ["IFITWALA_ED_REPO"]).expanduser())
+	candidate_roots.extend(
+		(
+			Path(__file__).resolve().parents[2].parent / "ifitwala_ed",
+			Path.cwd() / "ifitwala_ed",
+		)
+	)
+
+	for ed_repo_root in candidate_roots:
+		if (ed_repo_root / "ifitwala_ed" / "integrations" / "drive" / "workflow_specs.py").exists():
+			ed_repo_root_text = str(ed_repo_root)
+			if ed_repo_root_text not in sys.path:
+				sys.path.insert(0, ed_repo_root_text)
+			return
+
+	searched = ", ".join(str(path) for path in candidate_roots)
+	raise AssertionError(
+		f"Ifitwala_Ed repo not found. Set IFITWALA_ED_REPO or provide a sibling checkout. Searched: {searched}"
+	)
 
 
 class FakeFrappeError(Exception):
