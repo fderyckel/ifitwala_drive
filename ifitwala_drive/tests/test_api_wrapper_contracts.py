@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 import sys
 import types
 
@@ -165,6 +166,114 @@ def test_admissions_wrapper_maps_explicit_payload():
 			"context_name": "APP-0001",
 			"derivative_role": "viewer_preview",
 		}
+	finally:
+		_purge_modules(
+			"frappe",
+			"ifitwala_drive.api.admissions",
+			"ifitwala_drive.services.integration.ifitwala_ed_admissions",
+		)
+
+
+def test_admissions_document_wrapper_reads_json_payload_when_binding_omits_kwargs():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.api.admissions",
+		"ifitwala_drive.services.integration.ifitwala_ed_admissions",
+	)
+	try:
+		_install_fake_frappe()
+		import frappe
+
+		recorder = {}
+		service_module = types.ModuleType("ifitwala_drive.services.integration.ifitwala_ed_admissions")
+
+		def _document_service(payload):
+			recorder["document"] = payload
+			return {"status": "ok"}
+
+		service_module.issue_admissions_file_download_grant_service = lambda payload: {"status": "ok"}
+		service_module.issue_admissions_file_preview_grant_service = lambda payload: {"status": "ok"}
+		service_module.upload_applicant_document_service = _document_service
+		service_module.upload_applicant_profile_image_service = lambda payload: {"status": "ok"}
+		service_module.upload_applicant_guardian_image_service = lambda payload: {"status": "ok"}
+		service_module.upload_applicant_health_vaccination_proof_service = lambda payload: {"status": "ok"}
+		sys.modules["ifitwala_drive.services.integration.ifitwala_ed_admissions"] = service_module
+
+		request_payload = {
+			"student_applicant": "APP-JSON-1",
+			"filename_original": "transcript.pdf",
+			"document_type": "transcript",
+			"applicant_document_item": "ADI-0001",
+			"item_key": "aisl_2019",
+			"item_label": "AISL transcript 2019",
+			"mime_type_hint": "application/pdf",
+			"expected_size_bytes": 42,
+			"idempotency_key": "retry-json-001",
+			"upload_source": "SPA",
+			"is_private": 1,
+		}
+		frappe.form_dict = {}
+		frappe.request = types.SimpleNamespace(
+			get_json=lambda silent=True: request_payload,
+			data=json.dumps(request_payload),
+		)
+
+		module = _load_module("ifitwala_drive.api.admissions")
+		module.upload_applicant_document(
+			student_applicant="",
+			filename_original="",
+			document_type="",
+		)
+
+		assert recorder["document"] == request_payload
+	finally:
+		_purge_modules(
+			"frappe",
+			"ifitwala_drive.api.admissions",
+			"ifitwala_drive.services.integration.ifitwala_ed_admissions",
+		)
+
+
+def test_admissions_document_wrapper_reads_nested_args_payload():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.api.admissions",
+		"ifitwala_drive.services.integration.ifitwala_ed_admissions",
+	)
+	try:
+		_install_fake_frappe()
+		import frappe
+
+		recorder = {}
+		service_module = types.ModuleType("ifitwala_drive.services.integration.ifitwala_ed_admissions")
+
+		def _document_service(payload):
+			recorder["document"] = payload
+			return {"status": "ok"}
+
+		service_module.issue_admissions_file_download_grant_service = lambda payload: {"status": "ok"}
+		service_module.issue_admissions_file_preview_grant_service = lambda payload: {"status": "ok"}
+		service_module.upload_applicant_document_service = _document_service
+		service_module.upload_applicant_profile_image_service = lambda payload: {"status": "ok"}
+		service_module.upload_applicant_guardian_image_service = lambda payload: {"status": "ok"}
+		service_module.upload_applicant_health_vaccination_proof_service = lambda payload: {"status": "ok"}
+		sys.modules["ifitwala_drive.services.integration.ifitwala_ed_admissions"] = service_module
+
+		args_payload = {
+			"student_applicant": "APP-ARGS-1",
+			"filename_original": "passport.pdf",
+			"document_type": "passport",
+			"item_key": "passport_copy",
+			"item_label": "Passport Copy",
+			"idempotency_key": "retry-args-001",
+		}
+		frappe.form_dict = {"args": json.dumps(args_payload)}
+		frappe.request = None
+
+		module = _load_module("ifitwala_drive.api.admissions")
+		module.upload_applicant_document()
+
+		assert recorder["document"] == args_payload
 	finally:
 		_purge_modules(
 			"frappe",

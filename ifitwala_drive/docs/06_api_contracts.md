@@ -125,6 +125,7 @@ Current rule:
 - current runtime may also include `upload_token` for browser/proxy upload targets
 - migration/backfill code must use internal service helpers or explicit `Drive Upload Session` materialization, not the public API
 - wrapper-specific create-session extras must live only under `workflow_result`, not as ad hoc top-level keys
+- public workflow wrappers that are also whitelisted Frappe API methods must tolerate the same flat request payload shapes used by Ed portals: explicitly bound kwargs, flat form values, flat JSON bodies, and nested `args`. This is request-binding tolerance only; wrappers must still pass only approved workflow fields into the governed service.
 - slot meaning comes from the Ed-resolved `GovernedUploadSpec`; Drive validates slot shape and path safety, not a second exact/prefix slot registry
 - transitional wrappers may add local Drive metadata such as UX folders or typed `workflow_result` after Ed workflow resolution, but must not hand-author owner, subject, slot, purpose, retention, organization, or school semantics
 - `create_upload_session_service(...)` is the only public Drive session creation service; wrappers must not import resolved-session helper names or bypass the generic workflow boundary
