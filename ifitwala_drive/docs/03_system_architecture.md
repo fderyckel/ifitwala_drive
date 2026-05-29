@@ -206,11 +206,11 @@ The refactor target is:
 - governed semantics live in Drive-owned metadata
 - Ed-owned `File Classification` is removed through migration
 
-## 9. Current-runtime note
+## 9. Runtime compatibility note
 
-Current code still contains cross-app leaks and transitional compatibility logic.
+Compatibility behavior may exist while historical records and older surfaces are retired.
 
-That current-runtime gap is tracked in the Ed-side implementation note and the coupling contract:
+Current compatibility constraints are tracked in the Ed-side implementation note and the boundary contract:
 
 - `ifitwala_ed/docs/files_and_policies/files_03_implementation.md`
-- `ifitwala_drive/docs/04_coupling_with_ifiwala_ed.md`
+- `ifitwala_drive/docs/05_ifitwala_ed_boundary.md`

@@ -1,4 +1,4 @@
-# Ifitwala Drive North Star V1
+# Product North Star
 
 ## Status
 
@@ -51,11 +51,25 @@ If we are not improving one of those four things, we are probably drifting.
 
 ---
 
-## 3. V1 Product Shape
+## 3. Required Initial Workflows
+
+V1 must keep these workflows explicit and simple:
+
+1. task resources
+2. task submission artefacts
+3. applicant documents
+4. portfolio or journal artefacts
+5. organization and school governed media
+
+The first path for reusable material should be reuse or selection, not blind re-upload.
+
+---
+
+## 4. V1 Product Shape
 
 V1 has two surfaces.
 
-### 3.1 Contextual Surfaces First
+### 4.1 Contextual Surfaces First
 
 These are the primary product surface.
 
@@ -81,7 +95,7 @@ Examples:
 This is the main UX.
 Users should not need to remember storage locations to do normal work.
 
-### 3.2 Drive Workspaces Second
+### 4.2 Drive Workspaces Second
 
 Drive browsing exists to support navigation, reuse, cleanup, and orientation.
 
@@ -107,7 +121,7 @@ But these workspaces must still sit on top of governed file ownership.
 
 ---
 
-## 4. What Must Be Strictly Governed
+## 5. What Must Be Strictly Governed
 
 The following stay system-managed and context-anchored:
 
@@ -131,7 +145,7 @@ These are not user-managed folders.
 
 ---
 
-## 5. Where Users Get Freedom
+## 6. Where Users Get Freedom
 
 Teachers and educators do need some controlled freedom.
 
@@ -156,7 +170,7 @@ This is the balance:
 
 ---
 
-## 6. Folder Philosophy
+## 7. Folder Philosophy
 
 Folders are part of the product, but only as human navigation.
 
@@ -182,7 +196,7 @@ This is how we get "Google Drive feel" without losing school-grade governance.
 
 ---
 
-## 7. V1 Browse Surfaces To Lock
+## 8. V1 Browse Surfaces To Lock
 
 The first browse surfaces that matter are:
 
@@ -201,7 +215,7 @@ If a new implementation slice does not clearly improve one of these surfaces, it
 
 ---
 
-## 8. V1 Explicitly Out Of Scope
+## 9. V1 Explicitly Out Of Scope
 
 To avoid drift, V1 is not trying to solve all file problems.
 
@@ -219,7 +233,7 @@ If a proposed feature pulls us toward one of these, it needs a separate decision
 
 ---
 
-## 9. Implementation Gate
+## 10. Implementation Gate
 
 Before shipping more Drive work, ask:
 
@@ -232,7 +246,7 @@ If the answer to any of those is no, stop and re-evaluate.
 
 ---
 
-## 10. Practical Interpretation For Current Work
+## 11. Practical Interpretation For Current Work
 
 What we have already built is still aligned:
 

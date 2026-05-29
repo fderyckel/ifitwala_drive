@@ -2,7 +2,7 @@
 
 ## Status
 
-**Proposed canonical contract for cross-app implementation**
+**Active target contract for cross-app implementation**
 
 Date: 2026-04-25
 
@@ -34,16 +34,16 @@ Test refs:
 
 Related docs:
 
-- `ifitwala_drive/docs/02_system_architecture.md`
-- `ifitwala_drive/docs/03_security_concurrency.md`
-- `ifitwala_drive/docs/04_coupling_with_ifiwala_ed.md`
-- `ifitwala_drive/docs/05_optionC_design_lock.md`
+- `ifitwala_drive/docs/03_system_architecture.md`
+- `ifitwala_drive/docs/04_security_runtime.md`
+- `ifitwala_drive/docs/05_ifitwala_ed_boundary.md`
+- `ifitwala_drive/docs/02_drive_authority_decision.md`
 - `ifitwala_drive/docs/06_api_contracts.md`
 - `../ifitwala_ed/docs/files_and_policies/files_08_cross_portal_governed_attachment_preview_contract.md`
 
 ## Bottom line
 
-The proposal is mostly correct and should be kept as the target direction, but it needs four explicit corrections before it is safe to implement:
+The contract direction is mostly correct and should be kept as the target direction, with four explicit corrections before full rollout:
 
 1. Drive access grants for Ed-owned portal surfaces are infrastructure endpoints, not direct SPA contracts.
 2. Preview grants must resolve derivative artifacts tied to `Drive File Version`; the current file-level preview grant shape is not enough.
@@ -80,7 +80,7 @@ Drive still does not have:
 
 Treat current preview support as a partial Phase 1 implementation, not as the final governed preview architecture.
 
-## Assessment Of The Proposal
+## Assessment Of The Contract
 
 What is correct and should be kept:
 
@@ -239,7 +239,7 @@ Equivalent internal service shapes are acceptable if they preserve the same cont
 
 ## Thumbnail Delivery And Retention Direction
 
-Status: Proposed target refinement
+Status: Active target refinement
 Code refs:
 
 - `ifitwala_drive/api/access.py`

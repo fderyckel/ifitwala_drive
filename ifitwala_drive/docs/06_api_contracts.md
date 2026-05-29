@@ -4,8 +4,8 @@ Status: LOCKED target API direction
 Date: 2026-04-27
 Related docs:
 
-- `ifitwala_drive/docs/02_system_architecture.md`
-- `ifitwala_drive/docs/04_coupling_with_ifiwala_ed.md`
+- `ifitwala_drive/docs/03_system_architecture.md`
+- `ifitwala_drive/docs/05_ifitwala_ed_boundary.md`
 - `ifitwala_ed/docs/files_and_policies/files_07_education_file_semantics_and_cross_app_contract.md`
 
 ## Bottom line
@@ -293,8 +293,8 @@ But:
 - if a required public wrapper export is unavailable, the caller must fail closed or use its own already-authorized local delivery path; it must not fall back to generic owner-doc grant APIs for an Ed-owned surface
 - current surface-scoped public wrappers include admissions files (`ifitwala_drive.api.admissions.issue_admissions_file_preview_grant` and `issue_admissions_file_download_grant`) and Student Log evidence (`ifitwala_drive.api.student_logs.upload_student_log_evidence_attachment`, `issue_student_log_evidence_attachment_preview_grant`, and `issue_student_log_evidence_attachment_download_grant`)
 
-## 10. Current-runtime note
+## 10. Runtime compatibility note
 
-Current code still contains wrapper-heavy and cross-import-heavy paths.
+Compatibility wrappers may exist for current product surfaces.
 
 Those are transitional implementation details, not the target API model.

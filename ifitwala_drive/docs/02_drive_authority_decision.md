@@ -1,18 +1,18 @@
-# Option C Design Lock
+# Drive Authority Decision
 
 Status: LOCKED architecture decision
 Date: 2026-04-20
 
 ## Bottom line
 
-- Option C remains the chosen direction.
+- The Drive-authority model remains the chosen direction.
 - Ed remains the workflow authority.
 - Drive becomes the sole governed file execution and metadata authority.
 - `File Classification` may exist only as temporary migration baggage and must not survive the refactor.
 
 ## 1. Decision
 
-We are keeping the hybrid transition model, but with a sharper end-state than the earlier notes implied.
+We are keeping the hybrid transition model, formerly called Option C, but with a sharper end-state than the earlier notes implied.
 
 Chosen target:
 

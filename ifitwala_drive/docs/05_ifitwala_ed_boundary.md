@@ -1,4 +1,4 @@
-# Coupling With Ifitwala_Ed
+# Ifitwala_Ed Boundary
 
 Status: LOCKED boundary contract
 Date: 2026-04-25
@@ -157,14 +157,14 @@ Because the apps are tightly coupled:
 - cross-app contract changes must land together
 - docs must be updated together
 - tests must cover the shared boundary
-- CI and local test runners for Drive cross-app conformance must provide the Ed contract source explicitly, using `IFITWALA_ED_REPO` or a sibling checkout
+- CI checks out the sibling `ifitwala_ed` contract source for Drive cross-app conformance; local runners may use `IFITWALA_ED_REPO` or a sibling checkout
 - seam tests must pin buffered-upload token handling and the locked session/finalize DTO shapes
 
 But tight coupling is not permission to call each other's internals arbitrarily.
 
 ## 8. Remaining migration work
 
-Current code still shows these transitional behaviors:
+Transitional behaviors that may remain during migration:
 
 - Drive still emits native `File` compatibility projections for current Ed surfaces
 - native `File` projection retirement is not complete because current Drive DocTypes and some Ed post-upload writes still carry `file_id`

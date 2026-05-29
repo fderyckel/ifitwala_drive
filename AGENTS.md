@@ -199,8 +199,8 @@ Work from authoritative files and docs.
 
 When touching governed uploads, file links, attachment DTOs, preview/open/download routes, thumbnails, or derivative behavior, read in this order:
 
-1. `ifitwala_drive/docs/05_optionC_design_lock.md`
-2. `ifitwala_drive/docs/04_coupling_with_ifiwala_ed.md`
+1. `ifitwala_drive/docs/02_drive_authority_decision.md`
+2. `ifitwala_drive/docs/05_ifitwala_ed_boundary.md`
 3. `ifitwala_drive/docs/06_api_contracts.md`
 4. `../ifitwala_ed/ifitwala_ed/docs/files_and_policies/files_03_implementation.md`
 5. `../ifitwala_ed/ifitwala_ed/docs/files_and_policies/files_07_education_file_semantics_and_cross_app_contract.md`

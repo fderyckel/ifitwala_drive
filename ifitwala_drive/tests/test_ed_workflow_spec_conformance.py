@@ -303,6 +303,20 @@ SAMPLE_CONTRACTS: tuple[tuple[str, str, dict[str, Any]], ...] = (
 		),
 	),
 	(
+		"expense_claim.receipt",
+		"default",
+		_contract(
+			owner_doctype="Expense Claim",
+			owner_name="EXP-0001",
+			primary_subject_type="Employee",
+			primary_subject_id="EMP-0001",
+			data_class="financial",
+			purpose="administrative",
+			retention_policy="fixed_7y",
+			slot="expense_claim_receipt__row_0001",
+		),
+	),
+	(
 		"student_log.evidence_attachment",
 		"default",
 		_contract(
@@ -552,7 +566,10 @@ def _wrapper_workflows_from_source() -> dict[str, str]:
 
 
 def _without_allowed_internal_derivative_doc_section(path: Path, text: str) -> str:
-	if path.name != "21_cross_portal_governed_attachment_preview_contract.md":
+	if path.name not in {
+		"08_cross_portal_preview_contract.md",
+		"21_cross_portal_governed_attachment_preview_contract.md",
+	}:
 		return text
 	start_marker = "## Internal Architecture: Data Model Direction"
 	end_marker = "Recommended statuses:"

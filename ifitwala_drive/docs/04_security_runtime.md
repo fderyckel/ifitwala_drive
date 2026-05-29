@@ -1,4 +1,4 @@
-# Security And Concurrency
+# Security And Runtime
 
 Status: LOCKED target runtime posture
 Date: 2026-04-19
@@ -152,8 +152,8 @@ Principles:
 - generate derivatives lazily and reuse them
 - prefer resumable/direct uploads for unreliable networks
 
-## 8. Current-runtime note
+## 8. Runtime compatibility note
 
-Current code still has some non-conforming boundary behavior.
+Compatibility behavior may exist for migration and local development.
 
 That does not change the runtime contract defined here.
