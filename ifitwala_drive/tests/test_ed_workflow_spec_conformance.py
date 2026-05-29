@@ -498,6 +498,22 @@ ALLOWED_DRIVE_ED_IMPORTS: dict[str, set[str]] = {
 	},
 }
 
+ALLOWED_ED_FRONTEND_FILE_URL_CONTRACTS: set[str] = {
+	"ifitwala_ed/ui-spa/src/types/contracts/focus/get_focus_context.ts",
+	"ifitwala_ed/ui-spa/src/types/contracts/portfolio/export_portfolio_pdf.ts",
+	"ifitwala_ed/ui-spa/src/types/contracts/portfolio/export_reflection_pdf.ts",
+	"ifitwala_ed/ui-spa/src/types/contracts/portfolio/get_portfolio_feed.ts",
+}
+
+FORBIDDEN_FRONTEND_DTO_SNIPPETS: tuple[str, ...] = (
+	"storage_object_key",
+	"derivative_role",
+	"derivative_roles",
+	"viewer_preview",
+	"pdf_page_1",
+	"pdf_card",
+)
+
 
 def _sample_payload(workflow_id: str, sample_name: str = "default") -> dict[str, Any]:
 	return {
@@ -822,6 +838,73 @@ def test_drive_runtime_code_uses_approved_ed_boundary_modules():
 				continue
 
 			failures.append(f"{relative_path}:{line_number} imports {module_name}")
+
+	assert failures == []
+
+
+def test_ed_attachment_preview_item_sanitizes_storage_specific_urls_and_roles():
+	_ensure_ed_repo_on_path()
+	attachment_previews = importlib.import_module("ifitwala_ed.api.attachment_previews")
+
+	payload = attachment_previews.build_attachment_preview_item(
+		item_id="ATT-0001",
+		owner_doctype="Material Placement",
+		owner_name="MP-0001",
+		file_id="FILE-0001",
+		display_name="Unit Plan.pdf",
+		mime_type="application/pdf",
+		thumbnail_url="/private/files/thumb.webp",
+		preview_url="https://storage.example.invalid/object?X-Amz-Signature=abc",
+		open_url="files/aa/bb/object.pdf",
+		download_url="derivatives/aa/bb/object.webp",
+	)
+
+	assert payload["thumbnail_url"] is None
+	assert payload["preview_url"] is None
+	assert payload["open_url"] is None
+	assert payload["download_url"] is None
+
+	clean_payload = attachment_previews.build_attachment_preview_item(
+		item_id="ATT-0002",
+		owner_doctype="Material Placement",
+		owner_name="MP-0001",
+		file_id="FILE-0002",
+		display_name="Lesson Image.png",
+		mime_type="image/png",
+		thumbnail_url=(
+			"/api/method/ifitwala_ed.api.file_access.thumbnail_academic_file"
+			"?file=FILE-0002&derivative_role=thumb&context_doctype=Material+Placement"
+		),
+		preview_url=(
+			"/api/method/ifitwala_ed.api.file_access.preview_academic_file"
+			"?file=FILE-0002&derivative_role=viewer_preview"
+		),
+		open_url=(
+			"/api/method/ifitwala_ed.api.file_access.open_academic_file"
+			"?file=FILE-0002&derivative_role=viewer_preview"
+		),
+	)
+
+	assert "derivative_role" not in clean_payload["thumbnail_url"]
+	assert "derivative_role" not in clean_payload["preview_url"]
+	assert "derivative_role" not in clean_payload["open_url"]
+	assert "context_doctype=Material+Placement" in clean_payload["thumbnail_url"]
+
+
+def test_ed_frontend_contract_types_do_not_expose_drive_storage_internals():
+	ed_repo_root = _find_ed_repo_root()
+	contracts_root = ed_repo_root / "ifitwala_ed" / "ui-spa" / "src" / "types" / "contracts"
+	failures: list[str] = []
+
+	for path in sorted(contracts_root.rglob("*.ts")):
+		relative_path = path.relative_to(ed_repo_root).as_posix()
+		text = path.read_text(encoding="utf-8")
+		for snippet in FORBIDDEN_FRONTEND_DTO_SNIPPETS:
+			if snippet in text:
+				failures.append(f"{relative_path} contains {snippet}")
+
+		if "file_url" in text and relative_path not in ALLOWED_ED_FRONTEND_FILE_URL_CONTRACTS:
+			failures.append(f"{relative_path} contains file_url outside the legacy allowlist")
 
 	assert failures == []
 

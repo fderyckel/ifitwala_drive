@@ -159,6 +159,7 @@ Because the apps are tightly coupled:
 - tests must cover the shared boundary
 - CI checks out the sibling `ifitwala_ed` contract source for Drive cross-app conformance; local runners may use `IFITWALA_ED_REPO` or a sibling checkout
 - CI also statically checks runtime imports so Ed uses Drive public APIs and Drive uses only approved Ed boundary modules, with narrow allowlisted legacy compatibility exceptions
+- CI pins Ed browser-facing attachment DTO hygiene so storage object keys, raw private paths, signed provider URLs, and internal derivative role names do not become SPA contracts
 - seam tests must pin buffered-upload token handling and the locked session/finalize DTO shapes
 
 But tight coupling is not permission to call each other's internals arbitrarily.
