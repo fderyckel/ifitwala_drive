@@ -19,6 +19,13 @@ def _purge_modules(*prefixes: str) -> None:
 
 
 def _ensure_ed_repo_on_path() -> None:
+	ed_repo_root = _find_ed_repo_root()
+	ed_repo_root_text = str(ed_repo_root)
+	if ed_repo_root_text not in sys.path:
+		sys.path.insert(0, ed_repo_root_text)
+
+
+def _find_ed_repo_root() -> Path:
 	candidate_roots = []
 	if os.environ.get("IFITWALA_ED_REPO"):
 		candidate_roots.append(Path(os.environ["IFITWALA_ED_REPO"]).expanduser())
@@ -31,10 +38,7 @@ def _ensure_ed_repo_on_path() -> None:
 
 	for ed_repo_root in candidate_roots:
 		if (ed_repo_root / "ifitwala_ed" / "integrations" / "drive" / "workflow_specs.py").exists():
-			ed_repo_root_text = str(ed_repo_root)
-			if ed_repo_root_text not in sys.path:
-				sys.path.insert(0, ed_repo_root_text)
-			return
+			return ed_repo_root
 
 	searched = ", ".join(str(path) for path in candidate_roots)
 	raise AssertionError(
@@ -470,6 +474,30 @@ EXPECTED_WRAPPER_WORKFLOWS: dict[str, str] = {
 	"upload_task_submission_artifact_service": "task.submission",
 }
 
+ALLOWED_ED_INTERNAL_DRIVE_IMPORTS: dict[str, set[str]] = {
+	"ifitwala_ed/admission/doctype/student_applicant/student_applicant.py": {
+		"ifitwala_drive.services.storage.base",
+	},
+	"ifitwala_ed/utilities/image_utils.py": {
+		"ifitwala_drive.services.storage.base",
+	},
+}
+
+ALLOWED_DRIVE_ED_IMPORTS: dict[str, set[str]] = {
+	"ifitwala_drive/ifitwala_drive/doctype/drive_upload_session/drive_upload_session.py": {
+		"ifitwala_ed.utilities.governed_file_contract",
+	},
+	"ifitwala_drive/services/governance_contract.py": {
+		"ifitwala_ed.utilities.governed_file_contract",
+	},
+	"ifitwala_drive/services/integration/ifitwala_ed_media.py": {
+		"ifitwala_ed.utilities.organization_media",
+	},
+	"ifitwala_drive/services/uploads/validation.py": {
+		"ifitwala_ed.utilities.governed_file_contract",
+	},
+}
+
 
 def _sample_payload(workflow_id: str, sample_name: str = "default") -> dict[str, Any]:
 	return {
@@ -540,6 +568,41 @@ def _install_fake_logging() -> None:
 
 def _drive_repo_root() -> Path:
 	return Path(__file__).resolve().parents[2]
+
+
+def _is_test_module_path(path: Path) -> bool:
+	return path.name.startswith("test_") or path.name.endswith("_test.py")
+
+
+def _iter_imported_modules(path: Path) -> list[tuple[int, str]]:
+	tree = ast.parse(path.read_text(encoding="utf-8"))
+	imports: list[tuple[int, str]] = []
+
+	for node in ast.walk(tree):
+		if isinstance(node, ast.Import):
+			imports.extend((node.lineno, alias.name) for alias in node.names)
+			continue
+
+		if isinstance(node, ast.ImportFrom) and node.module:
+			imports.append((node.lineno, node.module))
+			continue
+
+		if isinstance(node, ast.Call) and node.args:
+			func = node.func
+			is_import_module = (
+				isinstance(func, ast.Name)
+				and func.id == "import_module"
+				or isinstance(func, ast.Attribute)
+				and func.attr == "import_module"
+			)
+			if is_import_module and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+				imports.append((node.lineno, node.args[0].value))
+
+	return imports
+
+
+def _is_same_or_child_module(module_name: str, parent_module: str) -> bool:
+	return module_name == parent_module or module_name.startswith(f"{parent_module}.")
 
 
 def _wrapper_workflows_from_source() -> dict[str, str]:
@@ -714,6 +777,53 @@ def test_upload_sessions_expose_one_public_create_boundary():
 
 	assert callable(getattr(sessions, "create_upload_session_service", None))
 	assert not hasattr(sessions, "create_resolved_upload_session_service")
+
+
+def test_ed_runtime_code_uses_drive_public_api_boundary():
+	ed_repo_root = _find_ed_repo_root()
+	failures: list[str] = []
+
+	for path in sorted((ed_repo_root / "ifitwala_ed").rglob("*.py")):
+		if _is_test_module_path(path):
+			continue
+
+		relative_path = path.relative_to(ed_repo_root).as_posix()
+		allowed_modules = ALLOWED_ED_INTERNAL_DRIVE_IMPORTS.get(relative_path, set())
+		for line_number, module_name in _iter_imported_modules(path):
+			if not _is_same_or_child_module(module_name, "ifitwala_drive"):
+				continue
+
+			if _is_same_or_child_module(module_name, "ifitwala_drive.api"):
+				continue
+
+			if any(_is_same_or_child_module(module_name, allowed) for allowed in allowed_modules):
+				continue
+
+			failures.append(f"{relative_path}:{line_number} imports {module_name}")
+
+	assert failures == []
+
+
+def test_drive_runtime_code_uses_approved_ed_boundary_modules():
+	drive_repo_root = _drive_repo_root()
+	failures: list[str] = []
+
+	for path in sorted((drive_repo_root / "ifitwala_drive").rglob("*.py")):
+		if "tests" in path.parts or _is_test_module_path(path):
+			continue
+
+		relative_path = path.relative_to(drive_repo_root).as_posix()
+		allowed_modules = ALLOWED_DRIVE_ED_IMPORTS.get(relative_path, set())
+		for line_number, module_name in _iter_imported_modules(path):
+			if not _is_same_or_child_module(module_name, "ifitwala_ed"):
+				continue
+
+			if any(_is_same_or_child_module(module_name, allowed) for allowed in allowed_modules):
+				continue
+
+			failures.append(f"{relative_path}:{line_number} imports {module_name}")
+
+	assert failures == []
 
 
 def test_drive_wrapper_workflow_ids_are_valid_ed_specs():
