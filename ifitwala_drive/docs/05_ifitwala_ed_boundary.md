@@ -124,6 +124,7 @@ Current runtime note:
 - legacy profile-image cleanup is now patch-driven through those same public Drive media wrappers: Ed migration code reimports missing Employee/Student/Guardian profile images via the upload seam and requeues current governed avatar derivatives via the preview-derivative seam instead of adding new runtime repair paths
 - wrapper-specific public endpoints still exist only as ergonomics shims during migration
 - Ed and Drive runtime entrypoints now import only explicit public bridge/API modules; reload fallback wrappers and `sys.path` rescue are retired
+- Ed workflow-spec uploads such as `expense_claim.receipt` must still use Drive-owned canonical slot and binding-role registries. Drive currently accepts the `expense_claim_receipt__*` slot family and `expense_claim_receipt` binding role for reimbursement receipt evidence.
 
 ## 5. MIME contract
 

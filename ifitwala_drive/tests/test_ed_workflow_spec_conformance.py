@@ -605,11 +605,14 @@ def _iter_imported_modules(path: Path) -> list[tuple[int, str]]:
 
 		if isinstance(node, ast.Call) and node.args:
 			func = node.func
-			is_import_module = (
-				(isinstance(func, ast.Name) and func.id == "import_module")
-				or (isinstance(func, ast.Attribute) and func.attr == "import_module")
+			is_import_module = (isinstance(func, ast.Name) and func.id == "import_module") or (
+				isinstance(func, ast.Attribute) and func.attr == "import_module"
 			)
-			if is_import_module and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+			if (
+				is_import_module
+				and isinstance(node.args[0], ast.Constant)
+				and isinstance(node.args[0].value, str)
+			):
 				imports.append((node.lineno, node.args[0].value))
 
 	return imports

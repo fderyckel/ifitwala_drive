@@ -17,6 +17,7 @@ _ALLOWED_BINDING_ROLES = {
 	"student_image",
 	"supporting_material",
 	"communication_attachment",
+	"expense_claim_receipt",
 }
 
 
