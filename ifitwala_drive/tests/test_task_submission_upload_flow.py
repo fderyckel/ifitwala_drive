@@ -223,6 +223,7 @@ def _install_fake_frappe(
 	frappe._ = _identity
 	frappe.db = FakeDB()
 	frappe.session = types.SimpleNamespace(user="student@example.com")
+	frappe.get_roles = lambda user=None: []
 	frappe.local = types.SimpleNamespace(request_ip="127.0.0.1")
 	frappe.generate_hash = lambda length=24: "x" * length
 	frappe.whitelist = lambda *args, **kwargs: lambda fn: fn
@@ -830,6 +831,7 @@ def test_finalize_rejects_task_submission_context_drift(monkeypatch):
 			"intended_purpose": "assessment_submission",
 			"intended_retention_policy": "until_school_exit_plus_6m",
 			"intended_slot": "submission",
+			"upload_contract_json": '{"workflow":{"workflow_id":"task.submission","contract_version":"1","workflow_payload":{"task_submission":"TSUB-0001","student":"STU-9999"},"workflow_result":{}}}',
 			"secondary_subjects": [],
 		}
 	)
@@ -1735,6 +1737,66 @@ def test_create_drive_file_artifacts_creates_primary_binding_when_ed_requests_on
 	assert response["drive_file_version_id"] == "DFV-0001"
 	assert response["canonical_ref"] == "drv:ORG-0001:DF-0001"
 	assert response["drive_binding_id"] == "DB-0001"
+
+
+def test_create_drive_file_artifacts_accepts_expense_claim_receipt_binding():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.files.creation",
+	)
+	_install_fake_frappe(docs_map={})
+	module = _load_module("ifitwala_drive.services.files.creation")
+	upload_session_doc = FakeDoc(
+		{
+			"name": "DUS-0006",
+			"attached_doctype": "Expense Claim",
+			"attached_name": "EXC-2026-00001",
+			"owner_doctype": "Expense Claim",
+			"owner_name": "EXC-2026-00001",
+			"organization": "ORG-0001",
+			"school": None,
+			"upload_source": "Desk",
+			"filename_original": "receipt.pdf",
+			"is_private": 1,
+			"intended_primary_subject_type": "Employee",
+			"intended_primary_subject_id": "EMP-0001",
+			"intended_data_class": "financial",
+			"intended_purpose": "administrative",
+			"intended_retention_policy": "fixed_7y",
+			"intended_slot": "expense_claim_receipt__row-001",
+		}
+	)
+
+	response = module.create_drive_file_artifacts(
+		upload_session_doc=upload_session_doc,
+		file_id="FILE-0006",
+		storage_artifact={
+			"storage_backend": "gcs",
+			"object_key": "files/expense/receipt.pdf",
+			"mime_type": "application/pdf",
+		},
+		binding_role="expense_claim_receipt",
+	)
+
+	assert response["drive_file_id"] == "DF-0001"
+	assert response["drive_file_version_id"] == "DFV-0001"
+	assert response["canonical_ref"] == "drv:ORG-0001:DF-0001"
+	assert response["drive_binding_id"] == "DB-0001"
+
+	drive_file = FakeDoc._docs_map[("Drive File", "DF-0001")]
+	assert drive_file.attached_doctype == "Expense Claim"
+	assert drive_file.owner_doctype == "Expense Claim"
+	assert drive_file.primary_subject_type == "Employee"
+	assert drive_file.data_class == "financial"
+	assert drive_file.purpose == "administrative"
+	assert drive_file.slot == "expense_claim_receipt__row-001"
+
+	binding = FakeDoc._docs_map[("Drive Binding", "DB-0001")]
+	assert binding.binding_doctype == "Expense Claim"
+	assert binding.binding_role == "expense_claim_receipt"
+	assert binding.slot == "expense_claim_receipt__row-001"
+	assert binding.organization == "ORG-0001"
+	assert binding.school is None
 
 
 def test_create_drive_file_artifacts_creates_pending_image_derivatives_and_preview_job():

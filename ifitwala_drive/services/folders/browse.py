@@ -54,6 +54,7 @@ _BINDING_ROLE_DISPLAY_LABELS = {
 	"applicant_document": "Applicant document",
 	"communication_attachment": "Communication attachment",
 	"employee_image": "Employee image",
+	"expense_claim_receipt": "Expense claim receipt",
 	"general_reference": "Learning resource",
 	"guardian_image": "Guardian image",
 	"organization_media": "Media asset",

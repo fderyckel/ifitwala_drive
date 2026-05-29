@@ -20,6 +20,7 @@ _ALLOWED_BINDING_ROLES = {
 	"lesson_activity_resource",
 	"general_reference",
 	"communication_attachment",
+	"expense_claim_receipt",
 }
 
 

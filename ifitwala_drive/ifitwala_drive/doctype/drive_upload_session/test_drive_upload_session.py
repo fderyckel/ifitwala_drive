@@ -104,6 +104,11 @@ def _load_drive_file_doctype_module():
 	return importlib.import_module("ifitwala_drive.ifitwala_drive.doctype.drive_file.drive_file")
 
 
+def _load_drive_binding_doctype_module():
+	_purge_modules("ifitwala_drive.ifitwala_drive.doctype.drive_binding.drive_binding")
+	return importlib.import_module("ifitwala_drive.ifitwala_drive.doctype.drive_binding.drive_binding")
+
+
 def _valid_payload():
 	return {
 		"owner_doctype": "Task Submission",
@@ -178,6 +183,7 @@ def test_unknown_slot_fails():
 		"rubric_evidence",
 		"identity_passport_passport_copy",
 		"communication_attachment__row-001",
+		"expense_claim_receipt__row-001",
 		"organization_media__homepage_hero",
 		"health_vaccination_proof_mmr_2020-03-04",
 	),
@@ -318,3 +324,41 @@ def test_drive_file_accepts_learning_resource():
 
 	doc.validate()
 	assert doc.purpose == "learning_resource"
+
+
+def test_expense_claim_receipt_upload_payload_passes_drive_validation():
+	_install_fake_frappe(
+		exists_map={
+			("Organization", "ORG-0001"): True,
+			("Expense Claim", "EXC-2026-00001"): True,
+			("Employee", "EMP-0001"): True,
+		}
+	)
+	validation = _load_validation_module()
+	payload = {
+		"owner_doctype": "Expense Claim",
+		"owner_name": "EXC-2026-00001",
+		"attached_doctype": "Expense Claim",
+		"attached_name": "EXC-2026-00001",
+		"organization": "ORG-0001",
+		"school": "",
+		"primary_subject_type": "Employee",
+		"primary_subject_id": "EMP-0001",
+		"data_class": "financial",
+		"purpose": "administrative",
+		"retention_policy": "fixed_7y",
+		"slot": "expense_claim_receipt__row-001",
+		"filename_original": "receipt.pdf",
+	}
+
+	validation.validate_create_session_payload(payload)
+
+	assert payload["purpose"] == "administrative"
+	assert payload["slot"] == "expense_claim_receipt__row-001"
+
+
+def test_expense_claim_receipt_binding_role_is_allowed():
+	_install_fake_frappe()
+	module = _load_drive_binding_doctype_module()
+
+	assert "expense_claim_receipt" in module._ALLOWED_BINDING_ROLES

@@ -19,6 +19,7 @@ _PREFIX_SLOTS: Final[tuple[str, ...]] = (
 	"prior_",
 	"supporting_material__",
 	"communication_attachment__",
+	"expense_claim_receipt__",
 	"guardian_profile_image__",
 	"health_vaccination_proof_",
 	"organization_logo__",
