@@ -165,7 +165,7 @@ Only misses should route through the app.
 
 The detailed routing contract remains in:
 
-- `19_public_file_cutover_contract.md`
+- `11_public_file_cutover_contract.md`
 
 ## Topology Decision Notes
 

@@ -2,9 +2,9 @@
 
 ## Status
 
-**Proposed canonical contract for cross-app implementation**
+**Active target contract for cross-app implementation**
 
-Date: 2026-04-20
+Date: 2026-04-25
 
 Code refs:
 
@@ -34,16 +34,16 @@ Test refs:
 
 Related docs:
 
-- `ifitwala_drive/docs/02_system_architecture.md`
-- `ifitwala_drive/docs/03_security_concurrency.md`
-- `ifitwala_drive/docs/04_coupling_with_ifiwala_ed.md`
-- `ifitwala_drive/docs/05_optionC_design_lock.md`
+- `ifitwala_drive/docs/03_system_architecture.md`
+- `ifitwala_drive/docs/04_security_runtime.md`
+- `ifitwala_drive/docs/05_ifitwala_ed_boundary.md`
+- `ifitwala_drive/docs/02_drive_authority_decision.md`
 - `ifitwala_drive/docs/06_api_contracts.md`
 - `../ifitwala_ed/docs/files_and_policies/files_08_cross_portal_governed_attachment_preview_contract.md`
 
 ## Bottom line
 
-The proposal is mostly correct and should be kept as the target direction, but it needs four explicit corrections before it is safe to implement:
+The contract direction is mostly correct and should be kept as the target direction, with four explicit corrections before full rollout:
 
 1. Drive access grants for Ed-owned portal surfaces are infrastructure endpoints, not direct SPA contracts.
 2. Preview grants must resolve derivative artifacts tied to `Drive File Version`; the current file-level preview grant shape is not enough.
@@ -66,7 +66,7 @@ Drive currently has:
 - `Drive File` with a file-level `preview_status`
 - `Drive File Version` for immutable original-file versions
 - `Drive File Derivative` for version-bound derivative metadata
-- derivative-role resolution for preview grants, with `viewer_preview` preferred for images, `pdf_page_1` preferred for richer PDF previews, and explicit `derivative_role` support for thumbnail/card callers
+- derivative resolution for preview grants, with server-side selection of image preview, PDF preview, and thumbnail/card variants
 - async `preview` jobs that create image derivatives plus card-sized and richer first-page PDF derivatives for supported MIME types
 - provider-neutral final-object reads for `local` and `gcs` storage backends
 - version replacement that marks old derivatives `stale` and creates new pending derivative rows/jobs
@@ -80,7 +80,7 @@ Drive still does not have:
 
 Treat current preview support as a partial Phase 1 implementation, not as the final governed preview architecture.
 
-## Assessment Of The Proposal
+## Assessment Of The Contract
 
 What is correct and should be kept:
 
@@ -94,7 +94,7 @@ What must be tightened:
 
 - the portal-facing contract should not be "Ed asks Drive for grant URLs and embeds them in list DTOs"
 - for Ed-owned surfaces, Drive grants should be requested just in time by an Ed-owned route after business-surface authorization
-- `issue_preview_grant(drive_file_id=...)` is too weak once multiple derivative roles exist
+- `issue_preview_grant(drive_file_id=...)` is too weak once multiple internal preview variants exist
 - derivative rows need their own lifecycle state and object key ownership
 
 ## Canonical Drive Ownership
@@ -126,8 +126,10 @@ For Ifitwala_Ed-owned portals:
 
 - the SPA must not call `ifitwala_drive.api.access.issue_preview_grant` or `issue_download_grant` directly
 - Ed should validate the business surface first, then call Drive to issue a short-lived grant, then redirect
+- Ed/browser payloads must expose stable `open_url`, optional `preview_url`, and optional `thumbnail_url` action URLs; derivative role names remain Drive-internal preview infrastructure and must not become portal DTO fields or query parameters
 - when a surface-scoped Drive wrapper exists, Ed should call that public `ifitwala_drive.api.*` wrapper only; it should not import Drive integration services directly as a runtime fallback
 - Org Communication staff, student, and guardian reads should use the narrow communications wrappers (`ifitwala_drive.api.communications.issue_org_communication_attachment_preview_grant` / `issue_org_communication_attachment_download_grant`) so Drive can trust Ed's audience contract instead of re-checking raw `Org Communication` role permissions on the portal user
+- Student Log evidence reads should use the narrow Student Log wrappers (`ifitwala_drive.api.student_logs.issue_student_log_evidence_attachment_preview_grant` / `issue_student_log_evidence_attachment_download_grant`) so Drive relies on Ed's parent-log and attachment-row visibility contract instead of generic DocType read checks
 
 Direct Drive grant APIs remain valid for:
 
@@ -138,7 +140,9 @@ Direct Drive grant APIs remain valid for:
 This distinction is required because current Drive access checks are based on governed file ownership and standard document read access, not on Ed's portal-specific audience contracts.
 The APIs are not wrong in general. They are the wrong portal-facing boundary for Ed-owned surfaces.
 
-## Data Model Direction
+## Internal Architecture: Data Model Direction
+
+This section is Drive-internal implementation guidance. The concrete derivative role names below must not be copied into Ifitwala_Ed, browser-facing DTOs, or SPA contracts; Ed/browser surfaces consume semantic action URLs such as `thumbnail_url`, `preview_url`, and `open_url`.
 
 ### Recommended new model: `Drive File Derivative`
 
@@ -212,14 +216,14 @@ Original versions and derivative artifacts are different concepts and need diffe
 Current state:
 
 - `issue_preview_grant(...)` still uses the current `Drive File.preview_status` gate
-- preview grant resolution prefers a ready primary derivative for the current version: `viewer_preview` for images and `pdf_page_1` for PDFs
+- preview grant resolution prefers a ready primary derivative for the current version
 - preview grant resolution falls back to the current original object only while no derivative is ready yet
 
 Target state:
 
-- preview grants resolve a derivative for the current version and requested derivative role
+- preview grants resolve a derivative for the current version and requested internal preview variant
 - download/open grants continue to resolve the original current object
-- preview issuance should fail closed if the requested derivative is not `ready`; the compatibility default may still fall back to current richer preview behavior when no explicit derivative role was requested
+- preview issuance should fail closed if the requested derivative is not `ready`; the compatibility default may still fall back to current richer preview behavior when no explicit internal preview variant was requested
 
 The API shape must evolve accordingly. One acceptable direction is:
 
@@ -227,7 +231,7 @@ The API shape must evolve accordingly. One acceptable direction is:
 issue_preview_grant(
     drive_file_id: str | None = None,
     canonical_ref: str | None = None,
-    derivative_role: str = "viewer_preview",
+    preview_variant: str | None = None,  # server-side/internal selector only
 )
 ```
 
@@ -235,7 +239,7 @@ Equivalent internal service shapes are acceptable if they preserve the same cont
 
 ## Thumbnail Delivery And Retention Direction
 
-Status: Proposed target refinement
+Status: Active target refinement
 Code refs:
 
 - `ifitwala_drive/api/access.py`
@@ -252,13 +256,12 @@ Test refs:
 
 Refined delivery split:
 
-- list/card attachment surfaces in Ifitwala_Ed should request `viewer_preview` for images and `pdf_card` for PDFs; `thumb` remains available for truly small-image surfaces such as avatars and compact profile-image slots
+- list/card attachment surfaces in Ifitwala_Ed should request card-sized preview delivery through Ed-owned `thumbnail_url` routes; compact avatar/profile-image slots remain a separate internal derivative use case
 - the attachment card derivatives should be large enough for current inline preview cards, not micro-thumbnails that are immediately upscaled and blurred by Ed surfaces
-- governed profile-image card surfaces may request the `card` derivative where the original avatar contract needs a larger but still bounded image
-- richer image preview surfaces should request `viewer_preview`
-- richer PDF preview surfaces should request `pdf_page_1`, while inline PDF cards should request `pdf_card`
-- `issue_preview_grant(...)` should therefore accept `derivative_role`, with current richer-preview behavior preserved as the compatibility default during rollout
-- finalize/replace flows for supported image files should keep `thumb` and `viewer_preview` derivative rows scheduled as the normal path, with `card` added for `profile_image` governed files; PDF flows should schedule both `pdf_card` and `pdf_page_1`, with worker enqueue happening after the governing transaction commits
+- governed profile-image card surfaces may request a larger but still bounded profile-image preview intent where the original avatar contract needs more detail
+- richer preview surfaces and inline card surfaces should be selected by server-side preview intent, not by browser-visible derivative role names
+- Drive's internal grant/service implementation may still map those intents to concrete derivative roles, with current richer-preview behavior preserved as the compatibility default during rollout
+- finalize/replace flows for supported image and PDF files should schedule the internally required derivative rows after the governing transaction commits
 - derivative reconciliation should also requeue current-version derivatives when the active render spec changes, so existing ready thumbnails/previews do not stay permanently undersized or stale after a derivative-tuning deploy
 - explicit card-derivative preview grants must treat stale current-version derivatives as unavailable rather than serving legacy undersized artifacts; Ed card surfaces may then fall back to their richer `preview_url` path while reconciliation rebuilds the correct derivative
 
@@ -282,7 +285,7 @@ Derivative generation belongs to Drive async workers.
 Required behavior:
 
 1. resolve the current governed file version
-2. dedupe work by `drive_file_version + derivative_role`
+2. dedupe work by governed file version plus internal derivative identity
 3. generate derivative artifacts only for supported media classes
 4. persist derivative metadata rows
 5. update lightweight preview hints

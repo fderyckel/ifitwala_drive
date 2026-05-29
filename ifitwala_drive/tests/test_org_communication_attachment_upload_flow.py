@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import os
 import sys
 import types
 from pathlib import Path
@@ -60,12 +61,21 @@ def _purge_modules(*prefixes: str) -> None:
 
 
 def _ensure_ed_repo_on_path() -> None:
-	ed_repo_root = Path(__file__).resolve().parents[2].parent / "ifitwala_ed"
-	if ed_repo_root.exists():
-		ed_repo_root_text = str(ed_repo_root)
-		if ed_repo_root_text not in sys.path:
-			sys.path.insert(0, ed_repo_root_text)
-		return
+	candidate_roots = []
+	if os.environ.get("IFITWALA_ED_REPO"):
+		candidate_roots.append(Path(os.environ["IFITWALA_ED_REPO"]).expanduser())
+	candidate_roots.extend(
+		(
+			Path(__file__).resolve().parents[2].parent / "ifitwala_ed",
+			Path.cwd() / "ifitwala_ed",
+		)
+	)
+	for ed_repo_root in candidate_roots:
+		if (ed_repo_root / "ifitwala_ed").exists():
+			ed_repo_root_text = str(ed_repo_root)
+			if ed_repo_root_text not in sys.path:
+				sys.path.insert(0, ed_repo_root_text)
+			return
 
 	if any(
 		module_name == "ifitwala_ed" or module_name.startswith("ifitwala_ed.") for module_name in sys.modules
@@ -123,6 +133,18 @@ def _install_fake_ifitwala_ed():
 			"is_private": 1,
 		}
 
+	def _reconcile_upload_session_payload(payload: dict[str, object]) -> dict[str, object]:
+		workflow_id = payload.get("workflow_id")
+		workflow_payload = payload.get("workflow_payload") or {}
+		authoritative = _resolve_upload_session_context(str(workflow_id or ""), workflow_payload)
+		return {
+			**payload,
+			**authoritative,
+			"workflow_id": authoritative["workflow_id"],
+			"contract_version": authoritative["contract_version"],
+			"workflow_payload": workflow_payload,
+		}
+
 	org_communications = types.ModuleType("ifitwala_ed.integrations.drive.org_communications")
 	org_communications.assert_org_communication_upload_access = (
 		lambda org_communication, permission_type="write": frappe.get_doc(
@@ -133,6 +155,7 @@ def _install_fake_ifitwala_ed():
 
 	bridge = types.ModuleType("ifitwala_ed.integrations.drive.bridge")
 	bridge.resolve_upload_session_context = _resolve_upload_session_context
+	bridge.reconcile_upload_session_payload = _reconcile_upload_session_payload
 
 	integrations = types.ModuleType("ifitwala_ed.integrations")
 	integrations.__path__ = [str(integrations_package_root)]
@@ -227,6 +250,8 @@ def _install_fake_sessions(recorder):
 		return {
 			"upload_session_id": "DUS-0001",
 			"status": "created",
+			"workflow_id": payload.get("workflow_id"),
+			"workflow_payload": payload.get("workflow_payload") or {},
 			"workflow_result": payload.get("workflow_result") or {},
 		}
 
@@ -239,7 +264,7 @@ def _load_module(module_name: str):
 	return importlib.import_module(module_name)
 
 
-def test_upload_org_communication_attachment_uses_class_context_folder():
+def test_upload_org_communication_attachment_uses_generic_workflow_session_boundary_for_class_context():
 	_purge_modules(
 		"frappe",
 		"ifitwala_drive.services.integration.ifitwala_ed_org_communications",
@@ -267,8 +292,8 @@ def test_upload_org_communication_attachment_uses_class_context_folder():
 	importlib.import_module("ifitwala_ed.integrations")
 	importlib.import_module("ifitwala_ed.integrations.drive")
 	delegate = types.ModuleType("ifitwala_ed.integrations.drive.org_communications")
-	delegate.assert_org_communication_upload_access = (
-		lambda org_communication_name, permission_type="write": (org_communication)
+	delegate.assert_org_communication_upload_access = lambda org_communication_name, permission_type="write": (
+		org_communication
 	)
 	delegate.build_org_communication_upload_contract = lambda doc, row_name=None: {
 		"owner_doctype": "Org Communication",
@@ -300,19 +325,24 @@ def test_upload_org_communication_attachment_uses_class_context_folder():
 	)
 
 	assert response["upload_session_id"] == "DUS-0001"
-	assert response["workflow_result"]["row_name"] == "row-001"
-	assert recorder["payload"]["owner_doctype"] == "Org Communication"
-	assert recorder["payload"]["attached_doctype"] == "Org Communication"
-	assert recorder["payload"]["organization"] == "ORG-0001"
-	assert recorder["payload"]["school"] == "SCH-0001"
-	assert recorder["payload"]["primary_subject_type"] == "Organization"
-	assert recorder["payload"]["primary_subject_id"] == "ORG-0001"
-	assert recorder["payload"]["slot"] == "communication_attachment__row-001"
-	assert recorder["payload"]["is_private"] == 1
-	assert recorder["payload"]["folder"].startswith("DRF-")
+	assert recorder["payload"] == {
+		"workflow_id": "org_communication.attachment",
+		"workflow_payload": {
+			"org_communication": "COMM-0001",
+			"row_name": None,
+			"slot": None,
+		},
+		"filename_original": "announcement.pdf",
+		"mime_type_hint": "application/pdf",
+		"expected_size_bytes": 4321,
+		"idempotency_key": None,
+		"upload_source": "SPA",
+	}
+	for stale_field in ("owner_doctype", "organization", "school", "folder", "is_private"):
+		assert stale_field not in recorder["payload"]
 
 
-def test_upload_org_communication_attachment_uses_school_context_folder_without_class_context():
+def test_upload_org_communication_attachment_uses_generic_workflow_session_boundary_for_school_context():
 	_purge_modules(
 		"frappe",
 		"ifitwala_drive.services.integration.ifitwala_ed_org_communications",
@@ -332,8 +362,8 @@ def test_upload_org_communication_attachment_uses_school_context_folder_without_
 	importlib.import_module("ifitwala_ed.integrations")
 	importlib.import_module("ifitwala_ed.integrations.drive")
 	delegate = types.ModuleType("ifitwala_ed.integrations.drive.org_communications")
-	delegate.assert_org_communication_upload_access = (
-		lambda org_communication_name, permission_type="write": (org_communication)
+	delegate.assert_org_communication_upload_access = lambda org_communication_name, permission_type="write": (
+		org_communication
 	)
 	delegate.build_org_communication_upload_contract = lambda doc, row_name=None: {
 		"owner_doctype": "Org Communication",
@@ -365,14 +395,17 @@ def test_upload_org_communication_attachment_uses_school_context_folder_without_
 	)
 
 	assert response["upload_session_id"] == "DUS-0001"
-	assert response["workflow_result"]["row_name"] == "row-002"
-	assert recorder["payload"]["organization"] == "ORG-0001"
-	assert recorder["payload"]["school"] == "SCH-0002"
-	assert recorder["payload"]["slot"] == "communication_attachment__row-002"
-	assert recorder["payload"]["folder"].startswith("DRF-")
+	assert recorder["payload"]["workflow_id"] == "org_communication.attachment"
+	assert recorder["payload"]["workflow_payload"] == {
+		"org_communication": "COMM-0002",
+		"row_name": None,
+		"slot": None,
+	}
+	for stale_field in ("owner_doctype", "organization", "school", "folder", "is_private"):
+		assert stale_field not in recorder["payload"]
 
 
-def test_upload_org_communication_attachment_uses_organization_context_folder_without_school_or_class():
+def test_upload_org_communication_attachment_uses_generic_workflow_session_boundary_for_organization_context():
 	_purge_modules(
 		"frappe",
 		"ifitwala_drive.services.integration.ifitwala_ed_org_communications",
@@ -392,8 +425,8 @@ def test_upload_org_communication_attachment_uses_organization_context_folder_wi
 	importlib.import_module("ifitwala_ed.integrations")
 	importlib.import_module("ifitwala_ed.integrations.drive")
 	delegate = types.ModuleType("ifitwala_ed.integrations.drive.org_communications")
-	delegate.assert_org_communication_upload_access = (
-		lambda org_communication_name, permission_type="write": (org_communication)
+	delegate.assert_org_communication_upload_access = lambda org_communication_name, permission_type="write": (
+		org_communication
 	)
 	delegate.build_org_communication_upload_contract = lambda doc, row_name=None: {
 		"owner_doctype": "Org Communication",
@@ -425,11 +458,14 @@ def test_upload_org_communication_attachment_uses_organization_context_folder_wi
 	)
 
 	assert response["upload_session_id"] == "DUS-0001"
-	assert response["workflow_result"]["row_name"] == "row-003"
-	assert recorder["payload"]["organization"] == "ORG-0001"
-	assert recorder["payload"]["school"] is None
-	assert recorder["payload"]["slot"] == "communication_attachment__row-003"
-	assert recorder["payload"]["folder"].startswith("DRF-")
+	assert recorder["payload"]["workflow_id"] == "org_communication.attachment"
+	assert recorder["payload"]["workflow_payload"] == {
+		"org_communication": "COMM-0003",
+		"row_name": None,
+		"slot": None,
+	}
+	for stale_field in ("owner_doctype", "organization", "school", "folder", "is_private"):
+		assert stale_field not in recorder["payload"]
 
 
 def test_upload_org_communication_attachment_rejects_incomplete_class_context():
@@ -447,13 +483,20 @@ def test_upload_org_communication_attachment_rejects_incomplete_class_context():
 	)
 	recorder = {}
 	_install_fake_sessions(recorder)
+	sessions_module = sys.modules["ifitwala_drive.services.uploads.sessions"]
+
+	def _reject_incomplete_context(payload):
+		recorder["payload"] = payload
+		raise RuntimeError("Org Communication attachment class context is incomplete")
+
+	sessions_module.create_upload_session_service = _reject_incomplete_context
 	_ensure_ed_repo_on_path()
 	importlib.import_module("ifitwala_ed")
 	importlib.import_module("ifitwala_ed.integrations")
 	importlib.import_module("ifitwala_ed.integrations.drive")
 	delegate = types.ModuleType("ifitwala_ed.integrations.drive.org_communications")
-	delegate.assert_org_communication_upload_access = (
-		lambda org_communication_name, permission_type="write": (org_communication)
+	delegate.assert_org_communication_upload_access = lambda org_communication_name, permission_type="write": (
+		org_communication
 	)
 	delegate.build_org_communication_upload_contract = lambda doc, row_name=None: {
 		"owner_doctype": "Org Communication",
@@ -485,7 +528,12 @@ def test_upload_org_communication_attachment_rejects_incomplete_class_context():
 			}
 		)
 
-	assert "payload" not in recorder
+	assert recorder["payload"]["workflow_id"] == "org_communication.attachment"
+	assert recorder["payload"]["workflow_payload"] == {
+		"org_communication": "COMM-0004",
+		"row_name": None,
+		"slot": None,
+	}
 
 
 def test_org_communication_attachment_grant_services_use_ed_authorized_read_context(monkeypatch):

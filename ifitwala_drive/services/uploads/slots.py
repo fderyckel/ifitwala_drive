@@ -1,32 +1,12 @@
 from __future__ import annotations
 
-from typing import Final
+import re
 
 import frappe
 from frappe import _
 
-_EXACT_SLOTS: Final[tuple[str, ...]] = (
-	"submission",
-	"feedback",
-	"rubric_evidence",
-	"material_file",
-	"profile_image",
-	"portfolio_artefact",
-)
-
-_PREFIX_SLOTS: Final[tuple[str, ...]] = (
-	"identity_",
-	"prior_",
-	"supporting_material__",
-	"communication_attachment__",
-	"expense_claim_receipt__",
-	"guardian_profile_image__",
-	"health_vaccination_proof_",
-	"organization_logo__",
-	"school_logo__",
-	"school_gallery_image__",
-	"organization_media__",
-)
+_MAX_SLOT_LENGTH = 140
+_SLOT_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,139}$")
 
 
 def normalize_slot(slot: str | None) -> str:
@@ -35,22 +15,22 @@ def normalize_slot(slot: str | None) -> str:
 
 def is_allowed_slot(slot: str | None) -> bool:
 	normalized = normalize_slot(slot)
-	if not normalized:
-		return False
-
-	if normalized in _EXACT_SLOTS:
-		return True
-
-	for prefix in _PREFIX_SLOTS:
-		if normalized.startswith(prefix) and len(normalized) > len(prefix):
-			return True
-
-	return False
+	return bool(normalized) and bool(_SLOT_PATTERN.fullmatch(normalized))
 
 
 def validate_slot(slot: str | None) -> str:
 	normalized = normalize_slot(slot)
+	if not normalized:
+		frappe.throw(_("Slot is required."))
+
+	if len(normalized) > _MAX_SLOT_LENGTH:
+		frappe.throw(_("Slot cannot be longer than {0} characters.").format(_MAX_SLOT_LENGTH))
+
 	if is_allowed_slot(normalized):
 		return normalized
 
-	frappe.throw(_("Slot is not part of the canonical Drive slot registry: {0}").format(slot or ""))
+	frappe.throw(
+		_(
+			"Slot must be a workflow-resolved key using only lowercase letters, numbers, dots, underscores, and hyphens."
+		)
+	)

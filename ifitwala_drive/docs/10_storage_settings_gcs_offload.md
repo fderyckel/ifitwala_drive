@@ -1,4 +1,4 @@
-# GCS Bucket Settings and Site Attachment Offload Proposal
+# Storage Settings And GCS Offload
 
 ## Status
 
@@ -23,13 +23,15 @@ Implemented now:
 - optional immediate local prune during offload when `delete_local_after_verification` is enabled and safety checks pass
 - verified public local prune after `File.file_url` rewrite onto a canonical remote/proxy URL
 - public redirect endpoint for canonical fallback reads: `/api/method/ifitwala_drive.api.access.redirect_public_file?file_id=<FILE_ID>`
+- hourly cleanup for expired upload sessions and temporary objects
+- hourly stale-derivative pruning and preview-derivative reconciliation
+- rate limits on the core upload/session endpoints
 
 Still not implemented:
 
-- scheduler-driven cleanup of expired temp upload objects
 - deployment-level miss routing for static public `/files/...` paths that bypass Python entirely
 - preservation of stale copied old `/files/...` links without web-tier miss routing
-- rate limiting on upload/session endpoints
+- production observability and alerting for rate-limit pressure, cleanup failures, queue failures, and temp-object growth
 
 ## Bottom Line
 
@@ -74,7 +76,7 @@ Recommended scope:
 Long term, `Ifitwala_Press` should still own environment storage profiles.
 This settings page is the correct early-phase bridge, not the final multi-tenant control plane.
 
-## Proposed Settings Page
+## Settings Page
 
 The form should map closely to the existing runtime profile contract instead of inventing a second storage model.
 
@@ -136,13 +138,13 @@ Important:
 - `Dry Run Local Prune`
 - `Queue Local Prune Jobs`
 
-The more advanced controls from the original proposal remain future work:
+The more advanced controls from the original plan remain future work:
 
 - save-and-cutover workflow actions
 - pause/resume migration controls
 - reconcile-missing-local-files operator flow
 
-## Runtime Resolution Proposal
+## Runtime Resolution Plan
 
 Keep the existing config/env path, but extend it with settings lookup.
 
@@ -269,7 +271,7 @@ Current implementation:
 
 ## Read Compatibility Requirement
 
-This proposal only makes sense if old file URLs keep working during migration.
+This plan only makes sense if old file URLs keep working during migration.
 
 That means we need one of these before final cutover:
 
@@ -335,12 +337,12 @@ Status:
 - add queued `offload` jobs for governed and legacy attachment offload
 
 Status:
-- partially implemented
+- implemented
 - dry run reporting exists
 - queued offload jobs exist
 - execution copies blobs into remote storage
 - governed `Drive File` metadata updates are implemented
-- legacy `File` rows still remain local-first until compatibility reads are added
+- legacy `File` rows remain compatibility records, not Drive governance authority
 
 ### Slice 4
 
@@ -348,7 +350,7 @@ Status:
 - add optional cleanup/prune of local blobs after verification
 
 Status:
-- implemented for private files and partially implemented overall
+- implemented for app-routed reads and verified local prune
 - missing-local reads now redirect to remote download grants for app-routed `/files/...` and `/private/files/...` requests
 - private local prune now exists after remote-object verification and owner-context checks
 - `delete_local_after_verification` can prune immediately for eligible private offloads
@@ -357,7 +359,7 @@ Status:
 
 ## Decision Summary
 
-The right proposal is:
+The right plan is:
 
 - one Single DocType page for site storage settings
 - immediate GCS cutover for new Drive-managed uploads

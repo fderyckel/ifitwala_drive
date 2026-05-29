@@ -86,6 +86,24 @@ def _build_system_key(
 	)
 
 
+def _discard_caught_duplicate_folder_messages() -> None:
+	local = getattr(frappe, "local", None)
+	messages = getattr(local, "message_log", None)
+	if not isinstance(messages, list):
+		return
+
+	def is_caught_folder_duplicate(message) -> bool:
+		if isinstance(message, dict):
+			title = str(message.get("title") or "")
+			body = str(message.get("message") or "")
+		else:
+			title = str(message)
+			body = str(message)
+		return "Duplicate Name" in title and "Drive Folder" in body and "already exists" in body
+
+	local.message_log = [message for message in messages if not is_caught_folder_duplicate(message)]
+
+
 def _ensure_folder(
 	*,
 	title: str,
@@ -158,6 +176,7 @@ def _ensure_folder(
 		except Exception as exc:
 			if not is_duplicate_entry_error(exc):
 				raise
+			_discard_caught_duplicate_folder_messages()
 
 			existing = frappe.db.get_value(
 				"Drive Folder",
@@ -531,6 +550,49 @@ def resolve_task_submission_folder(
 	)
 
 
+def resolve_student_log_evidence_folder(
+	*,
+	student: str,
+	student_log: str,
+	organization: str,
+	school: str,
+) -> str:
+	student_root = _ensure_student_root(student=student, organization=organization, school=school)
+	logs_root = _ensure_folder(
+		title="Student Logs",
+		parent_drive_folder=student_root,
+		owner_doctype="Student",
+		owner_name=student,
+		organization=organization,
+		school=school,
+		folder_kind="student_workspace",
+		context_doctype="Student",
+		context_name=student,
+	)
+	log_root = _ensure_folder(
+		title=student_log,
+		parent_drive_folder=logs_root,
+		owner_doctype="Student Log",
+		owner_name=student_log,
+		organization=organization,
+		school=school,
+		folder_kind="student_workspace",
+		context_doctype="Student Log",
+		context_name=student_log,
+	)
+	return _ensure_folder(
+		title="Evidence",
+		parent_drive_folder=log_root,
+		owner_doctype="Student Log",
+		owner_name=student_log,
+		organization=organization,
+		school=school,
+		folder_kind="student_workspace",
+		context_doctype="Student Log",
+		context_name=student_log,
+	)
+
+
 def _ensure_courses_root(*, organization: str) -> str:
 	return _ensure_folder(
 		title="Courses",
@@ -676,53 +738,6 @@ def resolve_supporting_material_folder(
 		folder_kind="course_shared",
 		context_doctype="Supporting Material",
 		context_name=material,
-	)
-
-
-def resolve_task_resource_folder(
-	*,
-	task: str,
-	course: str,
-	organization: str,
-	school: str,
-) -> str:
-	course_root = _ensure_course_root(
-		course=course,
-		organization=organization,
-		school=school,
-	)
-	tasks_root = _ensure_folder(
-		title="Tasks",
-		parent_drive_folder=course_root,
-		owner_doctype="Course",
-		owner_name=course,
-		organization=organization,
-		school=school,
-		folder_kind="course_shared",
-		context_doctype="Course",
-		context_name=course,
-	)
-	task_root = _ensure_folder(
-		title=task,
-		parent_drive_folder=tasks_root,
-		owner_doctype="Task",
-		owner_name=task,
-		organization=organization,
-		school=school,
-		folder_kind="course_shared",
-		context_doctype="Task",
-		context_name=task,
-	)
-	return _ensure_folder(
-		title="Resources",
-		parent_drive_folder=task_root,
-		owner_doctype="Task",
-		owner_name=task,
-		organization=organization,
-		school=school,
-		folder_kind="course_shared",
-		context_doctype="Task",
-		context_name=task,
 	)
 
 

@@ -199,8 +199,8 @@ Work from authoritative files and docs.
 
 When touching governed uploads, file links, attachment DTOs, preview/open/download routes, thumbnails, or derivative behavior, read in this order:
 
-1. `ifitwala_drive/docs/05_optionC_design_lock.md`
-2. `ifitwala_drive/docs/04_coupling_with_ifiwala_ed.md`
+1. `ifitwala_drive/docs/02_drive_authority_decision.md`
+2. `ifitwala_drive/docs/05_ifitwala_ed_boundary.md`
 3. `ifitwala_drive/docs/06_api_contracts.md`
 4. `../ifitwala_ed/ifitwala_ed/docs/files_and_policies/files_03_implementation.md`
 5. `../ifitwala_ed/ifitwala_ed/docs/files_and_policies/files_07_education_file_semantics_and_cross_app_contract.md`
@@ -257,6 +257,34 @@ Whenever code changes, update the relevant docs to reflect:
 - any new API, schema, lifecycle, or operator expectation
 
 If a change affects how **Ifitwala_Ed** uploads, stores, resolves, previews, downloads, or otherwise delivers files, that downstream contract change must be made explicit in the docs and **Ifitwala_Ed must be informed**. Treat this as part of the implementation, not optional follow-up.
+
+### 4.7 Ed/Drive seam debugging discipline
+
+When debugging or changing Drive code that is called by Ifitwala_Ed, treat the seam as a chain of explicit contracts, not one request.
+
+Trace these layers separately:
+
+- Ed browser or server payload
+- Ed whitelisted API binding (`kwargs`, `frappe.form_dict`, JSON body, and nested `args`)
+- Ed business/domain helper payload
+- Ed Drive workflow/context resolver payload
+- Drive public wrapper payload
+- Drive integration service/session payload
+- Drive finalize/post-finalize payload
+
+Rules:
+
+- A valid Ed caller payload is not proof that a Drive wrapper or service received the same values.
+- Do not label an error as permission-related until the exact throw site and missing/invalid field at that layer are identified.
+- Public Drive wrappers that are also whitelisted Frappe methods must tolerate the request-binding shapes Ed portals and Frappe clients use, but must still pass only approved workflow fields into governed services.
+- Drive services must fail closed on missing governance context; request-binding tolerance belongs at public wrapper boundaries, not as a generic fallback in governed services.
+- Do not fix only the outer wrapper if the same invariant can still fail in a deeper in-process Ed delegate, workflow resolver, or post-finalize callback.
+
+Regression coverage for seam fixes must include the failing handoff depth:
+
+- one test for public wrapper payload binding when binding is involved
+- one service or workflow-spec test for the governed context passed to Drive
+- one Ed-side resolver or domain-helper test when Drive delegates back into Ed
 
 ---
 

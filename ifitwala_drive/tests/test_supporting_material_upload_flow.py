@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import os
 import sys
 import types
 from pathlib import Path
@@ -72,12 +73,21 @@ def _purge_modules(*prefixes: str) -> None:
 
 
 def _ensure_ed_repo_on_path() -> None:
-	ed_repo_root = Path(__file__).resolve().parents[2].parent / "ifitwala_ed"
-	if ed_repo_root.exists():
-		ed_repo_root_text = str(ed_repo_root)
-		if ed_repo_root_text not in sys.path:
-			sys.path.insert(0, ed_repo_root_text)
-		return
+	candidate_roots = []
+	if os.environ.get("IFITWALA_ED_REPO"):
+		candidate_roots.append(Path(os.environ["IFITWALA_ED_REPO"]).expanduser())
+	candidate_roots.extend(
+		(
+			Path(__file__).resolve().parents[2].parent / "ifitwala_ed",
+			Path.cwd() / "ifitwala_ed",
+		)
+	)
+	for ed_repo_root in candidate_roots:
+		if (ed_repo_root / "ifitwala_ed").exists():
+			ed_repo_root_text = str(ed_repo_root)
+			if ed_repo_root_text not in sys.path:
+				sys.path.insert(0, ed_repo_root_text)
+			return
 
 	if any(
 		module_name == "ifitwala_ed" or module_name.startswith("ifitwala_ed.") for module_name in sys.modules
@@ -93,28 +103,6 @@ def _install_fake_ifitwala_ed():
 	ed_package_root = Path(__file__).resolve().parents[2].parent / "ifitwala_ed" / "ifitwala_ed"
 	integrations_package_root = ed_package_root / "integrations"
 	drive_integrations_package_root = integrations_package_root / "drive"
-
-	def _build_task_resource_upload_contract(task_doc, *, row_name: str | None = None) -> dict[str, object]:
-		course = getattr(task_doc, "default_course", None)
-		school = frappe.db.get_value("Course", course, "school")
-		organization = frappe.db.get_value("School", school, "organization")
-		resolved_row_name = str(row_name or "row-001")
-		return {
-			"owner_doctype": "Task",
-			"owner_name": task_doc.name,
-			"attached_doctype": "Task",
-			"attached_name": task_doc.name,
-			"organization": organization,
-			"school": school,
-			"primary_subject_type": "Organization",
-			"primary_subject_id": organization,
-			"data_class": "academic",
-			"purpose": "learning_resource",
-			"retention_policy": "until_program_end_plus_1y",
-			"slot": f"supporting_material__{resolved_row_name}",
-			"row_name": resolved_row_name,
-			"course": course,
-		}
 
 	def _build_supporting_material_upload_contract(material_doc) -> dict[str, object]:
 		course = getattr(material_doc, "course", None)
@@ -136,37 +124,9 @@ def _install_fake_ifitwala_ed():
 			"course": course,
 		}
 
-	def _run_task_post_finalize(upload_session_doc, created_file) -> dict[str, object]:
-		task_doc = frappe.get_doc("Task", upload_session_doc.owner_name)
-		row_name = str(getattr(upload_session_doc, "intended_slot", "") or "").split("__", 1)[-1]
-		task_doc.append(
-			"attachments",
-			{
-				"name": row_name,
-				"file": created_file.file_url,
-				"file_name": created_file.file_name,
-				"file_size": created_file.file_size,
-				"public": 0,
-				"section_break_sbex": created_file.file_name,
-			},
-		)
-		task_doc.save(ignore_permissions=True)
-		return {"row_name": row_name}
-
 	def _resolve_upload_session_context(
 		workflow_id: str, workflow_payload: dict[str, object]
 	) -> dict[str, object]:
-		if workflow_id == "task.resource":
-			context = _build_task_resource_upload_contract(
-				frappe.get_doc("Task", workflow_payload.get("task")),
-				row_name=workflow_payload.get("row_name"),
-			)
-			return {
-				**context,
-				"workflow_id": workflow_id,
-				"contract_version": "1",
-				"is_private": 1,
-			}
 		if workflow_id == "supporting_material.file":
 			context = _build_supporting_material_upload_contract(
 				frappe.get_doc("Supporting Material", workflow_payload.get("material"))
@@ -180,11 +140,6 @@ def _install_fake_ifitwala_ed():
 		raise RuntimeError(f"unexpected workflow_id: {workflow_id}")
 
 	tasks = types.ModuleType("ifitwala_ed.integrations.drive.tasks")
-	tasks.build_task_resource_upload_contract = _build_task_resource_upload_contract
-	tasks.assert_task_resource_upload_access = lambda task, permission_type="write": frappe.get_doc(
-		"Task", task
-	)
-	tasks.run_task_post_finalize = _run_task_post_finalize
 
 	materials = types.ModuleType("ifitwala_ed.integrations.drive.materials")
 	materials.build_supporting_material_upload_contract = _build_supporting_material_upload_contract
@@ -302,49 +257,36 @@ def _load_module(module_name: str):
 	return importlib.import_module(module_name)
 
 
-def test_upload_task_resource_uses_task_contract_and_course_folder():
+def test_caught_duplicate_folder_messages_are_not_left_for_response():
 	_purge_modules(
 		"frappe",
-		"ifitwala_drive.services.integration.ifitwala_ed_tasks",
-		"ifitwala_drive.services.uploads.sessions",
+		"ifitwala_drive.services.folders.resolution",
 	)
-	task = FakeDoc({"name": "TASK-0001", "default_course": "COURSE-0001", "attachments": []})
-	_install_fake_frappe(
-		exists_map={
-			("Task", "TASK-0001"): True,
-		},
-		value_map={
-			("Course", "COURSE-0001", "school"): "SCH-0001",
-			("School", "SCH-0001", "organization"): "ORG-0001",
-		},
-		docs_map={("Task", "TASK-0001"): task},
-	)
-	recorder = {}
-	_install_fake_sessions(recorder)
-	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_tasks")
+	_install_fake_frappe()
+	module = _load_module("ifitwala_drive.services.folders.resolution")
+	import frappe
 
-	response = module.upload_task_resource_service(
+	frappe.local = types.SimpleNamespace(
+		message_log=[
+			{
+				"title": "Duplicate Name",
+				"message": "Drive Folder <strong>DRF-0001</strong> already exists",
+			},
+			{
+				"title": "Duplicate Name",
+				"message": "Another DocType <strong>DOC-0001</strong> already exists",
+			},
+		]
+	)
+
+	module._discard_caught_duplicate_folder_messages()
+
+	assert frappe.local.message_log == [
 		{
-			"task": "TASK-0001",
-			"filename_original": "worksheet.pdf",
-			"mime_type_hint": "application/pdf",
-			"expected_size_bytes": 1234,
+			"title": "Duplicate Name",
+			"message": "Another DocType <strong>DOC-0001</strong> already exists",
 		}
-	)
-
-	assert response["upload_session_id"] == "DUS-0001"
-	assert response["workflow_result"]["row_name"]
-	assert recorder["payload"]["owner_doctype"] == "Task"
-	assert recorder["payload"]["attached_doctype"] == "Task"
-	assert recorder["payload"]["attached_name"] == "TASK-0001"
-	assert recorder["payload"]["primary_subject_type"] == "Organization"
-	assert recorder["payload"]["primary_subject_id"] == "ORG-0001"
-	assert recorder["payload"]["organization"] == "ORG-0001"
-	assert recorder["payload"]["school"] == "SCH-0001"
-	assert recorder["payload"]["slot"].startswith("supporting_material__")
-	assert recorder["payload"]["purpose"] == "learning_resource"
-	assert recorder["payload"]["is_private"] == 1
-	assert recorder["payload"]["folder"].startswith("DRF-")
+	]
 
 
 def test_upload_supporting_material_uses_material_contract_and_course_folder():
@@ -415,44 +357,6 @@ def test_upload_supporting_material_uses_material_contract_and_course_folder():
 	assert recorder["payload"]["purpose"] == "learning_resource"
 	assert recorder["payload"]["is_private"] == 1
 	assert recorder["payload"]["folder"].startswith("DRF-")
-
-
-def test_run_task_post_finalize_appends_compatibility_attachment_row():
-	_purge_modules(
-		"frappe",
-		"ifitwala_drive.services.integration.ifitwala_ed_tasks",
-	)
-	task = FakeDoc({"name": "TASK-0001", "default_course": "COURSE-0001", "attachments": []})
-	_install_fake_frappe(
-		exists_map={("Task", "TASK-0001"): True},
-		docs_map={("Task", "TASK-0001"): task},
-	)
-	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_tasks")
-
-	response = module.run_task_post_finalize(
-		types.SimpleNamespace(
-			owner_doctype="Task",
-			owner_name="TASK-0001",
-			intended_slot="supporting_material__row-001",
-		),
-		types.SimpleNamespace(
-			name="FILE-0001",
-			file_url="/private/files/worksheet.pdf",
-			file_name="worksheet.pdf",
-			file_size=1024,
-		),
-	)
-
-	assert response["row_name"] == "row-001"
-	assert len(task.attachments) == 1
-	row = task.attachments[0]
-	assert row.name == "row-001"
-	assert row.file == "/private/files/worksheet.pdf"
-	assert row.file_name == "worksheet.pdf"
-	assert row.file_size == 1024
-	assert row.public == 0
-	assert row.section_break_sbex == "worksheet.pdf"
-	assert task.saved == 1
 
 
 def test_material_grant_services_use_authorized_delegate_context(monkeypatch):

@@ -515,7 +515,7 @@ def test_list_context_files_returns_direct_owner_files_without_binding():
 	}
 
 
-def test_list_context_files_derives_general_reference_for_supporting_material():
+def test_list_context_files_derives_supporting_material_role_for_supporting_material():
 	_purge_modules("frappe", "ifitwala_drive.services.folders.browse")
 	material = FakeDoc({"name": "MAT-0001"})
 	_install_fake_frappe(
@@ -548,15 +548,15 @@ def test_list_context_files_derives_general_reference_for_supporting_material():
 		{
 			"doctype": "Supporting Material",
 			"name": "MAT-0001",
-			"binding_role": "general_reference",
+			"binding_role": "supporting_material",
 		}
 	)
 
 	assert response["context"] == {"doctype": "Supporting Material", "name": "MAT-0001"}
 	assert response["folders"] == []
 	assert len(response["files"]) == 1
-	assert response["files"][0]["binding_role"] == "general_reference"
-	assert response["items"][0]["binding_role"] == "general_reference"
+	assert response["files"][0]["binding_role"] == "supporting_material"
+	assert response["items"][0]["binding_role"] == "supporting_material"
 	assert response["upload_actions"] == [
 		{
 			"id": "supporting_material",
@@ -1554,7 +1554,7 @@ def test_list_context_files_omits_upload_actions_when_context_is_not_writable():
 	assert "upload_actions" not in response
 
 
-def test_list_folder_items_exposes_task_resource_upload_action_for_task_folders():
+def test_list_folder_items_does_not_expose_legacy_task_upload_action():
 	_purge_modules("frappe", "ifitwala_drive.services.folders.browse")
 	task_doc = FakeDoc({"name": "TASK-0001"})
 	resources_folder = FakeDoc(
@@ -1590,19 +1590,7 @@ def test_list_folder_items_exposes_task_resource_upload_action_for_task_folders(
 	response = module.list_folder_items_service({"folder": "DRF-TASK-RESOURCES"})
 
 	assert response["folder"]["id"] == "DRF-TASK-RESOURCES"
-	assert response["upload_actions"] == [
-		{
-			"id": "task_resource",
-			"label": "Upload Resource",
-			"description": "Add a governed file to this Task's Resources folder.",
-			"api_method": "ifitwala_drive.api.resources.upload_task_resource",
-			"payload": {
-				"task": "TASK-0001",
-				"upload_source": "SPA",
-			},
-			"destination_label": "Task Resources",
-		}
-	]
+	assert "upload_actions" not in response
 
 
 def test_list_folder_items_exposes_organization_logo_upload_for_logo_folder():

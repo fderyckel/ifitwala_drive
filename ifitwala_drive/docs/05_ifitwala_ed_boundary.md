@@ -1,7 +1,7 @@
-# Coupling With Ifitwala_Ed
+# Ifitwala_Ed Boundary
 
 Status: LOCKED boundary contract
-Date: 2026-04-21
+Date: 2026-04-25
 Code refs:
 - `ifitwala_ed/api/file_access.py`
 - `ifitwala_ed/integrations/drive/bridge.py`
@@ -94,8 +94,10 @@ Drive must not:
 
 - import Ed dispatcher/file-routing internals to finish governed finalization
 - import Ed image-derivative helpers
+- hand-author owner, subject, slot, purpose, retention, organization, or school semantics already resolved by Ed
 - rely on Ed-local storage paths as file truth
 - treat Ed compatibility projections as primary governance records
+- expose derivative role names as Ed/SPA DTO contract fields
 
 ## 4. Integration surface direction
 
@@ -104,6 +106,7 @@ Target shape:
 - one narrow Ed integration module resolves `GovernedUploadSpec` by `workflow_id`
 - one narrow Ed integration module runs post-finalize business mutation by `workflow_id`
 - Drive persists `workflow_id` and `contract_version` on the upload-session contract so finalize does not rediscover workflow meaning ad hoc
+- legacy/pre-registry upload sessions without persisted workflow metadata are repaired by explicit migration/backfill patches or retired; finalize must not infer their workflow by scanning specs
 
 This is preferable to many wrapper-specific imports spread across both repos.
 
@@ -112,8 +115,12 @@ Current runtime note:
 - the registry now exists in `ifitwala_ed/integrations/drive/workflow_specs.py`
 - Drive wrapper services now create sessions using `workflow_id` plus workflow-specific identifiers internally
 - the generic session/finalize DTOs now carry `workflow_id`, `contract_version`, and typed `workflow_result`
+- Drive finalize validates persisted `workflow_id` and `contract_version` on the upload-session contract before calling the Ed finalize resolver; missing workflow metadata is a Drive-side fail-closed condition, not an Ed rediscovery path
+- Drive no longer maintains a parallel exact/prefix slot registry for workflow-backed uploads; Ed owns slot meaning through `GovernedUploadSpec`, and Drive enforces slot shape/path-safety before storage/session materialization
 - wrapper-specific extras such as `row_name` or admissions item metadata must not leak out as scattered top-level keys
-- Drive also exposes surface-scoped grant wrappers where generic owner-doc checks are not the same as Ed surface authorization, including org-communication attachments, employee images, public website media, and supporting-material previews opened from placement-aware academic surfaces
+- wrapper-specific upload shims may decorate Ed-resolved payloads with Drive-owned presentation metadata such as folders, but must not duplicate governance semantics already resolved by Ed
+- Task file delivery now uses the `supporting_material.file` workflow through Ed-owned `Supporting Material` plus `Material Placement`; Drive no longer exposes a separate Task-resource upload wrapper
+- Drive also exposes surface-scoped grant wrappers where generic owner-doc checks are not the same as Ed surface authorization, including org-communication attachments, Student Log evidence, employee images, public website media, and supporting-material previews opened from placement-aware academic surfaces
 - legacy profile-image cleanup is now patch-driven through those same public Drive media wrappers: Ed migration code reimports missing Employee/Student/Guardian profile images via the upload seam and requeues current governed avatar derivatives via the preview-derivative seam instead of adding new runtime repair paths
 - wrapper-specific public endpoints still exist only as ergonomics shims during migration
 - Ed and Drive runtime entrypoints now import only explicit public bridge/API modules; reload fallback wrappers and `sys.path` rescue are retired
@@ -151,15 +158,19 @@ Because the apps are tightly coupled:
 - cross-app contract changes must land together
 - docs must be updated together
 - tests must cover the shared boundary
+- CI checks out the sibling `ifitwala_ed` contract source for Drive cross-app conformance; local runners may use `IFITWALA_ED_REPO` or a sibling checkout
+- CI also statically checks runtime imports so Ed uses Drive public APIs and Drive uses only approved Ed boundary modules, with narrow allowlisted legacy compatibility exceptions
+- CI pins Ed browser-facing attachment DTO hygiene so storage object keys, raw private paths, signed provider URLs, and internal derivative role names do not become SPA contracts
 - seam tests must pin buffered-upload token handling and the locked session/finalize DTO shapes
 
 But tight coupling is not permission to call each other's internals arbitrarily.
 
 ## 8. Remaining migration work
 
-Current code still shows these transitional behaviors:
+Transitional behaviors that may remain during migration:
 
 - Drive still emits native `File` compatibility projections for current Ed surfaces
+- native `File` projection retirement is not complete because current Drive DocTypes and some Ed post-upload writes still carry `file_id`
 - historical `File Classification` rows still require cleanup through the Ed migration patch
 - some older Ed storage-compatibility helpers still exist for historical image fields and copied legacy links, but current governed admissions, communication, planning, learning, and evidence DTOs no longer use `File.file_url` as their primary identity
 - some historical audit/discussion notes may still mention the retired `File Classification` and Ed-side derivative model and must not be treated as runtime design guidance

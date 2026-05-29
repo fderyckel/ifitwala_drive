@@ -124,6 +124,31 @@ def _wait_for_terminal_session(upload_session_id: str) -> dict[str, Any]:
 	frappe.throw(_("This upload session is already finalizing. Please retry in a moment."))
 
 
+def _require_persisted_finalize_contract(finalize_contract: dict[str, Any] | None) -> dict[str, Any]:
+	if isinstance(finalize_contract, dict) and finalize_contract.get("workflow_id"):
+		return finalize_contract
+
+	frappe.throw(
+		_(
+			"Upload session is missing persisted workflow metadata. Recreate the upload session or run the approved migration/backfill patch."
+		)
+	)
+	return {}
+
+
+def _require_persisted_workflow_metadata(doc) -> dict[str, Any]:
+	workflow_metadata = load_workflow_contract_metadata(doc)
+	if workflow_metadata.get("workflow_id") and workflow_metadata.get("contract_version"):
+		return workflow_metadata
+
+	frappe.throw(
+		_(
+			"Upload session is missing persisted workflow metadata. Recreate the upload session or run the approved migration/backfill patch."
+		)
+	)
+	return {}
+
+
 def _claim_upload_session_for_finalize(payload: dict[str, Any]):
 	upload_session_id = payload["upload_session_id"]
 	with drive_lock(f"upload_session_finalize:{upload_session_id}", timeout=20):
@@ -149,7 +174,9 @@ def _claim_upload_session_for_finalize(payload: dict[str, Any]):
 		if doc.status == "finalizing" and not _is_stale_finalizing(doc):
 			return doc, "wait", None
 
+		_require_persisted_workflow_metadata(doc)
 		finalize_contract = resolve_finalize_contract(doc)
+		finalize_contract = _require_persisted_finalize_contract(finalize_contract)
 		doc.status = "finalizing"
 		doc.received_size_bytes = payload.get("received_size_bytes") or getattr(
 			doc, "received_size_bytes", None

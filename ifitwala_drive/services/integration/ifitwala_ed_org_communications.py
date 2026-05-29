@@ -10,9 +10,7 @@ from ifitwala_drive.services.files.access import (
 	_assert_can_issue_preview,
 	_issue_grant,
 )
-from ifitwala_drive.services.folders.resolution import resolve_org_communication_attachment_folder
 from ifitwala_drive.services.integration._ed_delegate import load_ed_drive_module
-from ifitwala_drive.services.integration.ifitwala_ed_bridge import resolve_upload_session_context
 
 _ED_MODULE = "ifitwala_ed.integrations.drive.org_communications"
 
@@ -117,34 +115,14 @@ def upload_org_communication_attachment_service(payload: dict[str, Any]) -> dict
 		"row_name": provided_row_name,
 		"slot": payload.get("slot"),
 	}
-	authoritative = resolve_upload_session_context(workflow_id, workflow_payload)
-	org_communication_doc = assert_org_communication_upload_access(org_communication, permission_type="write")
-
-	response = create_upload_session_service(
+	return create_upload_session_service(
 		{
-			**{
-				key: value
-				for key, value in authoritative.items()
-				if key not in {"row_name", "course", "student_group"}
-			},
+			"workflow_id": workflow_id,
 			"workflow_payload": workflow_payload,
-			"workflow_result": {
-				"row_name": authoritative["row_name"],
-				"slot": authoritative["slot"],
-			},
-			"folder": resolve_org_communication_attachment_folder(
-				org_communication=org_communication_doc.name,
-				course=authoritative["course"],
-				student_group=authoritative["student_group"],
-				organization=authoritative["organization"],
-				school=authoritative["school"],
-			),
 			"filename_original": filename_original,
 			"mime_type_hint": payload.get("mime_type_hint"),
 			"expected_size_bytes": payload.get("expected_size_bytes"),
 			"idempotency_key": payload.get("idempotency_key"),
-			"is_private": 1,
 			"upload_source": payload.get("upload_source") or "SPA",
 		}
 	)
-	return response

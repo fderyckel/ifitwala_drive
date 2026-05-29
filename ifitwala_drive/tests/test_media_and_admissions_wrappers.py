@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import os
 import sys
 import types
 from datetime import datetime
@@ -70,12 +71,21 @@ def _purge_modules(*prefixes: str) -> None:
 
 
 def _ensure_ed_repo_on_path() -> None:
-	ed_repo_root = Path(__file__).resolve().parents[2].parent / "ifitwala_ed"
-	if ed_repo_root.exists():
-		ed_repo_root_text = str(ed_repo_root)
-		if ed_repo_root_text not in sys.path:
-			sys.path.insert(0, ed_repo_root_text)
-		return
+	candidate_roots = []
+	if os.environ.get("IFITWALA_ED_REPO"):
+		candidate_roots.append(Path(os.environ["IFITWALA_ED_REPO"]).expanduser())
+	candidate_roots.extend(
+		(
+			Path(__file__).resolve().parents[2].parent / "ifitwala_ed",
+			Path.cwd() / "ifitwala_ed",
+		)
+	)
+	for ed_repo_root in candidate_roots:
+		if (ed_repo_root / "ifitwala_ed").exists():
+			ed_repo_root_text = str(ed_repo_root)
+			if ed_repo_root_text not in sys.path:
+				sys.path.insert(0, ed_repo_root_text)
+			return
 
 	if "ifitwala_ed" in sys.modules:
 		return
@@ -1656,6 +1666,84 @@ def test_upload_applicant_health_vaccination_proof_builds_profile_scoped_session
 	assert recorder["payload"]["slot"] == "health_vaccination_proof_mmr_2020-03-04"
 	assert recorder["payload"]["is_private"] == 1
 	assert recorder["payload"]["folder"].startswith("DRF-")
+
+
+def test_admissions_file_grant_services_use_delegate_scoped_access():
+	_purge_modules(
+		"frappe",
+		"ifitwala_drive.services.integration.ifitwala_ed_admissions",
+		"ifitwala_ed.integrations.drive.admissions",
+	)
+	drive_file = FakeDoc(
+		{
+			"name": "DF-ADM-1",
+			"file": "FILE-ADM-1",
+			"owner_doctype": "Student Applicant",
+			"owner_name": "APP-0001",
+			"primary_subject_type": "Student Applicant",
+			"primary_subject_id": "APP-0001",
+			"status": "active",
+			"preview_status": "ready",
+		}
+	)
+	_install_fake_frappe(
+		exists_map={
+			("Drive File", "DF-ADM-1"): True,
+		},
+		docs_map={("Drive File", "DF-ADM-1"): drive_file},
+	)
+	_ensure_ed_repo_on_path()
+	importlib.import_module("ifitwala_ed")
+	importlib.import_module("ifitwala_ed.integrations")
+	importlib.import_module("ifitwala_ed.integrations.drive")
+	delegate_calls = []
+	delegate = types.ModuleType("ifitwala_ed.integrations.drive.admissions")
+	delegate.assert_admissions_file_read_access = lambda payload: (
+		delegate_calls.append(payload)
+		or {
+			"student_applicant": "APP-0001",
+			"file_id": "FILE-ADM-1",
+			"drive_file_id": "DF-ADM-1",
+		}
+	)
+	sys.modules["ifitwala_ed.integrations.drive.admissions"] = delegate
+
+	module = _load_module("ifitwala_drive.services.integration.ifitwala_ed_admissions")
+	download_checks = []
+	grant_calls = []
+	preview_calls = []
+	module._assert_can_issue_download = lambda doc: download_checks.append(doc.name)
+	module._issue_grant = lambda *, doc, grant_kind, payload=None: (
+		grant_calls.append({"doc": doc.name, "grant_kind": grant_kind, "payload": payload})
+		or {"url": f"https://{grant_kind}.example.com/{doc.name}"}
+	)
+	module._issue_preview_grant_for_doc = lambda *, doc, payload=None: (
+		preview_calls.append({"doc": doc.name, "payload": payload})
+		or {"url": f"https://preview.example.com/{doc.name}"}
+	)
+
+	preview_payload = {
+		"file_id": "FILE-ADM-1",
+		"drive_file_id": "DF-ADM-1",
+		"context_doctype": "Student Applicant",
+		"context_name": "APP-0001",
+		"derivative_role": "viewer_preview",
+	}
+	download_payload = {
+		"file_id": "FILE-ADM-1",
+		"drive_file_id": "DF-ADM-1",
+		"context_doctype": "Student Applicant",
+		"context_name": "APP-0001",
+	}
+	preview_response = module.issue_admissions_file_preview_grant_service(preview_payload)
+	download_response = module.issue_admissions_file_download_grant_service(download_payload)
+
+	assert delegate_calls == [preview_payload, download_payload]
+	assert preview_response == {"url": "https://preview.example.com/DF-ADM-1"}
+	assert download_response == {"url": "https://download.example.com/DF-ADM-1"}
+	assert download_checks == ["DF-ADM-1"]
+	assert preview_calls == [{"doc": "DF-ADM-1", "payload": preview_payload}]
+	assert grant_calls == [{"doc": "DF-ADM-1", "grant_kind": "download", "payload": None}]
 
 
 def test_get_admissions_attached_field_override_returns_vaccinations_for_health_uploads():

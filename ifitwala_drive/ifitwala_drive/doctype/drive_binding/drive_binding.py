@@ -8,7 +8,6 @@ from frappe.model.document import Document
 
 _ALLOWED_STATUSES = {"active", "inactive", "superseded"}
 _ALLOWED_BINDING_ROLES = {
-	"task_resource",
 	"submission_artifact",
 	"feedback_attachment",
 	"applicant_document",
@@ -16,9 +15,7 @@ _ALLOWED_BINDING_ROLES = {
 	"organization_media",
 	"employee_image",
 	"student_image",
-	"lesson_resource",
-	"lesson_activity_resource",
-	"general_reference",
+	"supporting_material",
 	"communication_attachment",
 	"expense_claim_receipt",
 }

@@ -1,11 +1,11 @@
 # Canonical API Contracts
 
 Status: LOCKED target API direction
-Date: 2026-04-21
+Date: 2026-04-27
 Related docs:
 
-- `ifitwala_drive/docs/02_system_architecture.md`
-- `ifitwala_drive/docs/04_coupling_with_ifiwala_ed.md`
+- `ifitwala_drive/docs/03_system_architecture.md`
+- `ifitwala_drive/docs/05_ifitwala_ed_boundary.md`
 - `ifitwala_ed/docs/files_and_policies/files_07_education_file_semantics_and_cross_app_contract.md`
 
 ## Bottom line
@@ -51,6 +51,14 @@ Consumers may receive:
 
 Consumers must not construct storage paths.
 
+### 1.4 Do Not Do
+
+- Do not add new wrapper-specific governance contracts when the workflow can be represented by `workflow_id + workflow_payload`.
+- Do not duplicate Ed-resolved owner, subject, slot, purpose, retention, organization, or school semantics in Drive wrappers.
+- Do not turn folders into permission, retention, ownership, or erasure truth.
+- Do not expose derivative role names as Ed/browser DTO fields; use stable `open_url`, optional `preview_url`, and optional `thumbnail_url`.
+- Do not add schema changes before seam tests prove the existing contract cannot express the workflow.
+
 ## 2. Cross-app integration surface
 
 The preferred long-term cross-app contract is:
@@ -61,7 +69,7 @@ The preferred long-term cross-app contract is:
 - `finalize_upload_session(upload_session_id, received_size_bytes, content_hash?)`
 - `abort_upload_session(upload_session_id)`
 - `issue_download_grant(drive_file_id | canonical_ref)`
-- `issue_preview_grant(drive_file_id | canonical_ref, derivative_role?)`
+- `issue_preview_grant(drive_file_id | canonical_ref)`
 
 ### 2.2 Drive -> Ed
 
@@ -117,6 +125,10 @@ Current rule:
 - current runtime may also include `upload_token` for browser/proxy upload targets
 - migration/backfill code must use internal service helpers or explicit `Drive Upload Session` materialization, not the public API
 - wrapper-specific create-session extras must live only under `workflow_result`, not as ad hoc top-level keys
+- public workflow wrappers that are also whitelisted Frappe API methods must tolerate the same flat request payload shapes used by Ed portals: explicitly bound kwargs, flat form values, flat JSON bodies, and nested `args`. This is request-binding tolerance only; wrappers must still pass only approved workflow fields into the governed service.
+- slot meaning comes from the Ed-resolved `GovernedUploadSpec`; Drive validates slot shape and path safety, not a second exact/prefix slot registry
+- transitional wrappers may add local Drive metadata such as UX folders or typed `workflow_result` after Ed workflow resolution, but must not hand-author owner, subject, slot, purpose, retention, organization, or school semantics
+- `create_upload_session_service(...)` is the only public Drive session creation service; wrappers must not import resolved-session helper names or bypass the generic workflow boundary
 
 ## 4. Blob ingress contract
 
@@ -188,7 +200,10 @@ At minimum:
 The response must not rely on raw private file URLs as the primary browser contract.
 Current rule:
 
-- `file_id` remains part of the locked Ed/Drive seam until Ed no longer depends on the native `File` compatibility projection for post-upload reads
+- finalize first validates that `Drive Upload Session.upload_contract_json.workflow` contains persisted `workflow_id` and `contract_version`; missing metadata fails before storage resolution or Ed finalize delegation
+- finalize resolves workflow behavior only from persisted `workflow_id` and `contract_version`; it must not scan workflow specs to detect legacy/pre-registry sessions
+- legacy sessions without persisted workflow metadata must be repaired or retired by explicit migration/backfill patches, not by finalize-time fallback logic
+- `file_id` remains part of the locked Ed/Drive seam only as a transitional compatibility projection until Drive DocTypes and Ed post-upload writes no longer require native `File`
 - wrapper-specific finalize extras such as admissions item metadata or generated row identifiers must live under `workflow_result`, not as top-level keys
 - generic finalize callers must not depend on raw `file_url`
 
@@ -221,6 +236,38 @@ Rules:
 - resolve by `drive_file_id` or `canonical_ref`
 - select the ready derivative when the preview contract requires one
 - return a short-lived preview contract
+- Drive-internal and server-to-server callers may select a concrete preview variant when they need thumbnail delivery, but Ed/browser-facing DTOs must expose only stable `preview_url` and `thumbnail_url` action URLs, never derivative role names
+
+### Surface-scoped Ed grants
+
+Rules:
+
+- generic `issue_download_grant` and `issue_preview_grant` remain owner-DocPerm based
+- Ed-owned portal surfaces whose business authorization is not broad owner DocPerm must use a surface-scoped wrapper after Ed validates that surface context
+- admissions applicant document/profile/health reads must use `ifitwala_drive.api.admissions.issue_admissions_file_download_grant` and `issue_admissions_file_preview_grant`, not the generic owner-doc grant API
+
+## 7.5 Erasure execution contract
+
+Drive executes governed file erasure only from authoritative Drive metadata. Folders, storage paths, browser URLs, and compatibility `File` rows are not valid erasure truth.
+
+Execution inputs:
+
+- `erasure_request_id`
+- optional metadata filters for owner, attached document, slot, purpose, retention policy, organization, school, and data class
+- optional Ed decision items with `erase`, `retain`, `anonymize`, or `skip`
+
+Rules:
+
+- the `Drive Erasure Request` must already be approved before execution
+- Drive always scopes execution by the request subject
+- metadata filters narrow the subject scope; they do not replace the subject
+- legal hold blocks physical erasure even when Ed asks to erase
+- Ed decisions are legal/business instructions; Drive enforces storage mechanics and legal-hold safety
+- `anonymize` is treated as an Ed structured-record decision; Drive retains the file unless Ed explicitly sends an `erase` decision for that file
+- the response returns itemized `erased`, `retained`, and `skipped` rows with reasons
+- access events are recorded for actual file erasure
+
+Counsel-reviewed retention policy remains outside Drive code. Drive stores and filters retention metadata, but does not decide jurisdiction-specific legal outcomes.
 
 ## 8. MIME contract
 
@@ -244,9 +291,10 @@ But:
 - they must not become a second place where workflow semantics are authored
 - Ed callers must use the public `ifitwala_drive.api.*` wrapper when a surface-scoped wrapper exists; they must not import Drive integration services directly as a runtime fallback
 - if a required public wrapper export is unavailable, the caller must fail closed or use its own already-authorized local delivery path; it must not fall back to generic owner-doc grant APIs for an Ed-owned surface
+- current surface-scoped public wrappers include admissions files (`ifitwala_drive.api.admissions.issue_admissions_file_preview_grant` and `issue_admissions_file_download_grant`) and Student Log evidence (`ifitwala_drive.api.student_logs.upload_student_log_evidence_attachment`, `issue_student_log_evidence_attachment_preview_grant`, and `issue_student_log_evidence_attachment_download_grant`)
 
-## 10. Current-runtime note
+## 10. Runtime compatibility note
 
-Current code still contains wrapper-heavy and cross-import-heavy paths.
+Compatibility wrappers may exist for current product surfaces.
 
 Those are transitional implementation details, not the target API model.

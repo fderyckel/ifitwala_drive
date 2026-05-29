@@ -1,4 +1,4 @@
-# Semantic Browse Proposal
+# Semantic Browse Plan
 
 ## Bottom line
 
@@ -70,7 +70,7 @@ It also needs a presentation rule plus a backfill/migration for existing folders
 
 ---
 
-## Proposal
+## Plan
 
 ### 1. Treat folder identity and folder presentation as separate concerns
 
@@ -183,7 +183,7 @@ The current workspace still exposes generic readable roots.
 
 That is useful for admins, but not for normal user orientation.
 
-Proposal:
+Plan:
 
 - keep root folders for admin/scoped browse
 - prefer context cards for normal users
@@ -282,7 +282,7 @@ The work is done only if all of the following are true:
 
 ## Explicit non-goals
 
-This proposal does not do any of the following:
+This plan does not do any of the following:
 
 - make folders governance truth
 - rename storage keys to human labels
@@ -292,7 +292,7 @@ This proposal does not do any of the following:
 
 ---
 
-## Code paths behind this proposal
+## Code paths behind this plan
 
 Current internal folder ID generation:
 
