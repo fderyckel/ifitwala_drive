@@ -292,8 +292,8 @@ def test_upload_org_communication_attachment_uses_generic_workflow_session_bound
 	importlib.import_module("ifitwala_ed.integrations")
 	importlib.import_module("ifitwala_ed.integrations.drive")
 	delegate = types.ModuleType("ifitwala_ed.integrations.drive.org_communications")
-	delegate.assert_org_communication_upload_access = (
-		lambda org_communication_name, permission_type="write": (org_communication)
+	delegate.assert_org_communication_upload_access = lambda org_communication_name, permission_type="write": (
+		org_communication
 	)
 	delegate.build_org_communication_upload_contract = lambda doc, row_name=None: {
 		"owner_doctype": "Org Communication",
@@ -362,8 +362,8 @@ def test_upload_org_communication_attachment_uses_generic_workflow_session_bound
 	importlib.import_module("ifitwala_ed.integrations")
 	importlib.import_module("ifitwala_ed.integrations.drive")
 	delegate = types.ModuleType("ifitwala_ed.integrations.drive.org_communications")
-	delegate.assert_org_communication_upload_access = (
-		lambda org_communication_name, permission_type="write": (org_communication)
+	delegate.assert_org_communication_upload_access = lambda org_communication_name, permission_type="write": (
+		org_communication
 	)
 	delegate.build_org_communication_upload_contract = lambda doc, row_name=None: {
 		"owner_doctype": "Org Communication",
@@ -425,8 +425,8 @@ def test_upload_org_communication_attachment_uses_generic_workflow_session_bound
 	importlib.import_module("ifitwala_ed.integrations")
 	importlib.import_module("ifitwala_ed.integrations.drive")
 	delegate = types.ModuleType("ifitwala_ed.integrations.drive.org_communications")
-	delegate.assert_org_communication_upload_access = (
-		lambda org_communication_name, permission_type="write": (org_communication)
+	delegate.assert_org_communication_upload_access = lambda org_communication_name, permission_type="write": (
+		org_communication
 	)
 	delegate.build_org_communication_upload_contract = lambda doc, row_name=None: {
 		"owner_doctype": "Org Communication",
@@ -495,8 +495,8 @@ def test_upload_org_communication_attachment_rejects_incomplete_class_context():
 	importlib.import_module("ifitwala_ed.integrations")
 	importlib.import_module("ifitwala_ed.integrations.drive")
 	delegate = types.ModuleType("ifitwala_ed.integrations.drive.org_communications")
-	delegate.assert_org_communication_upload_access = (
-		lambda org_communication_name, permission_type="write": (org_communication)
+	delegate.assert_org_communication_upload_access = lambda org_communication_name, permission_type="write": (
+		org_communication
 	)
 	delegate.build_org_communication_upload_contract = lambda doc, row_name=None: {
 		"owner_doctype": "Org Communication",
